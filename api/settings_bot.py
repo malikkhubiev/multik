@@ -2,10 +2,10 @@ from fastapi import APIRouter, Request, Form, UploadFile, File
 from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 import os
-from .config import API_URL
-from ..database import create_project, get_project_by_id
-from ..utils import set_webhook
-from ..base import create_collection as qdrant_create_collection, extract_text_from_file, extract_assertions as extract_assertions_func, vectorize
+from config import API_URL
+from database import create_project, get_project_by_id
+from utils import set_webhook
+from base import create_collection as qdrant_create_collection, extract_text_from_file, extract_assertions as extract_assertions_func, vectorize
 import json
 
 router = APIRouter()
@@ -115,7 +115,7 @@ async def vectorize_and_upload_ep(project_id: str = Form(...), assertions: str =
             except Exception as vec_error:
                 logs.append(f"[ERROR] Ошибка векторизации для утверждения {idx}: {str(vec_error)}")
         if vectors:
-            from ..base import qdrant
+            from base import qdrant
             qdrant.upsert(
                 collection_name=collection_name,
                 points=vectors

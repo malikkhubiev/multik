@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Request
 from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from ..database import get_project_by_id, get_user_collection
-from ..base import vectorize, qdrant, deepseek
+from database import get_project_by_id, get_user_collection
+from base import vectorize, qdrant, deepseek
 
 router = APIRouter()
 
