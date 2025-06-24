@@ -3,7 +3,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 import os
 from config import API_URL
-from database import create_project, get_project_by_id
+from database import create_project, get_project_by_id, create_user
 from utils import set_webhook
 from base import create_collection as qdrant_create_collection, extract_text_from_file, extract_assertions as extract_assertions_func, vectorize
 import json
@@ -20,6 +20,7 @@ settings_dp = Dispatcher(settings_bot, storage=settings_storage)
 
 @settings_dp.message_handler(commands=["start"])
 async def handle_settings_start(message: types.Message):
+    await create_user(str(message.from_user.id))
     await message.answer("Добро пожаловать в настройки! Введите имя вашего проекта.")
 
 @settings_dp.message_handler()
