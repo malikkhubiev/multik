@@ -1,11 +1,11 @@
-from server.loader import app
+from loader import app
 from fastapi.responses import JSONResponse
 from fastapi import Request
-from server.config import PORT
-from server.database import database
+from config import PORT
+from database import database
 import uvicorn
-from server.base import *
-from server.utils import *
+from base import *
+from utils import *
 
 @app.middleware("http")
 async def db_session_middleware(request: Request, call_next):

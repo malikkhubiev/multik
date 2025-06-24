@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import HTTPException
 import httpx
 import logging
-from server.config import SERVER_URL
+from config import SERVER_URL
 
 load_dotenv()
 

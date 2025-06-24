@@ -1,7 +1,7 @@
 import asyncio
 import httpx
-from server.database import database, Project
-from server.config import SERVER_URL
+from database import database, Project
+from config import SERVER_URL
 from sqlalchemy.sql import select
 
 async def set_webhooks():
