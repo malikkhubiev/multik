@@ -1,5 +1,5 @@
 python-dotenv==0.21.1
-SQLAlchemy==2.0.31
+sqlalchemy==1.3.24
 aiosqlite
 aiogram==2.25.2
 fastapi
@@ -12,3 +12,4 @@ databases
 httpx
 uuid
 pandas
+openai

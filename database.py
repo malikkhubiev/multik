@@ -70,3 +70,11 @@ async def get_projects_by_user(telegram_id: str) -> list:
     query = select([Project]).where(Project.telegram_id == telegram_id)
     rows = await database.fetch_all(query)
     return [{"id": r["id"], "collection_name": r["collection_name"], "token": r["token"], "telegram_id": r["telegram_id"]} for r in rows]
+
+async def get_user_collection(telegram_id: str) -> Optional[str]:
+    """Возвращает collection_name первого проекта пользователя (или None, если нет проектов)"""
+    query = select([Project]).where(Project.telegram_id == telegram_id)
+    row = await database.fetch_one(query)
+    if row:
+        return row["collection_name"]
+    return None
