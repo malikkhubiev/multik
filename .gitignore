@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtualenv (если вдруг кто-то создаст внутри server)
+venv/
+.env/
+.venv/
+ENV/
+
+# Secrets
+.env
+*.env
+
+# Databases (только внутри server)
+*.db
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# System
+.DS_Store
+Thumbs.db
+
+# Pytest
+.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Other
+*.bak
+*.swp 

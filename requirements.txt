@@ -1,0 +1,13 @@
+python-dotenv==0.21.1
+SQLAlchemy==2.0.31
+aiosqlite
+fastapi
+uvicorn
+pydantic
+gunicorn
+jinja2
+python-multipart
+databases
+httpx
+uuid
+pandas

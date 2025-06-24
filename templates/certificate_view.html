@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AiM course</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        /* Общие настройки страницы */
+        body {
+            background-color: #121212;
+            /* Чёрный фон */
+            color: #e5e5e5;
+            /* Светло-серый текст для контраста */
+            font-family: 'Jura', sans-serif;
+            /* Чистый шрифт без засечек */
+            margin: 0;
+            padding: 0 15px;
+            overflow-x: hidden;
+        }
+
+        /* Заголовки */
+        h1,
+        h2,
+        h3,
+        h4,
+        h5,
+        h6 {
+            letter-spacing: 1px;
+            font-weight: 600;
+            color: #d9d9d9;
+            margin: 40px 0;
+            font-size: 50px;
+        }
+
+        /* Эффект свечения для заголовков */
+        @keyframes glowEffect {
+            0% {
+                text-shadow: 0 0 10px #ffffff, 0 0 30px #ffffff, 0 0 50px #ffffff;
+            }
+
+            100% {
+                text-shadow: 0 0 20px #ffffff, 0 0 40px #ffffff, 0 0 80px #ffffff;
+            }
+        }
+
+        /* Для скрытых блоков (details) */
+        details {
+            background-color: transparent;
+            /* Прозрачный фон */
+            border: none;
+            padding: 20px;
+            padding-left: 0;
+            margin: 20px 0;
+            font-size: 1.1em;
+            color: #bbb;
+            transition: all 0.4s ease;
+        }
+
+        /* Заголовок блока details (summary) */
+        summary {
+            font-size: 30px;
+            color: #ffffff;
+            /* Неоново-фиолетовый цвет */
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.3s ease;
+            line-height: 60px;
+        }
+
+        .main {
+            background-color: #fff;
+            padding: 10px 20px;
+            color: black;
+            text-align: center;
+        }
+
+
+        /* Эффект на hover для summary */
+        summary:hover {
+            color: #fff;
+            text-shadow: 0 0 10px #ffffff, 0 0 20px #ffffff, 0 0 30px #ffffff;
+        }
+
+        summary::marker:hover {
+            color: #fff;
+            text-shadow: 0 0 10px #ffffff, 0 0 20px #ffffff, 0 0 30px #ffffff;
+        }
+
+        /* Содержимое внутри раскрытого блока */
+        details div {
+            font-size: 1.2em;
+            color: #e5e5e5;
+            /* Светло-серый текст */
+            margin-top: 10px;
+            line-height: 1.5;
+            animation: fadeInContent 1s ease-out;
+        }
+
+        /* Плавное появление содержимого */
+        @keyframes fadeInContent {
+            0% {
+                opacity: 0;
+            }
+
+            100% {
+                opacity: 1;
+            }
+        }
+
+        /* Ссылки */
+        a {
+            color: #ffffff;
+            /* Неоново-фиолетовый для ссылок */
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s ease, text-shadow 0.3s ease;
+        }
+
+        /* Кнопки */
+        button {
+            background-color: #fff;
+            color: #000;
+            border: 0;
+            font-size: 1.1em;
+            padding: 10px 30px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+
+        /* Дополнительный стиль для блоков с контентом */
+        section {
+            padding: 50px 20px;
+            margin: 0 10%;
+            border-bottom: 1px solid #333;
+        }
+
+        /* Дизайн для основной навигации */
+        nav {
+            text-align: center;
+            margin-top: 30px;
+        }
+
+        nav a {
+            margin: 0 20px;
+            font-size: 1.2em;
+            letter-spacing: 1px;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: 50px;
+            text-align: center;
+        }
+
+        .ins {
+            display: inline-block;
+            max-width: 1200px;
+        }
+
+        form {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        input {
+            width: 500px;
+            max-width: 70%;
+            height: 50px;
+            border: 0;
+            background-color: transparent;
+            border-bottom: 1px solid #fff;
+            color: white;
+            font-size: 23px;
+        }
+
+        input:focus {
+            outline: none;
+            /* Убираем стандартную рамку */
+            border-bottom: 2px solid #fff;
+            /* Добавляем свою границу снизу */
+            background-color: transparent;
+            /* Прозрачный фон */
+            color: white;
+            /* Белый цвет текста */
+        }
+
+        button {
+            height: 50px;
+        }
+
+        .error {
+            font-size: 30px;
+            text-align: center;
+        }
+
+        ul {
+            padding-left: 8px;
+        }
+
+        .certificate-details{
+            margin-top: 30px;
+            display: flex;
+            justify-content: start;
+            align-items: center;
+            flex-direction: column;
+        }
+
+        p{
+            text-align: center;
+        }
+
+        .certificate-details>p {
+            font-size: 23px;
+            margin: 10px 0;
+            line-height: 50px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>
+        Результаты сертификации<br>по курсу<br>"Разработка моделей ML и нейронных сетей"
+    </h1>
+    <form method="get" action="/certifications">
+        <input type="text" name="cert_id" placeholder="Введите CERT-ID" required>
+        <button type="submit">Найти</button>
+    </form>
+
+    {% if certificate %}
+    <div class="certificate-details">
+        <p><span class="main">Идентификационный номер:</span><br> {{ certificate.id }}</p>
+        <p><span class="main">ФИО:</span><br> {{ certificate.name }}</p>
+        <p><span class="main">Дата выдачи:</span><br> {{ certificate.date }}</p>
+    </div>
+    {% else %}
+    <p class="error">Сертификат не найден или неверный ID.</p>
+    {% endif %}
+
+    <h2>Программа обучения:</h2>
+
+    <ul>
+        <details>
+            <summary>1. Основы программирования на языке <span class="main">Python</span> </summary>
+            <div>
+                <ul>
+                    <li>Переменные</li>
+                    <li>Операции</li>
+                    <li>Ввод с клавиатуры</li>
+                    <li>Типы данных</li>
+                    <li>Функция print и её параметры</li>
+                    <li>Условный оператор</li>
+                    <li>Циклы</li>
+                    <li>Строки</li>
+                    <li>Списки</li>
+                    <li>Словари</li>
+                    <li>Функция и её аргументы</li>
+                    <li>Рекурсия и лямбда-функция</li>
+                    <li>Классы</li>
+                </ul>
+            </div>
+        </details>
+        <details>
+            <summary>2. Базовые и продвинутые операции с библиотекой <span class="main">NumPy</span> </summary>
+            <div>
+                <ul>
+                    <li>Урок 1. Создание массивов и основных структур данных</li>
+                    <li>Урок 2. Основные операции над массивами</li>
+                    <li>Урок 3. Индексация, срезы и итерация</li>
+                    <li>Урок 4. Арифметические операции</li>
+                    <li>Урок 5. Статистические функции</li>
+                    <li>Урок 6. Генерация случайных чисел</li>
+                    <li>Урок 7. Сортировка и поиск</li>
+                    <li>Урок 8. Типы данных и конвертация</li>
+                    <li><strong>Задачи</strong>
+                        <ul>
+                            <li>Задача 1: Анализ данных посещаемости фитнес-клуба</li>
+                            <li>Задача 2: Анализ успеваемости студентов</li>
+                            <li>Задача 3: Анализ продаж товаров в интернет-магазине</li>
+                            <li>Задача: Анализ данных продаж и планирование рекламной кампании</li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </details>
+        <details>
+            <summary>3. Обработка и анализ данных с помощью библиотеки <span class="main">Pandas</span> </summary>
+            <div>
+                <ul>
+                    <li>Урок 1. Создание и загрузка данных</li>
+                    <li>Урок 2. Просмотр и исследование данных</li>
+                    <li>Урок 3. Индексация и фильтрация данных</li>
+                    <li>Урок 4. Модификация данных</li>
+                    <li>Урок 5. Работа с пропущенными данными</li>
+                    <li>Урок 6. Группировка и агрегация данных</li>
+                    <li>Урок 7. Слияние и объединение данных</li>
+                    <li>Урок 8. Трансформация данных</li>
+                    <li>Урок 9. Визуализация данных</li>
+                    <li>Урок 10. Экспорт данных</li>
+                    <li><strong>Задачи</strong>
+                        <ul>
+                            <li>Задача 1: Анализ посещаемости сайта</li>
+                            <li>Задача 2: Оценка успеваемости студентов</li>
+                            <li>Задача 3: Анализ запасов товаров на складе</li>
+                            <li>Задача: Анализ продаж в интернет-магазине</li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </details>
+        <details>
+            <summary>4. Визуализация данных с использованием библиотеки <span class="main">Matplotlib</span> </summary>
+            <div>
+                <ul>
+                    <li>Урок 1. Базовые графики</li>
+                    <li>Урок 2. Визуализация данных</li>
+                    <li>Урок 3. Управление осями</li>
+                    <li>Урок 4. Добавление элементов</li>
+                    <li>Урок 5. Разное</li>
+                    <li><strong>Задачи</strong>
+                        <ul>
+                            <li>Задача 1: Построение линейного графика</li>
+                            <li>Задача 2: Построение гистограммы</li>
+                            <li>Задача 3: Построение круговой диаграммы</li>
+                            <li>Задача: Анализ продаж автомобилей и прогнозирование доходов</li>
+                            <ul>
+                                <li>Шаг 1: Загрузка и подготовка данных</li>
+                                <li>Шаг 2: Исследование данных</li>
+                                <li>Шаг 3: Анализ продаж по моделям автомобилей</li>
+                                <li>Шаг 4: Визуализация продаж</li>
+                                <li>Шаг 5: Анализ тренда продаж</li>
+                                <li>Шаг 6: Визуализация тренда продаж и доходов</li>
+                                <li>Шаг 7: Прогнозирование доходов на следующий год</li>
+                            </ul>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </details>
+        <details>
+            <summary>5. Продвинутая визуализация данных с использованием библиотеки <span class="main">Seaborn</span>
+            </summary>
+            <div>
+                <ul>
+                    <li>Урок 1. Графики общего вида и распределения данных</li>
+                    <li>Урок 2. Визуализация взаимосвязей между переменными</li>
+                    <li>Урок 3. Графики для анализа категориальных данных</li>
+                    <li>Урок 4. Матричные графики и тепловые карты</li>
+                    <li>Урок 5. Другие полезные функции</li>
+                    <li><strong>Задачи</strong>
+                        <ul>
+                            <li>Задача 1: Анализ продаж продуктов питания</li>
+                            <li>Задача 2: Анализ успеваемости студентов</li>
+                            <li>Задача 3: Анализ трафика веб-сайта</li>
+                            <li>Практическая задача: Анализ и визуализация продаж недвижимости</li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </details>
+
+        <details>
+            <summary>6. Применение <span class="main">Scikit-learn</span> для построения моделей машинного обучения
+            </summary>
+            <div>
+                <ul>
+                    <li>Урок -1. Импорт данных</li>
+                    <li>Урок 0. Простая модель машинного обучения</li>
+                    <li>Урок 1. Очистка данных</li>
+                    <li>Урок 2. Инженерия признаков</li>
+                    <li>Урок 3. Уничтожение предикторов с корреляцией</li>
+                    <li>Урок 4. Преобразование данных</li>
+                    <li>Урок 5. Разделение данных</li>
+                    <li>Урок 6. Обработка дисбаланса классов</li>
+                    <li>Урок 7. Выбор модели в соответствии с задачей
+                        <ul>
+                            <li>1. Регрессия
+                                <ul>
+                                    <li>LinearRegression</li>
+                                    <li>Ridge, Lasso</li>
+                                    <li>Полиномиальная регрессия</li>
+                                    <li>SVR</li>
+                                </ul>
+                            </li>
+                            <li>2. Классификация
+                                <ul>
+                                    <li>Логистическая регрессия</li>
+                                    <li>SVM</li>
+                                    <li>Деревья решений</li>
+                                    <li>K-ближайших соседей</li>
+                                </ul>
+                            </li>
+                            <li>3. Кластеризация
+                                <ul>
+                                    <li>K-средних (K-Means)</li>
+                                    <li>Иерархическая кластеризация</li>
+                                    <li>DBSCAN</li>
+                                    <li>Mean Shift</li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </li>
+                    <li>Урок 8. Сложные модели классификации и регрессии
+                        <ul>
+                            <li>1. Случайный лес
+                                <ul>
+                                    <li>RandomForestClassifier</li>
+                                    <li>RandomForestRegressor</li>
+                                </ul>
+                            </li>
+                            <li>2. Градиентный бустинг
+                                <ul>
+                                    <li>GradientBoostingClassifier</li>
+                                    <li>GradientBoostingRegressor</li>
+                                </ul>
+                            </li>
+                            <li>3. Адаптивный бустинг
+                                <ul>
+                                    <li>AdaBoostClassifier</li>
+                                    <li>AdaBoostRegressor</li>
+                                </ul>
+                            </li>
+                            <li>4. Наивный байесовский классификатор
+                                <ul>
+                                    <li>GaussianNB</li>
+                                </ul>
+                            </li>
+                            <li>5. Многослойный перцептрон
+                                <ul>
+                                    <li>MLPClassifier</li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </li>
+                    <li>Урок 9. Методы градиентного бустинга
+                        <ul>
+                            <li>XGBoost</li>
+                            <li>LightGBM</li>
+                            <li>CatBoost</li>
+                        </ul>
+                    </li>
+                    <li>Урок 10. Метрики оценки
+                        <ul>
+                            <li>Регрессия: Mean Absolute Error (MAE) + Роадмэп</li>
+                            <li>Классификация: Accuracy + Роадмэп</li>
+                            <li>Кластеризация: Adjusted Rand Index (ARI) + Роадмэп</li>
+                        </ul>
+                    </li>
+                    <li>Урок 11. Пайплайн и Гиперпайплайн</li>
+                    <li>Урок 12. Кросс-валидация + Роадмэп</li>
+                    <li>Урок 13. Гиперпараметры + Роадмэп</li>
+                    <li>Урок 14. Методы ансамблирования + Роадмэп</li>
+                    <li>Урок 15. Анализ ошибок
+                        <ul>
+                            <li>Анализ ошибок по группам</li>
+                            <li>Анализ пространственно-временных ошибок</li>
+                            <li>Визуализация важности признаков (Признаки и Интервалы)</li>
+                            <li>Объяснение результатов анализа (SHAP и LIME)</li>
+                        </ul>
+                    </li>
+                    <li>Урок 16. Порядок построения модели</li>
+                </ul>
+            </div>
+        </details>
+
+        <details>
+            <summary>7. Базы данных и <span class="main">SQL</span> . Извлечение необходимой информации</summary>
+            <div>
+                <ul>
+                    <li><strong>Базы данных (БД)</strong></li>
+                    <li><strong>Базовая настройка OpenServer</strong></li>
+                    <li><strong>Работа с таблицами</strong>
+                        <ul>
+                            <li>Создание таблицы</li>
+                            <li>Добавление колонок в таблицу</li>
+                            <li>Вставка данных в таблицу</li>
+                            <li>Обновление данных в таблице</li>
+                            <li>Удаление данных из таблицы</li>
+                            <li>Удаление таблицы</li>
+                        </ul>
+                    </li>
+                    <li><strong>Select-запрос. Начало</strong>
+                        <ul>
+                            <li>Создание таблицы</li>
+                            <li>Вставка данных</li>
+                            <li>Выборка всех данных</li>
+                            <li>Выборка конкретных столбцов</li>
+                            <li>Условие WHERE</li>
+                        </ul>
+                    </li>
+                    <li><strong>Группировка и групповые операции</strong>
+                        <ul>
+                            <li>Группировка с использованием GROUP BY</li>
+                            <li>Группировка с использованием HAVING</li>
+                            <li>Группировка с агрегатными функциями (SUM, AVG, MAX, MIN)</li>
+                            <li>Группировка с использованием нескольких колонок</li>
+                            <li>Группировка с использованием функций даты</li>
+                            <li>Группировка с вложенными запросами</li>
+                        </ul>
+                    </li>
+                    <li><strong>Сортировка и ограничение результатов</strong>
+                        <ul>
+                            <li>Сортировка данных (ORDER BY)</li>
+                            <li>Ограничение числа возвращаемых строк (LIMIT)</li>
+                        </ul>
+                    </li>
+                    <li><strong>Select с JOIN. Склеивание таблиц</strong>
+                        <ul>
+                            <li><strong>Типы JOIN</strong>
+                                <ul>
+                                    <li>INNER JOIN</li>
+                                    <li>LEFT JOIN</li>
+                                    <li>RIGHT JOIN</li>
+                                    <li>CROSS JOIN</li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </li>
+                    <li><strong>SQL в Python</strong>
+                        <ul>
+                            <li>Объединение таблиц из базы данных для построения DataFrame</li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </details>
+
+        <details>
+            <summary>8. Визуализация данных с использованием <span class="main">Plotly</span> </summary>
+            <div>
+                <ul>
+                    <li><strong>Основы графиков</strong>
+                        <ul>
+                            <li>Урок 1: Интерактивные диаграммы рассеивания (scatterplot)</li>
+                            <li>Урок 2: Интерактивный бар график</li>
+                            <li>Урок 3: Простой линейный график</li>
+                            <li>Урок 4: Подпись осей</li>
+                            <li>Урок 5: Добавить сетку и изменить цвет линии</li>
+                            <li>Урок 6: График из DataFrame</li>
+                            <li>Урок 7: Несколько линий
+                                <ul>
+                                    <li>- Построение бар графика "Общие продажи по регионам"</li>
+                                    <li>- Построение диаграммы рассеивания "Зависимость между продажами и прибылью"</li>
+                                </ul>
+                            </li>
+                            <li>Урок 8: Гистограмма с промежутками</li>
+                            <li>Урок 9: График с всплывающими подсказками</li>
+                            <li>Урок 10: Анимированный график</li>
+                            <li>Урок 11: Добавление подграфиков</li>
+                            <li>Урок 12: Столбчатый график с категориальными данными</li>
+                            <li>Урок 13: Столбчатый график с группировкой по цвету</li>
+                            <li>Урок 14: Линейный график с логарифмической шкалой</li>
+                            <li>Урок 15: 3D график рассеивания</li>
+                            <li>Урок 16: Создание точечной карты</li>
+                            <li>Урок 17: Создание анимированной карты</li>
+                            <li>Урок 18: График воронки продаж</li>
+                            <li>Урок 19: График с погрешностями</li>
+                            <li>Урок 20: Тёмная и светлая тема</li>
+                            <li>Урок 21: Интерактивная таблица</li>
+                            <li>Урок 22: Добавление аннотаций и пунктирных линий</li>
+                            <li>Урок 23: Добавление 2 y-осей</li>
+                            <li>Урок 24: Тепловая карта</li>
+                            <li>Урок 25: Контурный график</li>
+                            <li>Урок 26: Сеточный график</li>
+                            <li>Урок 27: Пузырьковый график</li>
+                            <li>Урок 28: Полярная диаграмма</li>
+                            <li>Урок 29: График с настройкой осей</li>
+                            <li>Урок 30: Свечной график</li>
+                            <li>Урок 31: График временных рядов</li>
+                            <li>Урок 32: Диаграмма рассеяния матрицы</li>
+                            <li>Урок 33: Географическая карта</li>
+                            <li>Урок 34: График сети</li>
+                            <li>Урок 35: Простая распределённая диаграмма</li>
+                        </ul>
+                    </li>
+                    <li><strong>Задачи</strong>
+                        <ul>
+                            <li>Задача 1: Визуализация данных акций с помощью свечного графика</li>
+                            <li>Задача 2: Визуализация разделяющей плоскости</li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </details>
+
+        <details>
+            <summary>9. <span class="main">NLP</span> . Основы обработки естественного языка с библиотеками spaCy и
+                Transformers</summary>
+            <div>
+                <ul>
+                    <li><strong>Часть 1: Использование spaCy</strong>
+                        <ul>
+                            <li>Этап 1: Базовый пример. Токены и POS-теггинг</li>
+                            <li>Этап 2: Добавление синтаксических зависимостей и вывод именованных сущностей</li>
+                            <li>Этап 3: Определение семантического сходства</li>
+                            <li>Этап 4: Вывод зависимых слов (Children)</li>
+                            <li>Этап 5: Извлечение ключевых слов</li>
+                            <li>Этап 6: Извлечение грамматической основы</li>
+                            <li>Этап 7: Глаголы и их объекты</li>
+                            <li>Этап 8: Извлечение связей между сущностями, событиями и аргументами событий</li>
+                            <li>Этап 9: Анализ сентимента текста</li>
+                            <li>Этап 10: Извлечение синонимов</li>
+                            <li>Этап 11: Извлечение гиперонимов</li>
+                            <li>Этап 12: Добавление кастомного компонента в NLP pipeline</li>
+                            <li>Этап 13: Классификация с помощью sklearn. Принцип работы `TfidfVectorizer`</li>
+                        </ul>
+                    </li>
+                    <li><strong>Часть 2: Использование Transformers</strong>
+                        <ul>
+                            <li>Этап 1: Заполнение пропущенных значений. Понимание модели `bert-base-uncased`</li>
+                            <li>Этап 2: Анализ тональности</li>
+                            <li>Этап 3: Распознавание именованных сущностей</li>
+                            <li>Этап 4: Генерация текста на GPT-2</li>
+                            <li>Этап 5: Генерация ответов на вопросы с помощью BART</li>
+                            <li>Этап 6: Генерация ответов на вопросы, используя контекст</li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </details>
+
+        <details>
+            <summary>10. Минимальные основы компьютерного зрения с использованием библиотеки <span
+                    class="main">OpenCV</span> </summary>
+            <div>
+                <ul>
+                    <li>Этап 1: Загрузка и отображение изображения</li>
+                    <li>Этап 2: Изменение размера изображения</li>
+                    <li>Этап 3: Конвертация изображения в градации серого</li>
+                    <li>Этап 4: Размытие изображения</li>
+                    <li>Этап 5: Пороговая обработка изображения</li>
+                    <li>Этап 6: Обнаружение краев</li>
+                    <li>Этап 7: Контуры</li>
+                    <li>Этап 8: Морфологические операции</li>
+                    <li>Этап 9: Применение фильтров</li>
+                    <li>Этап 10: Обнаружение объектов</li>
+                    <li>Этап 11: Распознавание объектов</li>
+                </ul>
+            </div>
+        </details>
+
+        <details>
+            <summary>11. Разработка нейронных сетей с использованием библиотеки <span class="main">Keras</span>
+            </summary>
+            <div>
+                <ul>
+                    <li><strong>Часть 1</strong>
+                        <ul>
+                            <li>Этап 1: База</li>
+                            <li>Этап 2: Добавление функции активации (преобразователь). Что такое исчезающие градиенты
+                            </li>
+                            <li>Этап 3: Скрытые слои + Роадмэп</li>
+                            <li>Этап 4: Уменьшение количества эпох</li>
+                            <li>Этап 5: Dropout (частичное выключение)</li>
+                            <li>Этап 6: Добавление L2-регуляризации (штрафование)</li>
+                            <li>Этап 7: BatchNormalization - метод нормализации данных внутри нейросети</li>
+                            <li>Этап 8: Early Stopping (Колл-бэк ранней остановки)</li>
+                            <li>Этап 9: ReduceLROnPlateau (уменьшает скорость обучения)</li>
+                            <li>Этап 10: Новая архитектура. Свёрточный слой</li>
+                            <li>Этап 11: Новая архитектура. LSTM</li>
+                            <li>Этап 12: Новая архитектура. GRU</li>
+                            <li>Этап 13: Сохранить модель, достать и использовать</li>
+                        </ul>
+                    </li>
+                    <li><strong>Часть 2</strong>
+                        <ul>
+                            <li><strong>Урок 1. Классификация и Регрессия + Роадмэп</strong>
+                                <ul>
+                                    <li>Классификация</li>
+                                    <li>Perceptron</li>
+                                    <li>Feedforward Neural Network (FFNN) + отличительные особенности</li>
+                                    <li>MLP</li>
+                                </ul>
+                            </li>
+                            <li><strong>Регрессия</strong>
+                                <ul>
+                                    <li>Feedforward Neural Network (FFNN). Анализ и различия FFNN и MLP</li>
+                                </ul>
+                            </li>
+                            <li><strong>Урок 2. Глубокие нейронные сети</strong>
+                                <ul>
+                                    <li>Deep Feedforward Network (DFF). Капаситет</li>
+                                    <li>Deep Convolutional Network (DCN)</li>
+                                    <li>Deep Convolutional Inception Network (DCIGN). Inception</li>
+                                    <li>Свёртка?</li>
+                                </ul>
+                            </li>
+                            <li><strong>Урок 3. Обработка последовательностей + Роадмэп</strong>
+                                <ul>
+                                    <li>RNN (Recurrent Neural Network)</li>
+                                    <li>LSTM (Long Short-Term Memory)</li>
+                                    <li>GRU (Gated Recurrent Unit). Сравнение с LSTM</li>
+                                </ul>
+                            </li>
+                            <li><strong>Урок 4. Автоэнкодеры</strong>
+                                <ul>
+                                    <li>AE</li>
+                                    <li>DAE</li>
+                                    <li>SAE</li>
+                                </ul>
+                            </li>
+                            <li><strong>Урок 5. Специфические архитектуры и методы</strong>
+                                <ul>
+                                    <li>Управление памятью и вниманием. Attention Mechanism</li>
+                                </ul>
+                            </li>
+                            <li><strong>Урок 6. Extreme Learning Machine (ELM)</strong></li>
+                            <li><strong>Урок 7. CNN (Convolutional Neural Network)</strong></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </details>
+    </ul>
+</body>
+
+</html>
