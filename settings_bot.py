@@ -31,6 +31,8 @@ logger = logging.getLogger(__name__)
 class SettingsStates(StatesGroup):
     waiting_for_project_name = State()
     waiting_for_token = State()
+    waiting_for_business_info = State()
+    waiting_for_context = State()
 
 @settings_router.message(Command("start"))
 async def handle_settings_start(message: types.Message, state: FSMContext):
@@ -53,11 +55,27 @@ async def handle_project_name(message: types.Message, state: FSMContext):
 @settings_router.message(SettingsStates.waiting_for_token)
 async def handle_token(message: types.Message, state: FSMContext):
     logger.info(f"Token received from user {message.from_user.id}: {message.text}")
+    await state.update_data(token=message.text)
+    await message.answer("Пожалуйста, напишите данные о вашем бизнесе.")
+    await state.set_state(SettingsStates.waiting_for_business_info)
+
+@settings_router.message(SettingsStates.waiting_for_business_info)
+async def handle_business_info(message: types.Message, state: FSMContext):
+    logger.info(f"Business info received from user {message.from_user.id}: {message.text}")
+    await state.update_data(business_info=message.text)
+    await message.answer("Теперь напишите контекст (например, чем занимается компания, особенности, задачи и т.д.).")
+    await state.set_state(SettingsStates.waiting_for_context)
+
+@settings_router.message(SettingsStates.waiting_for_context)
+async def handle_context(message: types.Message, state: FSMContext):
+    logger.info(f"Context received from user {message.from_user.id}: {message.text}")
     data = await state.get_data()
     project_name = data.get("project_name")
-    token = message.text
-    # Здесь можно сохранить проект и токен, либо продолжить диалог
-    await message.answer(f"Проект '{project_name}' и токен сохранены!")
+    token = data.get("token")
+    business_info = data.get("business_info")
+    context = message.text
+    # Здесь можно сохранить все данные в базу
+    await message.answer(f"Спасибо! Все данные сохранены.\n\nПроект: {project_name}\nТокен: {token}\nБизнес: {business_info}\nКонтекст: {context}")
     await state.clear()
 
 @router.post(SETTINGS_WEBHOOK_PATH)
