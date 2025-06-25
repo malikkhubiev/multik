@@ -1,5 +1,4 @@
-aiogram==2.25.2
-aiohttp==3.8.6
+﻿aiogram==2.25.2
 python-dotenv==0.21.1
 SQLAlchemy
 aiosqlite
