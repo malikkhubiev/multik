@@ -23,7 +23,6 @@ async def db_session_middleware(request: Request, call_next):
 
 @app.api_route("/", methods=["GET", "HEAD"])
 async def super():
-    print(2)
     logging.info("[HANDLER] Получен запрос на / (корень)")
     return JSONResponse(content={"message": f"Сервер работает!"}, status_code=200)
 

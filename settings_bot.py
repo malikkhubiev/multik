@@ -9,6 +9,7 @@ from database import create_project, get_project_by_id, create_user
 from utils import set_webhook
 from qdrant_utils import create_collection as qdrant_create_collection, extract_text_from_file, extract_assertions as extract_assertions_func, vectorize
 import json
+import logging
 
 router = APIRouter()
 
@@ -22,21 +23,41 @@ settings_router = Router()
 settings_dp = Dispatcher(storage=settings_storage)
 settings_dp.include_router(settings_router)
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 @settings_router.message(Command("start"))
 async def handle_settings_start(message: types.Message):
-    await create_user(str(message.from_user.id))
-    await message.answer("Добро пожаловать в настройки! Введите имя вашего проекта.")
+    logger.info(f"/start received from user {message.from_user.id}")
+    try:
+        await create_user(str(message.from_user.id))
+        await message.answer("Добро пожаловать в настройки! Введите имя вашего проекта.")
+        logger.info(f"Sent welcome message to user {message.from_user.id}")
+    except Exception as e:
+        logger.error(f"Error in handle_settings_start: {e}")
 
 @settings_router.message()
 async def handle_settings_text(message: types.Message):
-    await message.answer(f"Вы написали: {message.text}")
+    logger.info(f"Text received from user {message.from_user.id}: {message.text}")
+    try:
+        await message.answer(f"Вы написали: {message.text}")
+        logger.info(f"Echoed text to user {message.from_user.id}")
+    except Exception as e:
+        logger.error(f"Error in handle_settings_text: {e}")
 
 @router.post(SETTINGS_WEBHOOK_PATH)
 async def process_settings_webhook(request: Request):
-    update_data = await request.json()
-    update = types.Update.model_validate(update_data)
-    await settings_dp.feed_update(settings_bot, update)
-    return {"ok": True}
+    logger.info("Received webhook call for settings bot")
+    try:
+        update_data = await request.json()
+        logger.info(f"Update data: {update_data}")
+        update = types.Update.model_validate(update_data)
+        await settings_dp.feed_update(settings_bot, update)
+        logger.info("Update processed successfully")
+        return {"ok": True}
+    except Exception as e:
+        logger.error(f"Error in process_settings_webhook: {e}")
+        return {"ok": False, "error": str(e)}
 
 @router.post("/create_project_meta")
 async def create_project_meta(
