@@ -6,6 +6,16 @@ from database import database
 import uvicorn
 from base import *
 from utils import *
+from settings_bot import set_settings_webhook
+import asyncio
+
+@app.on_event("startup")
+async def startup_event():
+    try:
+        await set_settings_webhook()
+        print("[STARTUP] Settings bot webhook set!")
+    except Exception as e:
+        print(f"[STARTUP] Failed to set settings bot webhook: {e}")
 
 @app.middleware("http")
 async def db_session_middleware(request: Request, call_next):
