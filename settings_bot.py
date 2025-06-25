@@ -78,6 +78,7 @@ async def handle_context(message: types.Message, state: FSMContext):
     try:
         # Создать проект
         project_id = await create_project(telegram_id, project_name, token)
+        logger.info(f"Перед установкой вебхука: token={token}, project_id={project_id}")
         # Установить вебхук
         webhook_result = await set_webhook(token, project_id)
         if webhook_result.get("ok"):
