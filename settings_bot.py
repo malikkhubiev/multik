@@ -10,6 +10,8 @@ from utils import set_webhook
 from qdrant_utils import create_collection as qdrant_create_collection, extract_text_from_file, extract_assertions as extract_assertions_func, vectorize
 import json
 import logging
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.context import FSMContext
 
 router = APIRouter()
 
@@ -26,24 +28,37 @@ settings_dp.include_router(settings_router)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+class SettingsStates(StatesGroup):
+    waiting_for_project_name = State()
+    waiting_for_token = State()
+
 @settings_router.message(Command("start"))
-async def handle_settings_start(message: types.Message):
+async def handle_settings_start(message: types.Message, state: FSMContext):
     logger.info(f"/start received from user {message.from_user.id}")
     try:
         await create_user(str(message.from_user.id))
         await message.answer("Добро пожаловать в настройки! Введите имя вашего проекта.")
+        await state.set_state(SettingsStates.waiting_for_project_name)
         logger.info(f"Sent welcome message to user {message.from_user.id}")
     except Exception as e:
         logger.error(f"Error in handle_settings_start: {e}")
 
-@settings_router.message()
-async def handle_settings_text(message: types.Message):
-    logger.info(f"Text received from user {message.from_user.id}: {message.text}")
-    try:
-        await message.answer(f"Вы написали: {message.text}")
-        logger.info(f"Echoed text to user {message.from_user.id}")
-    except Exception as e:
-        logger.error(f"Error in handle_settings_text: {e}")
+@settings_router.message(SettingsStates.waiting_for_project_name)
+async def handle_project_name(message: types.Message, state: FSMContext):
+    logger.info(f"Project name received from user {message.from_user.id}: {message.text}")
+    await state.update_data(project_name=message.text)
+    await message.answer("Теперь введите API токен для Telegram-бота.")
+    await state.set_state(SettingsStates.waiting_for_token)
+
+@settings_router.message(SettingsStates.waiting_for_token)
+async def handle_token(message: types.Message, state: FSMContext):
+    logger.info(f"Token received from user {message.from_user.id}: {message.text}")
+    data = await state.get_data()
+    project_name = data.get("project_name")
+    token = message.text
+    # Здесь можно сохранить проект и токен, либо продолжить диалог
+    await message.answer(f"Проект '{project_name}' и токен сохранены!")
+    await state.clear()
 
 @router.post(SETTINGS_WEBHOOK_PATH)
 async def process_settings_webhook(request: Request):
