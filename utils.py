@@ -77,7 +77,7 @@ async def send_request(url: str, data: dict, method: str = "POST") -> dict:
         raise HTTPException(status_code=500, message="An unknown error occurred")
 
 async def set_webhook(token: str, project_id: str) -> dict:
-    webhook_url = f"{SERVER_URL}/webhook/{project_id}"
+    webhook_url = f"{API_URL}/webhook/{project_id}"
     url = f"{API_URL}{token}/setWebhook"
     get_info_url = f"{API_URL}{token}/getWebhookInfo"
     async with httpx.AsyncClient() as client:
