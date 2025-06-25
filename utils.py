@@ -78,11 +78,19 @@ async def send_request(url: str, data: dict, method: str = "POST") -> dict:
 
 async def set_webhook(token: str, project_id: str) -> dict:
     webhook_url = f"{SERVER_URL}/webhook/{project_id}"
-    url = f"https://api.telegram.org/bot{token}/setWebhook"
+    url = f"{API_URL}{token}/setWebhook"
+    get_info_url = f"{API_URL}{token}/getWebhookInfo"
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.post(url, params={"url": webhook_url})
             data = resp.json()
+            # Сразу после установки проверяем getWebhookInfo
+            info_resp = await client.get(get_info_url)
+            info_data = info_resp.json()
+            logging.info(f"[WEBHOOK] setWebhook result: {data}")
+            logging.info(f"[WEBHOOK] getWebhookInfo: {info_data}")
+            data["webhook_info"] = info_data
             return data
         except Exception as e:
+            logging.error(f"[WEBHOOK] Error: {e}")
             return {"ok": False, "error": str(e)}
