@@ -5,7 +5,7 @@ from sqlalchemy.sql import select
 
 async def check_webhooks():
     await database.connect()
-    projects = await database.fetch_all(select([Project]))
+    projects = await database.fetch_all(select(Project))
     tokens = set([p['token'] for p in projects])
     print(f"Найдено токенов: {len(tokens)}")
     for token in tokens:
