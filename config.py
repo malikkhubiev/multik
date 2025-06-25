@@ -7,7 +7,8 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///bot_database.db")
 
 PORT = os.getenv("PORT")
-API_URL = os.getenv("API_URL")
+SERVER_URL = os.getenv("SERVER_URL")
+API_URL = "https://api.telegram.org/bot"
 BOT_URL = os.getenv("BOT_URL")
 
 VECTOR_SERVER = os.getenv("VECTOR_SERVER_URL")

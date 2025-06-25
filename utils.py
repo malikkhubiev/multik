@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import HTTPException
 import httpx
 import logging
-from config import API_URL
+from config import API_URL, SERVER_URL
 
 load_dotenv()
 
@@ -77,7 +77,9 @@ async def send_request(url: str, data: dict, method: str = "POST") -> dict:
         raise HTTPException(status_code=500, message="An unknown error occurred")
 
 async def set_webhook(token: str, project_id: str) -> dict:
-    webhook_url = f"{API_URL}/webhook/{project_id}"
+    logging.info(f"SERVER_URL={SERVER_URL}, project_id={project_id}")
+    webhook_url = f"{SERVER_URL}/webhook/{project_id}"
+    logging.info(f"webhook_url={webhook_url}")
     url = f"{API_URL}{token}/setWebhook"
     get_info_url = f"{API_URL}{token}/getWebhookInfo"
     async with httpx.AsyncClient() as client:
