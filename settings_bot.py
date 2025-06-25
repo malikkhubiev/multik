@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request, Form, UploadFile, File
 from aiogram import Bot, types
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram import Router, Dispatcher
+from aiogram.filters import Command
 import os
 from config import API_URL
 from database import create_project, get_project_by_id, create_user
@@ -21,7 +22,7 @@ settings_router = Router()
 settings_dp = Dispatcher(storage=settings_storage)
 settings_dp.include_router(settings_router)
 
-@settings_router.message(commands=["start"])
+@settings_router.message(Command("start"))
 async def handle_settings_start(message: types.Message):
     await create_user(str(message.from_user.id))
     await message.answer("Добро пожаловать в настройки! Введите имя вашего проекта.")
