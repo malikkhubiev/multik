@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Request, Form, UploadFile, File
-from aiogram import Bot, Dispatcher, types
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram import Bot, types
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram import Router, Dispatcher
 import os
 from config import API_URL
 from database import create_project, get_project_by_id, create_user
@@ -16,22 +17,24 @@ SETTINGS_WEBHOOK_URL = os.getenv("SETTINGS_WEBHOOK_URL", f"{API_URL}{SETTINGS_WE
 
 settings_bot = Bot(token=SETTINGS_BOT_TOKEN)
 settings_storage = MemoryStorage()
-settings_dp = Dispatcher(settings_bot, storage=settings_storage)
+settings_router = Router()
+settings_dp = Dispatcher(storage=settings_storage)
+settings_dp.include_router(settings_router)
 
-@settings_dp.message_handler(commands=["start"])
+@settings_router.message(commands=["start"])
 async def handle_settings_start(message: types.Message):
     await create_user(str(message.from_user.id))
     await message.answer("Добро пожаловать в настройки! Введите имя вашего проекта.")
 
-@settings_dp.message_handler()
+@settings_router.message()
 async def handle_settings_text(message: types.Message):
     await message.answer(f"Вы написали: {message.text}")
 
 @router.post(SETTINGS_WEBHOOK_PATH)
 async def process_settings_webhook(request: Request):
     update_data = await request.json()
-    update = types.Update.to_object(update_data)
-    await settings_dp.process_update(update)
+    update = types.Update.model_validate(update_data)
+    await settings_dp.feed_update(settings_bot, update)
     return {"ok": True}
 
 @router.post("/create_project_meta")

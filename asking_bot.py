@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Request
-from aiogram import Bot, Dispatcher, types
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram import Bot, types
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram import Router, Dispatcher
 from database import get_project_by_id, get_user_collection
 from qdrant_utils import vectorize, qdrant
 
@@ -13,8 +14,11 @@ async def get_or_create_dispatcher(token: str):
         return bot_dispatchers[token]
     bot = Bot(token=token)
     storage = MemoryStorage()
-    dp = Dispatcher(bot, storage=storage)
-    @dp.message_handler()
+    tg_router = Router()
+    dp = Dispatcher(storage=storage)
+    dp.include_router(tg_router)
+
+    @tg_router.message()
     async def handle_question(message: types.Message):
         user_id = message.from_user.id
         text = message.text
@@ -37,8 +41,8 @@ async def get_or_create_dispatcher(token: str):
             temperature=0.3
         )
         await message.answer(response.choices[0].message.content)
-    bot_dispatchers[token] = dp
-    return dp
+    bot_dispatchers[token] = (dp, bot)
+    return dp, bot
 
 @router.post("/webhook/{project_id}")
 async def telegram_webhook(project_id: str, request: Request):
@@ -46,8 +50,8 @@ async def telegram_webhook(project_id: str, request: Request):
     if not project:
         return {"status": "error", "message": "Проект не найден"}
     token = project["token"]
-    dp = await get_or_create_dispatcher(token)
+    dp, bot = await get_or_create_dispatcher(token)
     update_data = await request.json()
-    update = types.Update.to_object(update_data)
-    await dp.process_update(update)
+    update = types.Update.model_validate(update_data)
+    await dp.feed_update(bot, update)
     return {"ok": True} 
