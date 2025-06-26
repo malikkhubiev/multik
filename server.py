@@ -1,4 +1,4 @@
-from loader import app
+from base import app
 from fastapi.responses import JSONResponse
 from fastapi import Request
 from config import PORT, SERVER_URL, API_URL
@@ -6,14 +6,18 @@ from database import database
 import uvicorn
 from base import *
 from utils import *
-from settings_bot import set_settings_webhook, router as settings_router
+from settings_bot import (
+    set_settings_webhook,
+    router as settings_router,
+    SETTINGS_BOT_TOKEN,
+    SETTINGS_WEBHOOK_URL
+)
 import asyncio
 
 @app.on_event("startup")
 async def startup_event():
     try:
         logging.info(f"[ENV] SERVER_URL={SERVER_URL}, API_URL={API_URL}")
-        from settings_bot import SETTINGS_BOT_TOKEN, SETTINGS_WEBHOOK_URL
         logging.info(f"[ENV] SETTINGS_BOT_TOKEN={SETTINGS_BOT_TOKEN}, SETTINGS_WEBHOOK_URL={SETTINGS_WEBHOOK_URL}")
         await set_settings_webhook()
         print("[STARTUP] Settings bot webhook set!")
