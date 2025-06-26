@@ -4,7 +4,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram import Router, Dispatcher
 from aiogram.filters import Command
 import os
-from config import API_URL
+from config import API_URL, SERVER_URL
 from database import create_project, get_project_by_id, create_user
 from utils import set_webhook
 from qdrant_utils import create_collection as qdrant_create_collection, extract_text_from_file, extract_assertions as extract_assertions_func, vectorize
