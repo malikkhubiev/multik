@@ -12,6 +12,7 @@ import json
 import logging
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
+import traceback
 
 router = APIRouter()
 
@@ -101,8 +102,8 @@ async def process_settings_webhook(request: Request):
         logger.info("Update processed successfully")
         return {"ok": True}
     except Exception as e:
-        logger.error(f"Error in process_settings_webhook: {e}")
-        return {"ok": False, "error": str(e)}
+        logger.error(f"Error in process_settings_webhook: {e}\n{traceback.format_exc()}")
+        return {"ok": False, "error": str(e), "trace": traceback.format_exc()}
 
 @router.post("/create_project_meta")
 async def create_project_meta(

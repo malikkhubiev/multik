@@ -8,6 +8,7 @@ from fastapi.exceptions import HTTPException
 import httpx
 import logging
 from config import API_URL, SERVER_URL
+import traceback
 
 load_dotenv()
 
@@ -84,15 +85,18 @@ async def set_webhook(token: str, project_id: str) -> dict:
     get_info_url = f"{API_URL}{token}/getWebhookInfo"
     async with httpx.AsyncClient() as client:
         try:
+            logging.info(f"POST {url} params={{'url': {webhook_url}}}")
             resp = await client.post(url, params={"url": webhook_url})
+            logging.info(f"setWebhook response status: {resp.status_code}, text: {resp.text}")
             data = resp.json()
             # Сразу после установки проверяем getWebhookInfo
             info_resp = await client.get(get_info_url)
+            logging.info(f"getWebhookInfo response status: {info_resp.status_code}, text: {info_resp.text}")
             info_data = info_resp.json()
             logging.info(f"[WEBHOOK] setWebhook result: {data}")
             logging.info(f"[WEBHOOK] getWebhookInfo: {info_data}")
             data["webhook_info"] = info_data
             return data
         except Exception as e:
-            logging.error(f"[WEBHOOK] Error: {e}")
-            return {"ok": False, "error": str(e)}
+            logging.error(f"[WEBHOOK] Error: {e}\n{traceback.format_exc()}")
+            return {"ok": False, "error": str(e), "trace": traceback.format_exc()}
