@@ -18,7 +18,7 @@ router = APIRouter()
 
 SETTINGS_BOT_TOKEN = os.getenv("SETTINGS_BOT_TOKEN")
 SETTINGS_WEBHOOK_PATH = "/webhook/settings"
-SETTINGS_WEBHOOK_URL = os.getenv("SETTINGS_WEBHOOK_URL", f"{API_URL}{SETTINGS_WEBHOOK_PATH}")
+SETTINGS_WEBHOOK_URL = f"{SERVER_URL}{SETTINGS_WEBHOOK_PATH}"
 
 settings_bot = Bot(token=SETTINGS_BOT_TOKEN)
 settings_storage = MemoryStorage()
