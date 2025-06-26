@@ -6,7 +6,7 @@ from database import database
 import uvicorn
 from base import *
 from utils import *
-from settings_bot import set_settings_webhook
+from settings_bot import set_settings_webhook, router as settings_router
 import asyncio
 
 @app.on_event("startup")
@@ -35,6 +35,8 @@ async def db_session_middleware(request: Request, call_next):
 async def super():
     logging.info("[HANDLER] Получен запрос на / (корень)")
     return JSONResponse(content={"message": f"Сервер работает!"}, status_code=200)
+
+app.include_router(settings_router)
 
 if __name__ == "__main__":
     port = int(PORT)
