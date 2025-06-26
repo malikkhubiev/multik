@@ -4,6 +4,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram import Router, Dispatcher
 from database import get_project_by_id, get_user_collection
 from qdrant_utils import vectorize, qdrant
+from aiogram.filters import Command
 
 router = APIRouter()
 
@@ -17,6 +18,10 @@ async def get_or_create_dispatcher(token: str):
     tg_router = Router()
     dp = Dispatcher(storage=storage)
     dp.include_router(tg_router)
+
+    @tg_router.message(Command("start"))
+    async def handle_start(message: types.Message):
+        await message.answer("Привет! Я готов отвечать на ваши вопросы. Загрузите знания, чтобы начать.")
 
     @tg_router.message()
     async def handle_question(message: types.Message):
