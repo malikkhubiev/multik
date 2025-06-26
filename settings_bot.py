@@ -6,7 +6,7 @@ from aiogram.filters import Command
 import os
 from config import API_URL, SERVER_URL
 from database import create_project, get_project_by_id, create_user
-from utils import set_webhook
+from utils import set_webhook, full_project_setup
 from qdrant_utils import create_collection as qdrant_create_collection, extract_text_from_file, extract_assertions as extract_assertions_func, vectorize
 import json
 import logging
@@ -77,13 +77,12 @@ async def handle_context(message: types.Message, state: FSMContext):
     context_text = message.text
     telegram_id = str(message.from_user.id)
     try:
-        # Создать проект
-        project_id = await create_project(telegram_id, project_name, token)
+        project_id, webhook_result = await full_project_setup(
+            telegram_id, project_name, token, business_info, context_text
+        )
         logger.info(f"Перед установкой вебхука: token={token}, project_id={project_id}")
-        # Установить вебхук
-        webhook_result = await set_webhook(token, project_id)
         if webhook_result.get("ok"):
-            await message.answer(f"Спасибо! Все данные сохранены.\n\nПроект: {project_name}\nТокен: {token}\nБизнес: {business_info}\nКонтекст: {context_text}\nВебхук успешно установлен!")
+            await message.answer(f"Спасибо! Все данные сохранены и коллекция создана.\n\nПроект: {project_name}\nТокен: {token}\nБизнес: {business_info}\nКонтекст: {context_text}\nВебхук успешно установлен!")
         else:
             await message.answer(f"Проект создан, но не удалось установить вебхук: {webhook_result}")
     except Exception as e:
