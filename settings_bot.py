@@ -77,12 +77,13 @@ async def handle_context(message: types.Message, state: FSMContext):
     context_text = message.text
     telegram_id = str(message.from_user.id)
     try:
-        project_id, webhook_result = await full_project_setup(
-            telegram_id, project_name, token, business_info, context_text
-        )
+        # Создать проект
+        project_id = await create_project(telegram_id, project_name, token)
         logger.info(f"Перед установкой вебхука: token={token}, project_id={project_id}")
+        # Установить вебхук
+        webhook_result = await set_webhook(token, project_id)
         if webhook_result.get("ok"):
-            await message.answer(f"Спасибо! Все данные сохранены и коллекция создана.\n\nПроект: {project_name}\nТокен: {token}\nБизнес: {business_info}\nКонтекст: {context_text}\nВебхук успешно установлен!")
+            await message.answer(f"Спасибо! Проект создан.\n\nПроект: {project_name}\nТокен: {token}\nБизнес: {business_info}\nКонтекст: {context_text}\nВебхук успешно установлен!\n\nТеперь создайте коллекцию и загрузите знания через соответствующие команды или интерфейс.")
         else:
             await message.answer(f"Проект создан, но не удалось установить вебхук: {webhook_result}")
     except Exception as e:
