@@ -3,7 +3,7 @@ from aiogram import Bot, types
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram import Router, Dispatcher
 from database import get_project_by_id, get_user_collection
-from qdrant_utils import vectorize, qdrant
+from qdrant_utils import vectorize, search_points
 from aiogram.filters import Command
 import logging
 import httpx
@@ -41,7 +41,7 @@ async def get_or_create_dispatcher(token: str):
         try:
             question_vector, dim = await vectorize(text)
             logging.info(f"[ASKING_BOT] handle_question: vectorized question, dim={dim}")
-            hits = qdrant.search(collection_name=collection_name, query_vector=question_vector, limit=5)
+            hits = await search_points(collection_name=collection_name, query_vector=question_vector, limit=5)
             logging.info(f"[ASKING_BOT] handle_question: qdrant hits count={len(hits)}")
             context = "\n".join([hit.payload["text"] for hit in hits if hasattr(hit, 'payload') and 'text' in hit.payload])
             logging.info(f"[ASKING_BOT] handle_question: context='{context}'")

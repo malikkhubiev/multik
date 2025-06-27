@@ -187,7 +187,6 @@ async def vectorize_and_upload_ep(project_id: str = Form(...), assertions: str =
             except Exception as vec_error:
                 logs.append(f"[ERROR] Ошибка векторизации для утверждения {idx}: {str(vec_error)}")
         if vectors:
-            from base import qdrant
             qdrant.upsert(
                 collection_name=collection_name,
                 points=vectors
