@@ -1,10 +1,9 @@
 import os
-from qdrant_client import QdrantClient
-from config import QDRANT_URL, QDRANT_API_KEY, VECTOR_SERVER, DEEPSEEK_API_KEY
 import re
 from utils import send_request
 from typing import List
-from openai import OpenAI
+import httpx
+from config import QDRANT_URL, QDRANT_API_KEY, VECTOR_SERVER, DEEPSEEK_API_KEY
 
 def safe_read_file(content: bytes) -> str:
     try:
@@ -39,19 +38,33 @@ def extract_assertions(text: str) -> list:
     # Убираем пустые строки и пробелы
     return [s.strip() for s in sentences if s.strip()]
 
-qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+# Асинхронные функции для Qdrant
 
-deepseek = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com/v1")
+HEADERS = {"api-key": QDRANT_API_KEY} if QDRANT_API_KEY else {}
 
-def create_collection(collection_name: str) -> None:
-    """Создаем новую коллекцию в Qdrant"""
-    qdrant.create_collection(
-        collection_name=collection_name,
-        vectors_config={
-            "size": 384,
-            "distance": "Cosine"
-        }
-    )
+async def create_collection(collection_name: str) -> None:
+    url = f"{QDRANT_URL}/collections/{collection_name}"
+    payload = {
+        "vectors": {"size": 384, "distance": "Cosine"}
+    }
+    async with httpx.AsyncClient() as client:
+        resp = await client.put(url, json=payload, headers=HEADERS)
+        resp.raise_for_status()
+
+async def upsert_points(collection_name: str, points: list) -> None:
+    url = f"{QDRANT_URL}/collections/{collection_name}/points"
+    payload = {"points": points}
+    async with httpx.AsyncClient() as client:
+        resp = await client.put(url, json=payload, headers=HEADERS)
+        resp.raise_for_status()
+
+async def search_points(collection_name: str, query_vector: list, limit: int = 5) -> list:
+    url = f"{QDRANT_URL}/collections/{collection_name}/points/search"
+    payload = {"vector": query_vector, "limit": limit, "with_payload": True}
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(url, json=payload, headers=HEADERS)
+        resp.raise_for_status()
+        return resp.json().get("result", [])
 
 async def vectorize(text: str) -> List[float]:
     """Векторизация через сервер"""

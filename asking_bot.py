@@ -6,6 +6,8 @@ from database import get_project_by_id, get_user_collection
 from qdrant_utils import vectorize, qdrant
 from aiogram.filters import Command
 import logging
+import httpx
+from config import DEEPSEEK_API_KEY
 
 router = APIRouter()
 
@@ -47,16 +49,26 @@ async def get_or_create_dispatcher(token: str):
                 await message.answer("В базе нет подходящих данных для ответа на ваш вопрос. Пожалуйста, загрузите знания.")
                 logging.warning(f"[ASKING_BOT] handle_question: no context found for user {user_id}")
                 return
-            response = deepseek.chat.completions.create(
-                model="deepseek-chat",
-                messages=[
+            url = "https://api.deepseek.com/v1/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": "deepseek-chat",
+                "messages": [
                     {"role": "system", "content": "Ты - менеджер по продажам, который преобразует данные в дружелюбный продающий ответ клиенту в телеграм-чате."},
                     {"role": "user", "content": f"На основе этих данных сформируй краткий ответ: {context} Ответ должен быть: - Отвечай ТОЛЬКО на поставленный вопрос, без лишней информации - На русском языке - Без символов разметки markdown - Упорядочен по степени совпадения (score) и напиши только данные, связанные с вопросом {text} - Без лишних слов вроде 'ответ клиенту' и т.д.: сразу ответ"}
                 ],
-                temperature=0.3
-            )
-            logging.info(f"[ASKING_BOT] handle_question: deepseek response='{response.choices[0].message.content}'")
-            await message.answer(response.choices[0].message.content)
+                "temperature": 0.3
+            }
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(url, headers=headers, json=payload, timeout=60)
+                resp.raise_for_status()
+                data = resp.json()
+            content = data["choices"][0]["message"]["content"]
+            logging.info(f"[ASKING_BOT] handle_question: deepseek response='{content}'")
+            await message.answer(content)
         except Exception as e:
             import traceback
             logging.error(f"[ASKING_BOT] handle_question: error: {e}\n{traceback.format_exc()}")
