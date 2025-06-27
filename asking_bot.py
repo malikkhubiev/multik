@@ -13,7 +13,7 @@ router = APIRouter()
 
 bot_dispatchers = {}
 
-async def get_or_create_dispatcher(token: str):
+async def get_or_create_dispatcher(token: str, collection_name: str):
     if token in bot_dispatchers:
         return bot_dispatchers[token]
     bot = Bot(token=token)
@@ -25,18 +25,16 @@ async def get_or_create_dispatcher(token: str):
     @tg_router.message(Command("start"))
     async def handle_start(message: types.Message):
         logging.info(f"[ASKING_BOT] handle_start: from user {message.from_user.id}, text: {message.text}")
-        await message.answer("Привет! Я готов отвечать на ваши вопросы. Загрузите знания, чтобы начать.")
+        await message.answer("Привет! Я готов отвечать на ваши вопросы. Задайте вопрос!")
 
     @tg_router.message()
     async def handle_question(message: types.Message):
         user_id = message.from_user.id
         text = message.text
         logging.info(f"[ASKING_BOT] handle_question: from user {user_id}, text: {text}")
-        collection_name = await get_user_collection(user_id)
-        logging.info(f"[ASKING_BOT] handle_question: collection_name={collection_name}")
         if not collection_name:
             await message.answer("Коллекция не найдена. Сначала создайте коллекцию.")
-            logging.warning(f"[ASKING_BOT] handle_question: collection not found for user {user_id}")
+            logging.warning(f"[ASKING_BOT] handle_question: collection not found for project")
             return
         try:
             question_vector, dim = await vectorize(text)
@@ -47,7 +45,7 @@ async def get_or_create_dispatcher(token: str):
             logging.info(f"[ASKING_BOT] handle_question: context='{context}'")
             if not context.strip():
                 await message.answer("В базе нет подходящих данных для ответа на ваш вопрос. Пожалуйста, загрузите знания.")
-                logging.warning(f"[ASKING_BOT] handle_question: no context found for user {user_id}")
+                logging.warning(f"[ASKING_BOT] handle_question: no context found for project")
                 return
             url = "https://api.deepseek.com/v1/chat/completions"
             headers = {
@@ -84,7 +82,8 @@ async def telegram_webhook(project_id: str, request: Request):
         logging.error(f"[ASKING_BOT] Project not found: {project_id}")
         return {"status": "error", "message": "Проект не найден"}
     token = project["token"]
-    dp, bot = await get_or_create_dispatcher(token)
+    collection_name = project["collection_name"]
+    dp, bot = await get_or_create_dispatcher(token, collection_name)
     update_data = await request.json()
     logging.info(f"[ASKING_BOT] Update data: {update_data}")
     try:

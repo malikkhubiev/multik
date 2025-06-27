@@ -43,7 +43,7 @@ async def get_user_by_telegram_id(telegram_id: str, to_throw: bool = True):
     user = await get_user(telegram_id)
     if not(user):
         if to_throw:
-            raise HTTPException(status_code=404, message="Пользователь не найден")
+            raise HTTPException(status_code=404, detail="Пользователь не найден")
         else:
             return None
     return user
@@ -66,15 +66,15 @@ async def send_request(url: str, data: dict, method: str = "POST") -> dict:
 
     except httpx.RequestError as e:
         logging.error(f"Ошибка при отправке запроса: {e}")
-        raise HTTPException(status_code=500, message="Request failed")
+        raise HTTPException(status_code=500, detail="Request failed")
 
     except httpx.HTTPStatusError as e:
         logging.error(f"Ошибка HTTP при отправке запроса: {e}")
-        raise HTTPException(status_code=500, message=f"HTTP error: {e.response.status_code}")
+        raise HTTPException(status_code=500, detail=f"HTTP error: {e.response.status_code}")
 
     except Exception as e:
         logging.error(f"Неизвестная ошибка: {e}")
-        raise HTTPException(status_code=500, message="An unknown error occurred")
+        raise HTTPException(status_code=500, detail="An unknown error occurred")
 
 async def set_webhook(token: str, project_id: str) -> dict:
     logging.info(f"SERVER_URL={SERVER_URL}, project_id={project_id}")
