@@ -104,6 +104,11 @@ async def handle_help_command(message: types.Message, state: FSMContext):
 
 @settings_router.message(SettingsStates.waiting_for_project_name)
 async def handle_project_name(message: types.Message, state: FSMContext):
+    # Проверяем, не является ли сообщение командой
+    if message.text.startswith('/'):
+        # Если это команда, сбрасываем состояние и не обрабатываем здесь
+        return
+    
     logger.info(f"Project name received from user {message.from_user.id}: {message.text}")
     await state.update_data(project_name=message.text)
     await message.answer("Теперь введите API токен для Telegram-бота.")
@@ -111,6 +116,11 @@ async def handle_project_name(message: types.Message, state: FSMContext):
 
 @settings_router.message(SettingsStates.waiting_for_token)
 async def handle_token(message: types.Message, state: FSMContext):
+    # Проверяем, не является ли сообщение командой
+    if message.text.startswith('/'):
+        # Если это команда, сбрасываем состояние и не обрабатываем здесь
+        return
+    
     logger.info(f"Token received from user {message.from_user.id}: {message.text}")
     await state.update_data(token=message.text)
     await message.answer("Теперь загрузите файл с информацией о вашем бизнесе (txt, docx, pdf).")
@@ -118,6 +128,11 @@ async def handle_token(message: types.Message, state: FSMContext):
 
 @settings_router.message(SettingsStates.waiting_for_business_file)
 async def handle_business_file(message: types.Message, state: FSMContext):
+    # Проверяем, не является ли сообщение командой
+    if message.text and message.text.startswith('/'):
+        # Если это команда, сбрасываем состояние и не обрабатываем здесь
+        return
+    
     logger.info(f"Business file received from user {message.from_user.id}")
     
     if not message.document:
@@ -237,6 +252,11 @@ async def handle_rename_project(callback_query: types.CallbackQuery, state: FSMC
 
 @settings_router.message(SettingsStates.waiting_for_new_project_name)
 async def handle_new_project_name(message: types.Message, state: FSMContext):
+    # Проверяем, не является ли сообщение командой
+    if message.text.startswith('/'):
+        # Если это команда, сбрасываем состояние и не обрабатываем здесь
+        return
+    
     """Обрабатывает новое название проекта"""
     try:
         data = await state.get_data()
@@ -271,6 +291,11 @@ async def handle_add_data(callback_query: types.CallbackQuery, state: FSMContext
 
 @settings_router.message(SettingsStates.waiting_for_additional_data_file)
 async def handle_additional_data_file(message: types.Message, state: FSMContext):
+    # Проверяем, не является ли сообщение командой
+    if message.text and message.text.startswith('/'):
+        # Если это команда, сбрасываем состояние и не обрабатываем здесь
+        return
+    
     """Обрабатывает файл с дополнительными данными"""
     if not message.document:
         await message.answer("Пожалуйста, загрузите файл с дополнительными данными.")
@@ -324,6 +349,11 @@ async def handle_change_data(callback_query: types.CallbackQuery, state: FSMCont
 
 @settings_router.message(SettingsStates.waiting_for_new_data_file)
 async def handle_new_data_file(message: types.Message, state: FSMContext):
+    # Проверяем, не является ли сообщение командой
+    if message.text and message.text.startswith('/'):
+        # Если это команда, сбрасываем состояние и не обрабатываем здесь
+        return
+    
     """Обрабатывает файл с новыми данными"""
     if not message.document:
         await message.answer("Пожалуйста, загрузите файл с новыми данными.")
