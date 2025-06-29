@@ -80,6 +80,14 @@ async def get_user_business_info(telegram_id: str) -> Optional[str]:
         return row["business_info"]
     return None
 
+async def get_project_by_token(token: str) -> Optional[dict]:
+    """Возвращает проект по токену"""
+    query = select(Project).where(Project.token == token)
+    row = await database.fetch_one(query)
+    if row:
+        return {"id": row["id"], "project_name": row["project_name"], "business_info": row["business_info"], "token": row["token"], "telegram_id": row["telegram_id"]}
+    return None
+
 async def update_project_name(project_id: str, new_name: str) -> bool:
     """Обновляет название проекта"""
     try:

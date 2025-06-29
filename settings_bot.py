@@ -5,7 +5,7 @@ from aiogram import Router, Dispatcher
 from aiogram.filters import Command
 import os
 from config import API_URL, SERVER_URL, DEEPSEEK_API_KEY
-from database import create_project, get_project_by_id, create_user, get_projects_by_user, update_project_name, update_project_business_info, append_project_business_info, delete_project
+from database import create_project, get_project_by_id, create_user, get_projects_by_user, update_project_name, update_project_business_info, append_project_business_info, delete_project, get_project_by_token
 from utils import set_webhook, delete_webhook
 from file_utils import extract_text_from_file
 import json
@@ -65,6 +65,58 @@ async def process_business_file_with_deepseek(file_content: str) -> str:
         logger.error(f"Ошибка при обработке файла через Deepseek: {e}")
         # Возвращаем исходный текст, если обработка не удалась
         return file_content
+
+def clean_markdown(text: str) -> str:
+    """Очищает текст от markdown символов"""
+    import re
+    
+    # Удаляем заголовки (###, ##, #)
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    
+    # Удаляем жирный текст (**текст** или __текст__)
+    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+    text = re.sub(r'__(.*?)__', r'\1', text)
+    
+    # Удаляем курсив (*текст* или _текст_)
+    text = re.sub(r'\*(.*?)\*', r'\1', text)
+    text = re.sub(r'_(.*?)_', r'\1', text)
+    
+    # Удаляем зачёркнутый текст (~~текст~~)
+    text = re.sub(r'~~(.*?)~~', r'\1', text)
+    
+    # Удаляем код в бэктиках (`код`)
+    text = re.sub(r'`(.*?)`', r'\1', text)
+    
+    # Удаляем блоки кода (```код```)
+    text = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
+    
+    # Удаляем ссылки [текст](url)
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    
+    # Удаляем изображения ![alt](url)
+    text = re.sub(r'!\[([^\]]*)\]\([^)]+\)', '', text)
+    
+    # Удаляем списки (-, *, +)
+    text = re.sub(r'^[\s]*[-*+]\s+', '', text, flags=re.MULTILINE)
+    
+    # Удаляем нумерованные списки (1., 2., etc.)
+    text = re.sub(r'^[\s]*\d+\.\s+', '', text, flags=re.MULTILINE)
+    
+    # Удаляем лишние пробелы и переносы строк
+    text = re.sub(r'\n\s*\n', '\n\n', text)
+    text = text.strip()
+    
+    return text
+
+async def clear_asking_bot_cache(token: str):
+    """Очищает кэш asking_bot для указанного токена"""
+    try:
+        # Импортируем функцию очистки из asking_bot
+        from asking_bot import clear_dispatcher_cache
+        clear_dispatcher_cache(token)
+        logger.info(f"Cleared asking_bot cache for token: {token}")
+    except Exception as e:
+        logger.error(f"Error clearing asking_bot cache: {e}")
 
 @settings_router.message(Command("start"))
 async def handle_settings_start(message: types.Message, state: FSMContext):
@@ -149,6 +201,9 @@ async def handle_business_file(message: types.Message, state: FSMContext):
         # Обрабатываем через Deepseek
         await message.answer("Обрабатываю информацию о бизнесе...")
         processed_business_info = await process_business_file_with_deepseek(text_content)
+        
+        # Очищаем от markdown символов
+        processed_business_info = clean_markdown(processed_business_info)
         
         # Получаем данные из состояния
         data = await state.get_data()
@@ -324,10 +379,17 @@ async def handle_additional_data_file(message: types.Message, state: FSMContext)
         await message.answer("Обрабатываю дополнительные данные...")
         processed_additional_info = await process_business_file_with_deepseek(text_content)
         
+        # Очищаем от markdown символов
+        processed_additional_info = clean_markdown(processed_additional_info)
+        
         # Добавляем к существующей информации
         success = await append_project_business_info(project_id, processed_additional_info)
         
         if success:
+            # Очищаем кэш asking_bot
+            project = await get_project_by_id(project_id)
+            if project:
+                await clear_asking_bot_cache(project["token"])
             await message.answer("Дополнительные данные успешно добавлены к проекту!")
         else:
             await message.answer("Ошибка при добавлении дополнительных данных")
@@ -381,10 +443,17 @@ async def handle_new_data_file(message: types.Message, state: FSMContext):
         await message.answer("Обрабатываю новые данные...")
         processed_new_info = await process_business_file_with_deepseek(text_content)
         
+        # Очищаем от markdown символов
+        processed_new_info = clean_markdown(processed_new_info)
+        
         # Заменяем информацию
         success = await update_project_business_info(project_id, processed_new_info)
         
         if success:
+            # Очищаем кэш asking_bot
+            project = await get_project_by_id(project_id)
+            if project:
+                await clear_asking_bot_cache(project["token"])
             await message.answer("Данные проекта успешно обновлены!")
         else:
             await message.answer("Ошибка при обновлении данных проекта")

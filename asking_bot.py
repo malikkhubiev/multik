@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request
 from aiogram import Bot, types
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram import Router, Dispatcher
-from database import get_project_by_id
+from database import get_project_by_id, get_project_by_token
 from aiogram.filters import Command
 import logging
 import httpx
@@ -23,9 +23,25 @@ role = """
 - Не продавай, а искренне помогай купить
 """
 
-async def get_or_create_dispatcher(token: str, business_info: str):
+def clear_dispatcher_cache(token: str):
+    """Очищает кэш диспетчера для указанного токена"""
     if token in bot_dispatchers:
-        return bot_dispatchers[token]
+        del bot_dispatchers[token]
+        logging.info(f"[ASKING_BOT] Cleared dispatcher cache for token: {token}")
+
+async def get_or_create_dispatcher(token: str, business_info: str):
+    # Проверяем, есть ли уже диспетчер с этим токеном
+    if token in bot_dispatchers:
+        # Если есть, но business_info изменился, очищаем кэш
+        existing_dp, existing_bot = bot_dispatchers[token]
+        # Получаем актуальные данные проекта
+        project = await get_project_by_token(token)
+        if project and project["business_info"] != business_info:
+            logging.info(f"[ASKING_BOT] Business info changed, clearing cache for token: {token}")
+            clear_dispatcher_cache(token)
+        else:
+            return bot_dispatchers[token]
+    
     bot = Bot(token=token)
     storage = MemoryStorage()
     tg_router = Router()
@@ -42,7 +58,9 @@ async def get_or_create_dispatcher(token: str, business_info: str):
         user_id = message.from_user.id
         text = message.text
         logging.info(f"[ASKING_BOT] handle_question: from user {user_id}, text: {text}")
-        
+
+        await message.answer("Изучаем базу данных...")
+
         if not business_info:
             await message.answer("Информация о бизнесе не найдена. Обратитесь к администратору.")
             logging.warning(f"[ASKING_BOT] handle_question: business_info not found for project")
