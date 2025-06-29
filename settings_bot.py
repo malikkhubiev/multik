@@ -7,7 +7,7 @@ import os
 from config import API_URL, SERVER_URL, DEEPSEEK_API_KEY
 from database import create_project, get_project_by_id, create_user
 from utils import set_webhook
-from qdrant_utils import extract_text_from_file
+from file_utils import extract_text_from_file
 import json
 import logging
 from aiogram.fsm.state import State, StatesGroup
