@@ -70,6 +70,8 @@ async def process_business_file_with_deepseek(file_content: str) -> str:
 async def handle_settings_start(message: types.Message, state: FSMContext):
     logger.info(f"/start received from user {message.from_user.id}")
     try:
+        # Сбрасываем состояние перед началом
+        await state.clear()
         await create_user(str(message.from_user.id))
         await message.answer("Добро пожаловать в настройки! Введите имя вашего проекта.")
         await state.set_state(SettingsStates.waiting_for_project_name)
@@ -78,8 +80,10 @@ async def handle_settings_start(message: types.Message, state: FSMContext):
         logger.error(f"Error in handle_settings_start: {e}")
 
 @settings_router.message(Command("help"))
-async def handle_help_command(message: types.Message):
+async def handle_help_command(message: types.Message, state: FSMContext):
     """Показывает справку по командам"""
+    # Сбрасываем состояние
+    await state.clear()
     help_text = """
 🤖 Доступные команды:
 
@@ -162,6 +166,8 @@ async def handle_projects_command(message: types.Message, state: FSMContext):
     """Показывает список проектов пользователя"""
     logger.info(f"/projects received from user {message.from_user.id}")
     try:
+        # Сбрасываем состояние перед показом проектов
+        await state.clear()
         telegram_id = str(message.from_user.id)
         projects = await get_projects_by_user(telegram_id)
         
@@ -431,6 +437,31 @@ async def handle_confirm_delete(callback_query: types.CallbackQuery, state: FSMC
         logger.error(f"Error in handle_confirm_delete: {e}")
         await callback_query.message.edit_text("Произошла ошибка при удалении проекта")
         await state.clear()
+
+@settings_router.message()
+async def handle_any_message(message: types.Message, state: FSMContext):
+    """Обрабатывает любые сообщения, которые не являются командами"""
+    # Проверяем, есть ли активное состояние
+    current_state = await state.get_state()
+    
+    if current_state:
+        # Если есть активное состояние, но это не ожидаемое сообщение, сбрасываем
+        await state.clear()
+        await message.answer(
+            "❌ Операция была прервана.\n\n"
+            "Доступные команды:\n"
+            "/start - Создать новый проект\n"
+            "/projects - Управление проектами\n"
+            "/help - Справка"
+        )
+    else:
+        # Если нет активного состояния, показываем справку
+        await message.answer(
+            "🤖 Используйте команды для работы с ботом:\n\n"
+            "/start - Создать новый проект\n"
+            "/projects - Управление существующими проектами\n"
+            "/help - Показать справку"
+        )
 
 @router.post(SETTINGS_WEBHOOK_PATH)
 async def process_settings_webhook(request: Request):
