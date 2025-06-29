@@ -13,6 +13,7 @@ from settings_bot import (
     SETTINGS_WEBHOOK_URL
 )
 import asyncio
+import logging
 
 @app.on_event("startup")
 async def startup_event():
@@ -50,4 +51,11 @@ if __name__ == "__main__":
     print("port")
     print(port)
     logging.info(f"[STARTUP] Запуск uvicorn на порту {port}")
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(
+        app, 
+        host="0.0.0.0", 
+        port=port,
+        workers=1,
+        loop="asyncio",
+        access_log=True
+    )

@@ -34,6 +34,12 @@ class Project(Base):
     token = Column(String, nullable=False)
     telegram_id = Column(String, ForeignKey('user.telegram_id'))
     user = relationship("User", back_populates="projects")
+    
+    # Добавляем уникальный индекс для project_name внутри пользователя
+    __table_args__ = (
+        # Уникальный индекс для комбинации telegram_id и project_name
+        {'sqlite_autoincrement': True}
+    )
 
 engine = create_engine(DATABASE_URL.replace("sqlite+aiosqlite", "sqlite"))
 Base.metadata.create_all(bind=engine)
@@ -55,6 +61,10 @@ async def get_user(telegram_id: str) -> Optional[dict]:
 
 # CRUD для project
 async def create_project(telegram_id: str, project_name: str, business_info: str, token: str) -> str:
+    # Проверяем, существует ли проект с таким именем у пользователя
+    if await check_project_name_exists(telegram_id, project_name):
+        raise ValueError(f"Проект с именем '{project_name}' уже существует у этого пользователя")
+    
     project_id = str(uuid.uuid4())
     query = insert(Project).values(id=project_id, project_name=project_name, business_info=business_info, token=token, telegram_id=telegram_id)
     await database.execute(query)
@@ -88,12 +98,36 @@ async def get_project_by_token(token: str) -> Optional[dict]:
         return {"id": row["id"], "project_name": row["project_name"], "business_info": row["business_info"], "token": row["token"], "telegram_id": row["telegram_id"]}
     return None
 
+async def check_project_name_exists(telegram_id: str, project_name: str) -> bool:
+    """Проверяет, существует ли проект с таким именем у пользователя"""
+    query = select(Project).where(and_(Project.telegram_id == telegram_id, Project.project_name == project_name))
+    row = await database.fetch_one(query)
+    return row is not None
+
 async def update_project_name(project_id: str, new_name: str) -> bool:
     """Обновляет название проекта"""
     try:
         from sqlalchemy import update
-        query = update(Project).where(Project.id == project_id).values(project_name=new_name)
-        await database.execute(query)
+        # Получаем текущий проект для проверки telegram_id
+        current_project = await get_project_by_id(project_id)
+        if not current_project:
+            return False
+        
+        # Проверяем, существует ли проект с таким именем у этого пользователя (исключая текущий проект)
+        query = select(Project).where(
+            and_(
+                Project.telegram_id == current_project["telegram_id"],
+                Project.project_name == new_name,
+                Project.id != project_id
+            )
+        )
+        existing_project = await database.fetch_one(query)
+        if existing_project:
+            raise ValueError(f"Проект с именем '{new_name}' уже существует у этого пользователя")
+        
+        # Обновляем название
+        update_query = update(Project).where(Project.id == project_id).values(project_name=new_name)
+        await database.execute(update_query)
         return True
     except Exception as e:
         logger.error(f"Error updating project name: {e}")

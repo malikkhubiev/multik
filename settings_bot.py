@@ -5,15 +5,16 @@ from aiogram import Router, Dispatcher
 from aiogram.filters import Command
 import os
 from config import API_URL, SERVER_URL, DEEPSEEK_API_KEY
-from database import create_project, get_project_by_id, create_user, get_projects_by_user, update_project_name, update_project_business_info, append_project_business_info, delete_project, get_project_by_token
+from database import create_project, get_project_by_id, create_user, get_projects_by_user, update_project_name, update_project_business_info, append_project_business_info, delete_project, get_project_by_token, check_project_name_exists
 from utils import set_webhook, delete_webhook
-from file_utils import extract_text_from_file
+from file_utils import extract_text_from_file, extract_text_from_file_async
 import json
 import logging
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 import traceback
 import httpx
+import asyncio
 
 router = APIRouter()
 
@@ -56,8 +57,10 @@ async def process_business_file_with_deepseek(file_content: str) -> str:
             ],
             "temperature": 0.3
         }
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(url, headers=headers, json=payload, timeout=60)
+        
+        # Используем asyncio.create_task для неблокирующего выполнения
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(url, headers=headers, json=payload)
             resp.raise_for_status()
             data = resp.json()
         return data["choices"][0]["message"]["content"]
@@ -189,16 +192,27 @@ async def handle_business_file(message: types.Message, state: FSMContext):
         return
     
     try:
-        # Скачиваем файл
+        # Скачиваем файл асинхронно
         file_info = await settings_bot.get_file(message.document.file_id)
         file_path = file_info.file_path
         file_content = await settings_bot.download_file(file_path)
         
-        # Извлекаем текст из файла
+        # Извлекаем текст из файла асинхронно
         filename = message.document.file_name
-        text_content = extract_text_from_file(filename, file_content.read())
+        text_content = await extract_text_from_file_async(filename, file_content.read())
         
-        # Обрабатываем через Deepseek
+        # Проверяем размер документа (не более 4000 символов)
+        if len(text_content) > 4000:
+            await message.answer(
+                "❌ Документ слишком большой!\n\n"
+                f"Размер документа: {len(text_content)} символов\n"
+                "Максимальный размер: 4000 символов\n\n"
+                "Пожалуйста, сократите документ или разделите его на части."
+            )
+            await state.clear()
+            return
+        
+        # Обрабатываем через Deepseek асинхронно
         await message.answer("Обрабатываю информацию о бизнесе...")
         processed_business_info = await process_business_file_with_deepseek(text_content)
         
@@ -211,11 +225,17 @@ async def handle_business_file(message: types.Message, state: FSMContext):
         token = data.get("token")
         telegram_id = str(message.from_user.id)
         
-        # Создаем проект с обработанной информацией о бизнесе
-        project_id = await create_project(telegram_id, project_name, processed_business_info, token)
+        # Создаем проект и устанавливаем вебхук параллельно
+        try:
+            project_id = await create_project(telegram_id, project_name, processed_business_info, token)
+        except ValueError as e:
+            await message.answer(f"❌ Ошибка: {str(e)}\n\nПожалуйста, выберите другое название для проекта.")
+            await state.clear()
+            return
+        
         logger.info(f"Перед установкой вебхука: token={token}, project_id={project_id}")
         
-        # Устанавливаем вебхук
+        # Устанавливаем вебхук асинхронно
         webhook_result = await set_webhook(token, project_id)
         if webhook_result.get("ok"):
             await message.answer(f"Спасибо! Проект создан.\n\nПроект: {project_name}\nТокен: {token}\nВебхук успешно установлен!\n\nБот готов к работе!")
@@ -373,7 +393,18 @@ async def handle_additional_data_file(message: types.Message, state: FSMContext)
         
         # Извлекаем текст из файла
         filename = message.document.file_name
-        text_content = extract_text_from_file(filename, file_content.read())
+        text_content = await extract_text_from_file_async(filename, file_content.read())
+        
+        # Проверяем размер документа (не более 4000 символов)
+        if len(text_content) > 4000:
+            await message.answer(
+                "❌ Документ слишком большой!\n\n"
+                f"Размер документа: {len(text_content)} символов\n"
+                "Максимальный размер: 4000 символов\n\n"
+                "Пожалуйста, сократите документ или разделите его на части."
+            )
+            await state.clear()
+            return
         
         # Обрабатываем через Deepseek
         await message.answer("Обрабатываю дополнительные данные...")
@@ -437,7 +468,18 @@ async def handle_new_data_file(message: types.Message, state: FSMContext):
         
         # Извлекаем текст из файла
         filename = message.document.file_name
-        text_content = extract_text_from_file(filename, file_content.read())
+        text_content = await extract_text_from_file_async(filename, file_content.read())
+        
+        # Проверяем размер документа (не более 4000 символов)
+        if len(text_content) > 4000:
+            await message.answer(
+                "❌ Документ слишком большой!\n\n"
+                f"Размер документа: {len(text_content)} символов\n"
+                "Максимальный размер: 4000 символов\n\n"
+                "Пожалуйста, сократите документ или разделите его на части."
+            )
+            await state.clear()
+            return
         
         # Обрабатываем через Deepseek
         await message.answer("Обрабатываю новые данные...")

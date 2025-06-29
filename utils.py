@@ -93,7 +93,7 @@ async def set_webhook(token: str, project_id: str) -> dict:
     logging.info(f"webhook_url={webhook_url}")
     url = f"{API_URL}{token}/setWebhook"
     get_info_url = f"{API_URL}{token}/getWebhookInfo"
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         try:
             logging.info(f"POST {url} params={{'url': {webhook_url}}}")
             resp = await client.post(url, params={"url": webhook_url})
@@ -115,7 +115,7 @@ async def delete_webhook(token: str) -> dict:
     """Отключает webhook для бота"""
     logging.info(f"Deleting webhook for token: {token}")
     url = f"{API_URL}{token}/deleteWebhook"
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         try:
             logging.info(f"POST {url}")
             resp = await client.post(url)

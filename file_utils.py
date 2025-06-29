@@ -1,5 +1,6 @@
 import os
 import re
+import asyncio
 from typing import List
 
 def safe_read_file(content: bytes) -> str:
@@ -28,9 +29,20 @@ def extract_text_from_file(filename: str, content: bytes) -> str:
     else:
         raise ValueError("Неподдерживаемый формат файла. Поддерживаются: .txt, .docx, .pdf")
 
+async def extract_text_from_file_async(filename: str, content: bytes) -> str:
+    """Асинхронная версия extract_text_from_file"""
+    # Используем asyncio.to_thread для выполнения синхронной функции в отдельном потоке
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, extract_text_from_file, filename, content)
+
 def extract_assertions(text: str) -> list:
     """Простая функция: каждое предложение — отдельное утверждение."""
     # Разделяем по точкам, восклицательным и вопросительным знакам
     sentences = re.split(r'[.!?]\s+', text.strip())
     # Убираем пустые строки и пробелы
-    return [s.strip() for s in sentences if s.strip()] 
+    return [s.strip() for s in sentences if s.strip()]
+
+async def extract_assertions_async(text: str) -> list:
+    """Асинхронная версия extract_assertions"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, extract_assertions, text) 

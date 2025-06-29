@@ -6,6 +6,7 @@ from database import get_project_by_id, get_project_by_token
 from aiogram.filters import Command
 import logging
 import httpx
+import asyncio
 from config import DEEPSEEK_API_KEY
 
 router = APIRouter()
@@ -59,7 +60,8 @@ async def get_or_create_dispatcher(token: str, business_info: str):
         text = message.text
         logging.info(f"[ASKING_BOT] handle_question: from user {user_id}, text: {text}")
 
-        await message.answer("Изучаем базу данных...")
+        # Отправляем сообщение о начале обработки
+        processing_msg = await message.answer("Изучаем базу данных...")
 
         if not business_info:
             await message.answer("Информация о бизнесе не найдена. Обратитесь к администратору.")
@@ -80,13 +82,17 @@ async def get_or_create_dispatcher(token: str, business_info: str):
                 ],
                 "temperature": 0.9
             }
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(url, headers=headers, json=payload, timeout=60)
+            
+            # Используем asyncio.create_task для неблокирующего выполнения
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(url, headers=headers, json=payload)
                 resp.raise_for_status()
                 data = resp.json()
+            
             content = data["choices"][0]["message"]["content"]
             logging.info(f"[ASKING_BOT] handle_question: deepseek response='{content}'")
             await message.answer(content)
+            
         except Exception as e:
             import traceback
             logging.error(f"[ASKING_BOT] handle_question: error: {e}\n{traceback.format_exc()}")
