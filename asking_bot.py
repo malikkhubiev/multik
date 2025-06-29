@@ -67,6 +67,13 @@ async def get_or_create_dispatcher(token: str, collection_name: str):
             content = data["choices"][0]["message"]["content"]
             logging.info(f"[ASKING_BOT] handle_question: deepseek response='{content}'")
             await message.answer(content)
+        except ValueError as e:
+            if "векторизации" in str(e):
+                logging.error(f"[ASKING_BOT] handle_question: vectorization error: {e}")
+                await message.answer("Сервис обработки вопросов временно недоступен. Попробуйте позже.")
+            else:
+                logging.error(f"[ASKING_BOT] handle_question: value error: {e}")
+                await message.answer("Произошла ошибка при обработке вашего вопроса. Попробуйте переформулировать.")
         except Exception as e:
             import traceback
             logging.error(f"[ASKING_BOT] handle_question: error: {e}\n{traceback.format_exc()}")

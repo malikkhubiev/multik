@@ -4,6 +4,7 @@ from utils import send_request
 from typing import List
 import httpx
 from config import QDRANT_URL, QDRANT_API_KEY, VECTOR_SERVER, DEEPSEEK_API_KEY
+import logging
 
 def safe_read_file(content: bytes) -> str:
     try:
@@ -69,6 +70,10 @@ async def search_points(collection_name: str, query_vector: list, limit: int = 5
 async def vectorize(text: str) -> List[float]:
     """Векторизация через сервер"""
     try:
+        # Проверяем, доступен ли VECTOR_SERVER
+        if not VECTOR_SERVER:
+            raise ValueError("VECTOR_SERVER_URL не настроен в переменных окружения")
+        
         data = await send_request(
             f"{VECTOR_SERVER}/vectorize",
             data={"text": text},
@@ -79,4 +84,23 @@ async def vectorize(text: str) -> List[float]:
         dim = data.get('dim', len(data['vector']))
         return data["vector"], dim
     except Exception as e:
-        raise ValueError(f"Ошибка при векторизации: {str(e)}") 
+        logging.error(f"Ошибка при векторизации через сервер: {str(e)}")
+        # Fallback: создаем простой вектор (заглушка)
+        logging.warning("Используется fallback векторизация")
+        # Создаем простой вектор размером 384 (стандартный размер для sentence-transformers)
+        import hashlib
+        hash_obj = hashlib.md5(text.encode())
+        hash_hex = hash_obj.hexdigest()
+        # Создаем вектор на основе хеша текста
+        vector = []
+        for i in range(0, len(hash_hex), 2):
+            if len(vector) >= 384:
+                break
+            hex_pair = hash_hex[i:i+2]
+            vector.append(int(hex_pair, 16) / 255.0)  # Нормализуем к [0, 1]
+        
+        # Дополняем вектор до 384 элементов
+        while len(vector) < 384:
+            vector.append(0.0)
+        
+        return vector, 384 

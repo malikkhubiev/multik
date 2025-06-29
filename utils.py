@@ -51,7 +51,10 @@ async def get_user_by_telegram_id(telegram_id: str, to_throw: bool = True):
 async def send_request(url: str, data: dict, method: str = "POST") -> dict:
     """Универсальная функция для отправки HTTP-запросов с обработкой ошибок."""
     try:
-        async with httpx.AsyncClient() as client:
+        logging.info(f"Отправка запроса: {method} {url}")
+        logging.debug(f"Данные запроса: {data}")
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
             if method.upper() == "POST":
                 response = await client.post(url, json=data)
             elif method.upper() == "GET":
@@ -61,20 +64,28 @@ async def send_request(url: str, data: dict, method: str = "POST") -> dict:
 
             response.raise_for_status()  # Проверка на ошибки HTTP
 
-            logging.info(f"Запрос на {url} успешно отправлен.")
+            logging.info(f"Запрос на {url} успешно отправлен. Статус: {response.status_code}")
             return response.json()  # Возвращаем данные ответа в формате JSON
 
+    except httpx.ConnectError as e:
+        logging.error(f"Ошибка подключения к {url}: {e}")
+        raise HTTPException(status_code=500, detail=f"Connection failed to {url}: {str(e)}")
+
+    except httpx.TimeoutException as e:
+        logging.error(f"Таймаут при запросе к {url}: {e}")
+        raise HTTPException(status_code=500, detail=f"Request timeout to {url}")
+
     except httpx.RequestError as e:
-        logging.error(f"Ошибка при отправке запроса: {e}")
-        raise HTTPException(status_code=500, detail="Request failed")
+        logging.error(f"Ошибка при отправке запроса к {url}: {e}")
+        raise HTTPException(status_code=500, detail=f"Request failed to {url}: {str(e)}")
 
     except httpx.HTTPStatusError as e:
-        logging.error(f"Ошибка HTTP при отправке запроса: {e}")
-        raise HTTPException(status_code=500, detail=f"HTTP error: {e.response.status_code}")
+        logging.error(f"Ошибка HTTP при отправке запроса к {url}: {e.response.status_code} - {e.response.text}")
+        raise HTTPException(status_code=500, detail=f"HTTP error {e.response.status_code}: {e.response.text}")
 
     except Exception as e:
-        logging.error(f"Неизвестная ошибка: {e}")
-        raise HTTPException(status_code=500, detail="An unknown error occurred")
+        logging.error(f"Неизвестная ошибка при запросе к {url}: {e}")
+        raise HTTPException(status_code=500, detail=f"An unknown error occurred: {str(e)}")
 
 async def set_webhook(token: str, project_id: str) -> dict:
     logging.info(f"SERVER_URL={SERVER_URL}, project_id={project_id}")
