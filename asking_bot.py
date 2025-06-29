@@ -2,8 +2,7 @@ from fastapi import APIRouter, Request
 from aiogram import Bot, types
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram import Router, Dispatcher
-from database import get_project_by_id, get_user_collection
-from qdrant_utils import vectorize, search_points
+from database import get_project_by_id
 from aiogram.filters import Command
 import logging
 import httpx
@@ -13,7 +12,7 @@ router = APIRouter()
 
 bot_dispatchers = {}
 
-async def get_or_create_dispatcher(token: str, collection_name: str):
+async def get_or_create_dispatcher(token: str, business_info: str):
     if token in bot_dispatchers:
         return bot_dispatchers[token]
     bot = Bot(token=token)
@@ -25,28 +24,20 @@ async def get_or_create_dispatcher(token: str, collection_name: str):
     @tg_router.message(Command("start"))
     async def handle_start(message: types.Message):
         logging.info(f"[ASKING_BOT] handle_start: from user {message.from_user.id}, text: {message.text}")
-        await message.answer("Привет! Я готов отвечать на ваши вопросы. Задайте вопрос!")
+        await message.answer("Привет! Я готов отвечать на ваши вопросы о нашем бизнесе. Задайте вопрос!")
 
     @tg_router.message()
     async def handle_question(message: types.Message):
         user_id = message.from_user.id
         text = message.text
         logging.info(f"[ASKING_BOT] handle_question: from user {user_id}, text: {text}")
-        if not collection_name:
-            await message.answer("Коллекция не найдена. Сначала создайте коллекцию.")
-            logging.warning(f"[ASKING_BOT] handle_question: collection not found for project")
+        
+        if not business_info:
+            await message.answer("Информация о бизнесе не найдена. Обратитесь к администратору.")
+            logging.warning(f"[ASKING_BOT] handle_question: business_info not found for project")
             return
+        
         try:
-            question_vector, dim = await vectorize(text)
-            logging.info(f"[ASKING_BOT] handle_question: vectorized question, dim={dim}")
-            hits = await search_points(collection_name=collection_name, query_vector=question_vector, limit=5)
-            logging.info(f"[ASKING_BOT] handle_question: qdrant hits count={len(hits)}")
-            context = "\n".join([hit.payload["text"] for hit in hits if hasattr(hit, 'payload') and 'text' in hit.payload])
-            logging.info(f"[ASKING_BOT] handle_question: context='{context}'")
-            if not context.strip():
-                await message.answer("В базе нет подходящих данных для ответа на ваш вопрос. Пожалуйста, загрузите знания.")
-                logging.warning(f"[ASKING_BOT] handle_question: no context found for project")
-                return
             url = "https://api.deepseek.com/v1/chat/completions"
             headers = {
                 "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
@@ -55,8 +46,8 @@ async def get_or_create_dispatcher(token: str, collection_name: str):
             payload = {
                 "model": "deepseek-chat",
                 "messages": [
-                    {"role": "system", "content": "Ты - менеджер по продажам, который преобразует данные в дружелюбный продающий ответ клиенту в телеграм-чате."},
-                    {"role": "user", "content": f"На основе этих данных сформируй краткий ответ: {context} Ответ должен быть: - Отвечай ТОЛЬКО на поставленный вопрос, без лишней информации - На русском языке - Без символов разметки markdown - Упорядочен по степени совпадения (score) и напиши только данные, связанные с вопросом {text} - Без лишних слов вроде 'ответ клиенту' и т.д.: сразу ответ"}
+                    {"role": "system", "content": f"Ты - менеджер по продажам. Отвечай на вопросы клиентов на основе информации о бизнесе. Информация о бизнесе: {business_info}"},
+                    {"role": "user", "content": f"Ответь на вопрос клиента: {text}"}
                 ],
                 "temperature": 0.3
             }
@@ -67,17 +58,11 @@ async def get_or_create_dispatcher(token: str, collection_name: str):
             content = data["choices"][0]["message"]["content"]
             logging.info(f"[ASKING_BOT] handle_question: deepseek response='{content}'")
             await message.answer(content)
-        except ValueError as e:
-            if "векторизации" in str(e):
-                logging.error(f"[ASKING_BOT] handle_question: vectorization error: {e}")
-                await message.answer("Сервис обработки вопросов временно недоступен. Попробуйте позже.")
-            else:
-                logging.error(f"[ASKING_BOT] handle_question: value error: {e}")
-                await message.answer("Произошла ошибка при обработке вашего вопроса. Попробуйте переформулировать.")
         except Exception as e:
             import traceback
             logging.error(f"[ASKING_BOT] handle_question: error: {e}\n{traceback.format_exc()}")
             await message.answer("Произошла ошибка при обработке вашего вопроса. Пожалуйста, попробуйте позже.")
+    
     bot_dispatchers[token] = (dp, bot)
     return dp, bot
 
@@ -89,8 +74,8 @@ async def telegram_webhook(project_id: str, request: Request):
         logging.error(f"[ASKING_BOT] Project not found: {project_id}")
         return {"status": "error", "message": "Проект не найден"}
     token = project["token"]
-    collection_name = project["collection_name"]
-    dp, bot = await get_or_create_dispatcher(token, collection_name)
+    business_info = project["business_info"]
+    dp, bot = await get_or_create_dispatcher(token, business_info)
     update_data = await request.json()
     logging.info(f"[ASKING_BOT] Update data: {update_data}")
     try:

@@ -29,7 +29,8 @@ class User(Base):
 class Project(Base):
     __tablename__ = 'project'
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    collection_name = Column(String, nullable=False)
+    project_name = Column(String, nullable=False)
+    business_info = Column(String, nullable=False)
     token = Column(String, nullable=False)
     telegram_id = Column(String, ForeignKey('user.telegram_id'))
     user = relationship("User", back_populates="projects")
@@ -53,9 +54,9 @@ async def get_user(telegram_id: str) -> Optional[dict]:
     return None
 
 # CRUD для project
-async def create_project(telegram_id: str, collection_name: str, token: str) -> str:
+async def create_project(telegram_id: str, project_name: str, business_info: str, token: str) -> str:
     project_id = str(uuid.uuid4())
-    query = insert(Project).values(id=project_id, collection_name=collection_name, token=token, telegram_id=telegram_id)
+    query = insert(Project).values(id=project_id, project_name=project_name, business_info=business_info, token=token, telegram_id=telegram_id)
     await database.execute(query)
     return project_id
 
@@ -63,18 +64,18 @@ async def get_project_by_id(project_id: str) -> Optional[dict]:
     query = select(Project).where(Project.id == project_id)
     row = await database.fetch_one(query)
     if row:
-        return {"id": row["id"], "collection_name": row["collection_name"], "token": row["token"], "telegram_id": row["telegram_id"]}
+        return {"id": row["id"], "project_name": row["project_name"], "business_info": row["business_info"], "token": row["token"], "telegram_id": row["telegram_id"]}
     return None
 
 async def get_projects_by_user(telegram_id: str) -> list:
     query = select(Project).where(Project.telegram_id == telegram_id)
     rows = await database.fetch_all(query)
-    return [{"id": r["id"], "collection_name": r["collection_name"], "token": r["token"], "telegram_id": r["telegram_id"]} for r in rows]
+    return [{"id": r["id"], "project_name": r["project_name"], "business_info": r["business_info"], "token": r["token"], "telegram_id": r["telegram_id"]} for r in rows]
 
-async def get_user_collection(telegram_id: str) -> Optional[str]:
-    """Возвращает collection_name первого проекта пользователя (или None, если нет проектов)"""
+async def get_user_business_info(telegram_id: str) -> Optional[str]:
+    """Возвращает business_info первого проекта пользователя (или None, если нет проектов)"""
     query = select(Project).where(Project.telegram_id == telegram_id)
     row = await database.fetch_one(query)
     if row:
-        return row["collection_name"]
+        return row["business_info"]
     return None

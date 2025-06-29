@@ -110,37 +110,3 @@ async def set_webhook(token: str, project_id: str) -> dict:
         except Exception as e:
             logging.error(f"[WEBHOOK] Error: {e}\n{traceback.format_exc()}")
             return {"ok": False, "error": str(e), "trace": traceback.format_exc()}
-
-async def full_project_setup(telegram_id, project_name, token, business_info=None, context_text=None):
-    from database import create_project, get_project_by_id
-    from qdrant_utils import create_collection as qdrant_create_collection, vectorize
-    # 1. Создать проект
-    project_id = await create_project(telegram_id, project_name, token)
-    # 2. Получить проект для имени коллекции
-    project = await get_project_by_id(project_id)
-    collection_name = project['collection_name']
-    # 3. Создать коллекцию в Qdrant
-    await qdrant_create_collection(collection_name)
-    # 4. (Опционально) Векторизовать и загрузить бизнес-инфо и контекст
-    texts = []
-    if business_info:
-        texts.append(business_info)
-    if context_text:
-        texts.append(context_text)
-    vectors = []
-    for idx, text in enumerate(texts):
-        try:
-            vector, dim = await vectorize(text)
-            vectors.append({
-                "id": idx,
-                "vector": vector,
-                "payload": {"text": text}
-            })
-        except Exception as vec_error:
-            logging.error(f"[VECTORIZE] Ошибка векторизации для текста {idx}: {str(vec_error)}")
-    if vectors:
-        from qdrant_utils import upsert_points
-        await upsert_points(collection_name, vectors)
-    # 5. Установить вебхук
-    webhook_result = await set_webhook(token, project_id)
-    return project_id, webhook_result
