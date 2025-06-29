@@ -219,13 +219,12 @@ async def handle_project_selection(callback_query: types.CallbackQuery, state: F
         await state.update_data(selected_project_id=project_id, selected_project=project)
         
         # Создаем меню управления проектом
-        keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-            [types.InlineKeyboardButton("Переименовать", callback_data="rename_project")],
-            [types.InlineKeyboardButton("Добавить данные", callback_data="add_data")],
-            [types.InlineKeyboardButton("Изменить данные", callback_data="change_data")],
-            [types.InlineKeyboardButton("Удалить проект", callback_data="delete_project")],
-            [types.InlineKeyboardButton("Назад к списку", callback_data="back_to_projects")]
-        ])
+        keyboard = types.InlineKeyboardMarkup()
+        keyboard.row(types.InlineKeyboardButton("Переименовать", callback_data="rename_project"))
+        keyboard.row(types.InlineKeyboardButton("Добавить данные", callback_data="add_data"))
+        keyboard.row(types.InlineKeyboardButton("Изменить данные", callback_data="change_data"))
+        keyboard.row(types.InlineKeyboardButton("Удалить проект", callback_data="delete_project"))
+        keyboard.row(types.InlineKeyboardButton("Назад к списку", callback_data="back_to_projects"))
         
         await callback_query.message.edit_text(
             f"Проект: {project['project_name']}\n\nВыберите действие:",
@@ -396,10 +395,9 @@ async def handle_delete_project_request(callback_query: types.CallbackQuery, sta
     data = await state.get_data()
     project = data.get("selected_project")
     
-    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton("Да, удалить", callback_data="confirm_delete")],
-        [types.InlineKeyboardButton("Отмена", callback_data="cancel_delete")]
-    ])
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.row(types.InlineKeyboardButton("Да, удалить", callback_data="confirm_delete"))
+    keyboard.row(types.InlineKeyboardButton("Отмена", callback_data="cancel_delete"))
     
     await callback_query.message.edit_text(
         f"Вы уверены, что хотите удалить проект '{project['project_name']}'?\n"
@@ -413,13 +411,12 @@ async def handle_cancel_delete(callback_query: types.CallbackQuery, state: FSMCo
     data = await state.get_data()
     project = data.get("selected_project")
     
-    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton("Переименовать", callback_data="rename_project")],
-        [types.InlineKeyboardButton("Добавить данные", callback_data="add_data")],
-        [types.InlineKeyboardButton("Изменить данные", callback_data="change_data")],
-        [types.InlineKeyboardButton("Удалить проект", callback_data="delete_project")],
-        [types.InlineKeyboardButton("Назад к списку", callback_data="back_to_projects")]
-    ])
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.row(types.InlineKeyboardButton("Переименовать", callback_data="rename_project"))
+    keyboard.row(types.InlineKeyboardButton("Добавить данные", callback_data="add_data"))
+    keyboard.row(types.InlineKeyboardButton("Изменить данные", callback_data="change_data"))
+    keyboard.row(types.InlineKeyboardButton("Удалить проект", callback_data="delete_project"))
+    keyboard.row(types.InlineKeyboardButton("Назад к списку", callback_data="back_to_projects"))
     
     await callback_query.message.edit_text(
         f"Проект: {project['project_name']}\n\nВыберите действие:",
