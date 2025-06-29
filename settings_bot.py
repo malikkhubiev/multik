@@ -105,8 +105,9 @@ async def handle_help_command(message: types.Message, state: FSMContext):
 @settings_router.message(SettingsStates.waiting_for_project_name)
 async def handle_project_name(message: types.Message, state: FSMContext):
     # Проверяем, не является ли сообщение командой
-    if message.text.startswith('/'):
+    if message.text and message.text.startswith('/'):
         # Если это команда, сбрасываем состояние и не обрабатываем здесь
+        await state.clear()
         return
     
     logger.info(f"Project name received from user {message.from_user.id}: {message.text}")
@@ -117,8 +118,9 @@ async def handle_project_name(message: types.Message, state: FSMContext):
 @settings_router.message(SettingsStates.waiting_for_token)
 async def handle_token(message: types.Message, state: FSMContext):
     # Проверяем, не является ли сообщение командой
-    if message.text.startswith('/'):
+    if message.text and message.text.startswith('/'):
         # Если это команда, сбрасываем состояние и не обрабатываем здесь
+        await state.clear()
         return
     
     logger.info(f"Token received from user {message.from_user.id}: {message.text}")
@@ -191,14 +193,14 @@ async def handle_projects_command(message: types.Message, state: FSMContext):
             return
         
         # Создаем клавиатуру с проектами
-        keyboard = types.InlineKeyboardMarkup(inline_keyboard=[])
+        keyboard = types.InlineKeyboardMarkup()
         for project in projects:
-            keyboard.inline_keyboard.append([
+            keyboard.add(
                 types.InlineKeyboardButton(
                     text=project["project_name"],
                     callback_data=f"project_{project['id']}"
                 )
-            ])
+            )
         
         await message.answer("Выберите проект для управления:", reply_markup=keyboard)
         
@@ -222,13 +224,12 @@ async def handle_project_selection(callback_query: types.CallbackQuery, state: F
         await state.update_data(selected_project_id=project_id, selected_project=project)
         
         # Создаем меню управления проектом
-        keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-            [types.InlineKeyboardButton("Переименовать", callback_data="rename_project")],
-            [types.InlineKeyboardButton("Добавить данные", callback_data="add_data")],
-            [types.InlineKeyboardButton("Изменить данные", callback_data="change_data")],
-            [types.InlineKeyboardButton("Удалить проект", callback_data="delete_project")],
-            [types.InlineKeyboardButton("Назад к списку", callback_data="back_to_projects")]
-        ])
+        keyboard = types.InlineKeyboardMarkup()
+        keyboard.add(types.InlineKeyboardButton("Переименовать", callback_data="rename_project"))
+        keyboard.add(types.InlineKeyboardButton("Добавить данные", callback_data="add_data"))
+        keyboard.add(types.InlineKeyboardButton("Изменить данные", callback_data="change_data"))
+        keyboard.add(types.InlineKeyboardButton("Удалить проект", callback_data="delete_project"))
+        keyboard.add(types.InlineKeyboardButton("Назад к списку", callback_data="back_to_projects"))
         
         await callback_query.message.edit_text(
             f"Проект: {project['project_name']}\n\nВыберите действие:",
@@ -253,8 +254,9 @@ async def handle_rename_project(callback_query: types.CallbackQuery, state: FSMC
 @settings_router.message(SettingsStates.waiting_for_new_project_name)
 async def handle_new_project_name(message: types.Message, state: FSMContext):
     # Проверяем, не является ли сообщение командой
-    if message.text.startswith('/'):
+    if message.text and message.text.startswith('/'):
         # Если это команда, сбрасываем состояние и не обрабатываем здесь
+        await state.clear()
         return
     
     """Обрабатывает новое название проекта"""
@@ -402,10 +404,9 @@ async def handle_delete_project_request(callback_query: types.CallbackQuery, sta
     data = await state.get_data()
     project = data.get("selected_project")
     
-    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton("Да, удалить", callback_data="confirm_delete")],
-        [types.InlineKeyboardButton("Отмена", callback_data="cancel_delete")]
-    ])
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(types.InlineKeyboardButton("Да, удалить", callback_data="confirm_delete"))
+    keyboard.add(types.InlineKeyboardButton("Отмена", callback_data="cancel_delete"))
     
     await callback_query.message.edit_text(
         f"Вы уверены, что хотите удалить проект '{project['project_name']}'?\n"
@@ -419,13 +420,12 @@ async def handle_cancel_delete(callback_query: types.CallbackQuery, state: FSMCo
     data = await state.get_data()
     project = data.get("selected_project")
     
-    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton("Переименовать", callback_data="rename_project")],
-        [types.InlineKeyboardButton("Добавить данные", callback_data="add_data")],
-        [types.InlineKeyboardButton("Изменить данные", callback_data="change_data")],
-        [types.InlineKeyboardButton("Удалить проект", callback_data="delete_project")],
-        [types.InlineKeyboardButton("Назад к списку", callback_data="back_to_projects")]
-    ])
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(types.InlineKeyboardButton("Переименовать", callback_data="rename_project"))
+    keyboard.add(types.InlineKeyboardButton("Добавить данные", callback_data="add_data"))
+    keyboard.add(types.InlineKeyboardButton("Изменить данные", callback_data="change_data"))
+    keyboard.add(types.InlineKeyboardButton("Удалить проект", callback_data="delete_project"))
+    keyboard.add(types.InlineKeyboardButton("Назад к списку", callback_data="back_to_projects"))
     
     await callback_query.message.edit_text(
         f"Проект: {project['project_name']}\n\nВыберите действие:",
