@@ -104,10 +104,8 @@ async def handle_help_command(message: types.Message, state: FSMContext):
 
 @settings_router.message(SettingsStates.waiting_for_project_name)
 async def handle_project_name(message: types.Message, state: FSMContext):
-    # Проверяем, не является ли сообщение командой
-    if message.text and message.text.startswith('/'):
-        # Если это команда, сбрасываем состояние и не обрабатываем здесь
-        await state.clear()
+    # Проверяем команды через универсальную функцию
+    if await handle_command_in_state(message, state):
         return
     
     logger.info(f"Project name received from user {message.from_user.id}: {message.text}")
@@ -117,10 +115,8 @@ async def handle_project_name(message: types.Message, state: FSMContext):
 
 @settings_router.message(SettingsStates.waiting_for_token)
 async def handle_token(message: types.Message, state: FSMContext):
-    # Проверяем, не является ли сообщение командой
-    if message.text and message.text.startswith('/'):
-        # Если это команда, сбрасываем состояние и не обрабатываем здесь
-        await state.clear()
+    # Проверяем команды через универсальную функцию
+    if await handle_command_in_state(message, state):
         return
     
     logger.info(f"Token received from user {message.from_user.id}: {message.text}")
@@ -130,9 +126,8 @@ async def handle_token(message: types.Message, state: FSMContext):
 
 @settings_router.message(SettingsStates.waiting_for_business_file)
 async def handle_business_file(message: types.Message, state: FSMContext):
-    # Проверяем, не является ли сообщение командой
-    if message.text and message.text.startswith('/'):
-        # Если это команда, сбрасываем состояние и не обрабатываем здесь
+    # Проверяем команды через универсальную функцию
+    if message.text and await handle_command_in_state(message, state):
         return
     
     logger.info(f"Business file received from user {message.from_user.id}")
@@ -254,10 +249,8 @@ async def handle_rename_project(callback_query: types.CallbackQuery, state: FSMC
 
 @settings_router.message(SettingsStates.waiting_for_new_project_name)
 async def handle_new_project_name(message: types.Message, state: FSMContext):
-    # Проверяем, не является ли сообщение командой
-    if message.text and message.text.startswith('/'):
-        # Если это команда, сбрасываем состояние и не обрабатываем здесь
-        await state.clear()
+    # Проверяем команды через универсальную функцию
+    if await handle_command_in_state(message, state):
         return
     
     """Обрабатывает новое название проекта"""
@@ -294,9 +287,8 @@ async def handle_add_data(callback_query: types.CallbackQuery, state: FSMContext
 
 @settings_router.message(SettingsStates.waiting_for_additional_data_file)
 async def handle_additional_data_file(message: types.Message, state: FSMContext):
-    # Проверяем, не является ли сообщение командой
-    if message.text and message.text.startswith('/'):
-        # Если это команда, сбрасываем состояние и не обрабатываем здесь
+    # Проверяем команды через универсальную функцию
+    if message.text and await handle_command_in_state(message, state):
         return
     
     """Обрабатывает файл с дополнительными данными"""
@@ -352,9 +344,8 @@ async def handle_change_data(callback_query: types.CallbackQuery, state: FSMCont
 
 @settings_router.message(SettingsStates.waiting_for_new_data_file)
 async def handle_new_data_file(message: types.Message, state: FSMContext):
-    # Проверяем, не является ли сообщение командой
-    if message.text and message.text.startswith('/'):
-        # Если это команда, сбрасываем состояние и не обрабатываем здесь
+    # Проверяем команды через универсальную функцию
+    if message.text and await handle_command_in_state(message, state):
         return
     
     """Обрабатывает файл с новыми данными"""
@@ -532,4 +523,22 @@ async def create_project_meta(
         return {"status": "error", "message": str(e), "logs": logs}
 
 async def set_settings_webhook():
-    await settings_bot.set_webhook(SETTINGS_WEBHOOK_URL) 
+    await settings_bot.set_webhook(SETTINGS_WEBHOOK_URL)
+
+async def handle_command_in_state(message: types.Message, state: FSMContext) -> bool:
+    """Универсальная функция для обработки команд в любом состоянии"""
+    if message.text and message.text.startswith('/'):
+        command = message.text.split()[0].lower()
+        await state.clear()
+        
+        if command == '/start':
+            await handle_settings_start(message, state)
+        elif command == '/projects':
+            await handle_projects_command(message, state)
+        elif command == '/help':
+            await handle_help_command(message, state)
+        else:
+            await message.answer("Неизвестная команда. Используйте /help для справки.")
+        
+        return True
+    return False 
