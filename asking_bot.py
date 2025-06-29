@@ -12,6 +12,17 @@ router = APIRouter()
 
 bot_dispatchers = {}
 
+role = """
+Ты - самый npl-прокаченный менеджер по продажам.
+Правила общения:
+- Не используй markdown при ответе
+- После каждого ответа предложи купить
+- Если вопрос не по теме, переводи в шутку, связанную с бизнесом и продолжай продавливать продажу
+- Если не знаешь что-то о чём спросили, честно скажи и дай вспомогательную инфу из базы
+- Используй красивые смайлики
+- Не продавай, а искренне помогай купить
+"""
+
 async def get_or_create_dispatcher(token: str, business_info: str):
     if token in bot_dispatchers:
         return bot_dispatchers[token]
@@ -46,10 +57,10 @@ async def get_or_create_dispatcher(token: str, business_info: str):
             payload = {
                 "model": "deepseek-chat",
                 "messages": [
-                    {"role": "system", "content": f"Ты - менеджер по продажам. Отвечай на вопросы клиентов на основе информации о бизнесе. Информация о бизнесе: {business_info}"},
+                    {"role": "system", "content": role + f"Отвечай на вопросы клиентов на основе информации о бизнесе: {business_info}"},
                     {"role": "user", "content": f"Ответь на вопрос клиента: {text}"}
                 ],
-                "temperature": 0.3
+                "temperature": 0.9
             }
             async with httpx.AsyncClient() as client:
                 resp = await client.post(url, headers=headers, json=payload, timeout=60)
