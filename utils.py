@@ -110,3 +110,19 @@ async def set_webhook(token: str, project_id: str) -> dict:
         except Exception as e:
             logging.error(f"[WEBHOOK] Error: {e}\n{traceback.format_exc()}")
             return {"ok": False, "error": str(e), "trace": traceback.format_exc()}
+
+async def delete_webhook(token: str) -> dict:
+    """Отключает webhook для бота"""
+    logging.info(f"Deleting webhook for token: {token}")
+    url = f"{API_URL}{token}/deleteWebhook"
+    async with httpx.AsyncClient() as client:
+        try:
+            logging.info(f"POST {url}")
+            resp = await client.post(url)
+            logging.info(f"deleteWebhook response status: {resp.status_code}, text: {resp.text}")
+            data = resp.json()
+            logging.info(f"[WEBHOOK] deleteWebhook result: {data}")
+            return data
+        except Exception as e:
+            logging.error(f"[WEBHOOK] Error deleting webhook: {e}\n{traceback.format_exc()}")
+            return {"ok": False, "error": str(e), "trace": traceback.format_exc()}

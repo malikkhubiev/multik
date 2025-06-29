@@ -79,3 +79,54 @@ async def get_user_business_info(telegram_id: str) -> Optional[str]:
     if row:
         return row["business_info"]
     return None
+
+async def update_project_name(project_id: str, new_name: str) -> bool:
+    """Обновляет название проекта"""
+    try:
+        from sqlalchemy import update
+        query = update(Project).where(Project.id == project_id).values(project_name=new_name)
+        await database.execute(query)
+        return True
+    except Exception as e:
+        logger.error(f"Error updating project name: {e}")
+        return False
+
+async def update_project_business_info(project_id: str, new_business_info: str) -> bool:
+    """Обновляет информацию о бизнесе проекта"""
+    try:
+        from sqlalchemy import update
+        query = update(Project).where(Project.id == project_id).values(business_info=new_business_info)
+        await database.execute(query)
+        return True
+    except Exception as e:
+        logger.error(f"Error updating project business info: {e}")
+        return False
+
+async def append_project_business_info(project_id: str, additional_info: str) -> bool:
+    """Добавляет дополнительную информацию к существующей информации о бизнесе"""
+    try:
+        from sqlalchemy import update
+        # Получаем текущую информацию
+        current_project = await get_project_by_id(project_id)
+        if not current_project:
+            return False
+        
+        # Объединяем с новой информацией
+        updated_info = current_project["business_info"] + "\n\n" + additional_info
+        query = update(Project).where(Project.id == project_id).values(business_info=updated_info)
+        await database.execute(query)
+        return True
+    except Exception as e:
+        logger.error(f"Error appending project business info: {e}")
+        return False
+
+async def delete_project(project_id: str) -> bool:
+    """Удаляет проект"""
+    try:
+        from sqlalchemy import delete
+        query = delete(Project).where(Project.id == project_id)
+        await database.execute(query)
+        return True
+    except Exception as e:
+        logger.error(f"Error deleting project: {e}")
+        return False

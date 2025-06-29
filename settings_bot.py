@@ -5,8 +5,8 @@ from aiogram import Router, Dispatcher
 from aiogram.filters import Command
 import os
 from config import API_URL, SERVER_URL, DEEPSEEK_API_KEY
-from database import create_project, get_project_by_id, create_user
-from utils import set_webhook
+from database import create_project, get_project_by_id, create_user, get_projects_by_user, update_project_name, update_project_business_info, append_project_business_info, delete_project
+from utils import set_webhook, delete_webhook
 from file_utils import extract_text_from_file
 import json
 import logging
@@ -34,6 +34,11 @@ class SettingsStates(StatesGroup):
     waiting_for_project_name = State()
     waiting_for_token = State()
     waiting_for_business_file = State()
+    # Новые состояния для управления проектами
+    waiting_for_new_project_name = State()
+    waiting_for_additional_data_file = State()
+    waiting_for_new_data_file = State()
+    waiting_for_delete_confirmation = State()
 
 async def process_business_file_with_deepseek(file_content: str) -> str:
     """Обрабатывает файл с данными о бизнесе через Deepseek для создания компактной информации"""
@@ -71,6 +76,27 @@ async def handle_settings_start(message: types.Message, state: FSMContext):
         logger.info(f"Sent welcome message to user {message.from_user.id}")
     except Exception as e:
         logger.error(f"Error in handle_settings_start: {e}")
+
+@settings_router.message(Command("help"))
+async def handle_help_command(message: types.Message):
+    """Показывает справку по командам"""
+    help_text = """
+🤖 Доступные команды:
+
+/start - Создать новый проект
+/projects - Управление существующими проектами
+/help - Показать эту справку
+
+📋 Функции управления проектами:
+• Переименование проекта
+• Добавление дополнительных данных
+• Изменение данных о бизнесе
+• Удаление проекта (с отключением webhook)
+
+💡 Для начала работы используйте /start
+💡 Для управления проектами используйте /projects
+    """
+    await message.answer(help_text)
 
 @settings_router.message(SettingsStates.waiting_for_project_name)
 async def handle_project_name(message: types.Message, state: FSMContext):
@@ -130,6 +156,281 @@ async def handle_business_file(message: types.Message, state: FSMContext):
         await message.answer(f"Ошибка при обработке файла: {e}")
     
     await state.clear()
+
+@settings_router.message(Command("projects"))
+async def handle_projects_command(message: types.Message, state: FSMContext):
+    """Показывает список проектов пользователя"""
+    logger.info(f"/projects received from user {message.from_user.id}")
+    try:
+        telegram_id = str(message.from_user.id)
+        projects = await get_projects_by_user(telegram_id)
+        
+        if not projects:
+            await message.answer("У вас пока нет проектов. Создайте первый проект командой /start")
+            return
+        
+        # Создаем клавиатуру с проектами
+        keyboard = types.InlineKeyboardMarkup(inline_keyboard=[])
+        for project in projects:
+            keyboard.inline_keyboard.append([
+                types.InlineKeyboardButton(
+                    text=project["project_name"],
+                    callback_data=f"project_{project['id']}"
+                )
+            ])
+        
+        await message.answer("Выберите проект для управления:", reply_markup=keyboard)
+        
+    except Exception as e:
+        logger.error(f"Error in handle_projects_command: {e}")
+        await message.answer("Произошла ошибка при получении списка проектов")
+
+@settings_router.callback_query(lambda c: c.data.startswith('project_'))
+async def handle_project_selection(callback_query: types.CallbackQuery, state: FSMContext):
+    """Обрабатывает выбор проекта"""
+    project_id = callback_query.data.replace('project_', '')
+    logger.info(f"Project selected: {project_id}")
+    
+    try:
+        project = await get_project_by_id(project_id)
+        if not project:
+            await callback_query.answer("Проект не найден")
+            return
+        
+        # Сохраняем выбранный проект в состоянии
+        await state.update_data(selected_project_id=project_id, selected_project=project)
+        
+        # Создаем меню управления проектом
+        keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+            [types.InlineKeyboardButton("Переименовать", callback_data="rename_project")],
+            [types.InlineKeyboardButton("Добавить данные", callback_data="add_data")],
+            [types.InlineKeyboardButton("Изменить данные", callback_data="change_data")],
+            [types.InlineKeyboardButton("Удалить проект", callback_data="delete_project")],
+            [types.InlineKeyboardButton("Назад к списку", callback_data="back_to_projects")]
+        ])
+        
+        await callback_query.message.edit_text(
+            f"Проект: {project['project_name']}\n\nВыберите действие:",
+            reply_markup=keyboard
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in handle_project_selection: {e}")
+        await callback_query.answer("Произошла ошибка")
+
+@settings_router.callback_query(lambda c: c.data == "back_to_projects")
+async def handle_back_to_projects(callback_query: types.CallbackQuery, state: FSMContext):
+    """Возврат к списку проектов"""
+    await handle_projects_command(callback_query.message, state)
+
+@settings_router.callback_query(lambda c: c.data == "rename_project")
+async def handle_rename_project(callback_query: types.CallbackQuery, state: FSMContext):
+    """Запрашивает новое название проекта"""
+    await callback_query.message.edit_text("Введите новое название проекта:")
+    await state.set_state(SettingsStates.waiting_for_new_project_name)
+
+@settings_router.message(SettingsStates.waiting_for_new_project_name)
+async def handle_new_project_name(message: types.Message, state: FSMContext):
+    """Обрабатывает новое название проекта"""
+    try:
+        data = await state.get_data()
+        project_id = data.get("selected_project_id")
+        
+        if not project_id:
+            await message.answer("Ошибка: проект не выбран")
+            await state.clear()
+            return
+        
+        success = await update_project_name(project_id, message.text)
+        if success:
+            await message.answer(f"Название проекта успешно изменено на: {message.text}")
+        else:
+            await message.answer("Ошибка при изменении названия проекта")
+        
+        await state.clear()
+        
+    except Exception as e:
+        logger.error(f"Error in handle_new_project_name: {e}")
+        await message.answer("Произошла ошибка при изменении названия проекта")
+        await state.clear()
+
+@settings_router.callback_query(lambda c: c.data == "add_data")
+async def handle_add_data(callback_query: types.CallbackQuery, state: FSMContext):
+    """Запрашивает файл с дополнительными данными"""
+    await callback_query.message.edit_text(
+        "Отправьте файл с дополнительными данными о бизнесе (txt, docx, pdf).\n"
+        "Эти данные будут добавлены к существующей информации."
+    )
+    await state.set_state(SettingsStates.waiting_for_additional_data_file)
+
+@settings_router.message(SettingsStates.waiting_for_additional_data_file)
+async def handle_additional_data_file(message: types.Message, state: FSMContext):
+    """Обрабатывает файл с дополнительными данными"""
+    if not message.document:
+        await message.answer("Пожалуйста, загрузите файл с дополнительными данными.")
+        return
+    
+    try:
+        data = await state.get_data()
+        project_id = data.get("selected_project_id")
+        
+        if not project_id:
+            await message.answer("Ошибка: проект не выбран")
+            await state.clear()
+            return
+        
+        # Скачиваем файл
+        file_info = await settings_bot.get_file(message.document.file_id)
+        file_path = file_info.file_path
+        file_content = await settings_bot.download_file(file_path)
+        
+        # Извлекаем текст из файла
+        filename = message.document.file_name
+        text_content = extract_text_from_file(filename, file_content.read())
+        
+        # Обрабатываем через Deepseek
+        await message.answer("Обрабатываю дополнительные данные...")
+        processed_additional_info = await process_business_file_with_deepseek(text_content)
+        
+        # Добавляем к существующей информации
+        success = await append_project_business_info(project_id, processed_additional_info)
+        
+        if success:
+            await message.answer("Дополнительные данные успешно добавлены к проекту!")
+        else:
+            await message.answer("Ошибка при добавлении дополнительных данных")
+        
+        await state.clear()
+        
+    except Exception as e:
+        logger.error(f"Error in handle_additional_data_file: {e}")
+        await message.answer(f"Ошибка при обработке файла: {e}")
+        await state.clear()
+
+@settings_router.callback_query(lambda c: c.data == "change_data")
+async def handle_change_data(callback_query: types.CallbackQuery, state: FSMContext):
+    """Запрашивает файл с новыми данными"""
+    await callback_query.message.edit_text(
+        "Отправьте файл с новыми данными о бизнесе (txt, docx, pdf).\n"
+        "Старые данные будут полностью заменены новыми."
+    )
+    await state.set_state(SettingsStates.waiting_for_new_data_file)
+
+@settings_router.message(SettingsStates.waiting_for_new_data_file)
+async def handle_new_data_file(message: types.Message, state: FSMContext):
+    """Обрабатывает файл с новыми данными"""
+    if not message.document:
+        await message.answer("Пожалуйста, загрузите файл с новыми данными.")
+        return
+    
+    try:
+        data = await state.get_data()
+        project_id = data.get("selected_project_id")
+        
+        if not project_id:
+            await message.answer("Ошибка: проект не выбран")
+            await state.clear()
+            return
+        
+        # Скачиваем файл
+        file_info = await settings_bot.get_file(message.document.file_id)
+        file_path = file_info.file_path
+        file_content = await settings_bot.download_file(file_path)
+        
+        # Извлекаем текст из файла
+        filename = message.document.file_name
+        text_content = extract_text_from_file(filename, file_content.read())
+        
+        # Обрабатываем через Deepseek
+        await message.answer("Обрабатываю новые данные...")
+        processed_new_info = await process_business_file_with_deepseek(text_content)
+        
+        # Заменяем информацию
+        success = await update_project_business_info(project_id, processed_new_info)
+        
+        if success:
+            await message.answer("Данные проекта успешно обновлены!")
+        else:
+            await message.answer("Ошибка при обновлении данных проекта")
+        
+        await state.clear()
+        
+    except Exception as e:
+        logger.error(f"Error in handle_new_data_file: {e}")
+        await message.answer(f"Ошибка при обработке файла: {e}")
+        await state.clear()
+
+@settings_router.callback_query(lambda c: c.data == "delete_project")
+async def handle_delete_project_request(callback_query: types.CallbackQuery, state: FSMContext):
+    """Запрашивает подтверждение удаления проекта"""
+    data = await state.get_data()
+    project = data.get("selected_project")
+    
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton("Да, удалить", callback_data="confirm_delete")],
+        [types.InlineKeyboardButton("Отмена", callback_data="cancel_delete")]
+    ])
+    
+    await callback_query.message.edit_text(
+        f"Вы уверены, что хотите удалить проект '{project['project_name']}'?\n"
+        "Это действие нельзя отменить. Бот будет остановлен и webhook отключен.",
+        reply_markup=keyboard
+    )
+
+@settings_router.callback_query(lambda c: c.data == "cancel_delete")
+async def handle_cancel_delete(callback_query: types.CallbackQuery, state: FSMContext):
+    """Отменяет удаление проекта"""
+    data = await state.get_data()
+    project = data.get("selected_project")
+    
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton("Переименовать", callback_data="rename_project")],
+        [types.InlineKeyboardButton("Добавить данные", callback_data="add_data")],
+        [types.InlineKeyboardButton("Изменить данные", callback_data="change_data")],
+        [types.InlineKeyboardButton("Удалить проект", callback_data="delete_project")],
+        [types.InlineKeyboardButton("Назад к списку", callback_data="back_to_projects")]
+    ])
+    
+    await callback_query.message.edit_text(
+        f"Проект: {project['project_name']}\n\nВыберите действие:",
+        reply_markup=keyboard
+    )
+
+@settings_router.callback_query(lambda c: c.data == "confirm_delete")
+async def handle_confirm_delete(callback_query: types.CallbackQuery, state: FSMContext):
+    """Подтверждает удаление проекта"""
+    try:
+        data = await state.get_data()
+        project_id = data.get("selected_project_id")
+        project = data.get("selected_project")
+        
+        if not project_id:
+            await callback_query.answer("Ошибка: проект не найден")
+            return
+        
+        # Отключаем webhook
+        webhook_result = await delete_webhook(project["token"])
+        logger.info(f"Webhook deletion result: {webhook_result}")
+        
+        # Удаляем проект из базы данных
+        delete_result = await delete_project(project_id)
+        
+        if delete_result:
+            await callback_query.message.edit_text(
+                f"Проект '{project['project_name']}' успешно удален!\n"
+                "Webhook отключен, бот остановлен."
+            )
+        else:
+            await callback_query.message.edit_text(
+                "Ошибка при удалении проекта из базы данных."
+            )
+        
+        await state.clear()
+        
+    except Exception as e:
+        logger.error(f"Error in handle_confirm_delete: {e}")
+        await callback_query.message.edit_text("Произошла ошибка при удалении проекта")
+        await state.clear()
 
 @router.post(SETTINGS_WEBHOOK_PATH)
 async def process_settings_webhook(request: Request):
