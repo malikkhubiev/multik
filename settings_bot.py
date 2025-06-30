@@ -275,19 +275,20 @@ async def handle_business_file(message: types.Message, state: FSMContext):
     await state.clear()
 
 @settings_router.message(Command("projects"))
-async def handle_projects_command(message: types.Message, state: FSMContext):
+async def handle_projects_command(message: types.Message, state: FSMContext, telegram_id: str = None):
     """Показывает список проектов пользователя"""
     logger.info(f"/projects received from user {message.from_user.id}")
     try:
-        # Сбрасываем состояние перед показом проектов
-        await state.clear()
-        telegram_id = str(message.from_user.id)
+        # Сохраняем telegram_id в состояние
+        if telegram_id is None:
+            telegram_id = str(message.from_user.id)
+        await state.update_data(telegram_id=telegram_id)
+        # Сбрасываем только выбор проекта
+        await state.update_data(selected_project_id=None, selected_project=None)
         projects = await get_projects_by_user(telegram_id)
-        
         if not projects:
             await message.answer("У вас пока нет проектов. Создайте первый проект командой /start")
             return
-        
         # 1. Сначала формируем список кнопок
         buttons = []
         for project in projects:
@@ -297,14 +298,12 @@ async def handle_projects_command(message: types.Message, state: FSMContext):
                     callback_data=f"project_{project['id']}"
                 )
             ])
-        
         # 2. Только потом создаём клавиатуру (если есть кнопки)
         if buttons:
             keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
             await message.answer("Выберите проект для управления:", reply_markup=keyboard)
         else:
             await message.answer("Нет доступных проектов.")
-        
     except Exception as e:
         logger.error(f"Error in handle_projects_command: {e}")
         await message.answer("Произошла ошибка при получении списка проектов")
@@ -346,10 +345,14 @@ async def handle_project_selection(callback_query: types.CallbackQuery, state: F
 
 @settings_router.callback_query(lambda c: c.data == "back_to_projects")
 async def handle_back_to_projects(callback_query: types.CallbackQuery, state: FSMContext):
-    """Возврат к списку проектов (не сбрасывает telegram_id пользователя)"""
-    # Очищаем только выбор проекта, но не всё состояние
+    """Возврат к списку проектов (использует telegram_id из состояния)"""
+    data = await state.get_data()
+    telegram_id = data.get("telegram_id")
+    if not telegram_id:
+        telegram_id = str(callback_query.from_user.id)
+    # Очищаем только выбор проекта
     await state.update_data(selected_project_id=None, selected_project=None)
-    await handle_projects_command(callback_query.message, state)
+    await handle_projects_command(callback_query.message, state, telegram_id=telegram_id)
 
 @settings_router.callback_query(lambda c: c.data == "rename_project")
 async def handle_rename_project(callback_query: types.CallbackQuery, state: FSMContext):
