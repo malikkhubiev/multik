@@ -7,7 +7,8 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///bot_database.db")
 
-TRIAL_DAYS = int(os.getenv("TRIAL_DAYS", 14))
+# TRIAL_DAYS = int(os.getenv("TRIAL_DAYS", 14))
+TRIAL_DAYS = 1/1440  # 1 минута
 TRIAL_PROJECTS = int(os.getenv("TRIAL_PROJECTS", 3))
 PAID_PROJECTS = int(os.getenv("PAID_PROJECTS", 5))
 PAYMENT_AMOUNT = int(os.getenv("PAYMENT_AMOUNT", 2500))

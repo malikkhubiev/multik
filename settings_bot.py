@@ -50,7 +50,8 @@ class SettingsStates(StatesGroup):
 # Встроенное меню команд
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="/start"), KeyboardButton(text="/projects"), KeyboardButton(text="/help")]
+        [KeyboardButton(text="/start"), KeyboardButton(text="/projects"), KeyboardButton(text="/help")],
+        [KeyboardButton(text="Оплатить")]
     ],
     resize_keyboard=True
 )
@@ -874,6 +875,8 @@ async def handle_help_command(message: types.Message, state: FSMContext):
 /projects - Управление существующими проектами
 /help - Показать эту справку
 
+💳 Оплатить — перейти к оплате подписки
+
 📋 Функции управления проектами:
 • Переименование проекта
 • Добавление дополнительных данных
@@ -882,8 +885,14 @@ async def handle_help_command(message: types.Message, state: FSMContext):
 
 💡 Для начала работы используйте /start
 💡 Для управления проектами используйте /projects
+💡 Для оплаты используйте кнопку 'Оплатить' или команду /pay
     """
-    await message.answer(help_text, reply_markup=main_menu)
+    pay_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Оплатить", callback_data="pay_trial")]
+        ]
+    )
+    await message.answer(help_text, reply_markup=pay_kb)
 
 async def handle_projects_command(message: types.Message, state: FSMContext, telegram_id: str = None):
     logger.info(f"/projects received from user {message.from_user.id}")
