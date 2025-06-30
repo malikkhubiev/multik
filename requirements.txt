@@ -16,3 +16,4 @@ qdrant-client
 python-docx
 PyPDF2
 SpeechRecognition
+pydub

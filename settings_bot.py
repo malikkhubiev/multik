@@ -15,6 +15,7 @@ from aiogram.fsm.context import FSMContext
 import traceback
 import httpx
 import asyncio
+from pydub import AudioSegment
 
 router = APIRouter()
 
@@ -219,12 +220,16 @@ async def get_text_from_message(message, bot, max_length=4096) -> str:
             import speech_recognition as sr
             import tempfile
             recognizer = sr.Recognizer()
-            with tempfile.NamedTemporaryFile(suffix='.ogg') as temp_audio:
-                temp_audio.write(file_content.read())
-                temp_audio.flush()
-                with sr.AudioFile(temp_audio.name) as source:
-                    audio = recognizer.record(source)
-                text_content = recognizer.recognize_google(audio, language='ru-RU')
+            with tempfile.NamedTemporaryFile(suffix='.ogg') as temp_ogg, tempfile.NamedTemporaryFile(suffix='.wav') as temp_wav:
+                temp_ogg.write(file_content.read())
+                temp_ogg.flush()
+                # Конвертируем ogg/opus в wav через pydub
+                audio = AudioSegment.from_file(temp_ogg.name)
+                audio.export(temp_wav.name, format='wav')
+                temp_wav.flush()
+                with sr.AudioFile(temp_wav.name) as source:
+                    audio_data = recognizer.record(source)
+                text_content = recognizer.recognize_google(audio_data, language='ru-RU')
         except Exception as e:
             raise RuntimeError(f"Ошибка при распознавании голоса: {e}")
     if not text_content:
@@ -341,7 +346,9 @@ async def handle_project_selection(callback_query: types.CallbackQuery, state: F
 
 @settings_router.callback_query(lambda c: c.data == "back_to_projects")
 async def handle_back_to_projects(callback_query: types.CallbackQuery, state: FSMContext):
-    """Возврат к списку проектов"""
+    """Возврат к списку проектов (не сбрасывает telegram_id пользователя)"""
+    # Очищаем только выбор проекта, но не всё состояние
+    await state.update_data(selected_project_id=None, selected_project=None)
     await handle_projects_command(callback_query.message, state)
 
 @settings_router.callback_query(lambda c: c.data == "rename_project")
