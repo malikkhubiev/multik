@@ -2,6 +2,7 @@ import os
 import re
 import asyncio
 from typing import List
+import logging
 
 def safe_read_file(content: bytes) -> str:
     try:
@@ -10,6 +11,7 @@ def safe_read_file(content: bytes) -> str:
         return content.decode("cp1251", errors="ignore")
 
 def extract_text_from_file(filename: str, content: bytes) -> str:
+    logging.info(f"[FILE_UTILS] extract_text_from_file: filename={filename}")
     ext = os.path.splitext(filename)[1].lower()
     if ext == ".txt":
         return safe_read_file(content)
@@ -28,6 +30,7 @@ def extract_text_from_file(filename: str, content: bytes) -> str:
         return "\n".join(text)
     else:
         raise ValueError("Неподдерживаемый формат файла. Поддерживаются: .txt, .docx, .pdf")
+    logging.info(f"[FILE_UTILS] extract_text_from_file: done for {filename}")
 
 async def extract_text_from_file_async(filename: str, content: bytes) -> str:
     """Асинхронная версия extract_text_from_file"""

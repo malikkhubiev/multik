@@ -79,64 +79,82 @@ Base.metadata.create_all(bind=engine)
 
 # CRUD для user
 async def create_user(telegram_id: str) -> None:
-    # Проверяем, есть ли уже такой пользователь
+    logging.info(f"[DB] create_user: telegram_id={telegram_id}")
     query = select(User).where(User.telegram_id == telegram_id)
     user = await database.fetch_one(query)
     if not user:
+        logging.info(f"[DB] create_user: creating new user {telegram_id}")
         query = insert(User).values(telegram_id=telegram_id, paid=False, start_date=datetime.utcnow())
         await database.execute(query)
+    else:
+        logging.info(f"[DB] create_user: user {telegram_id} already exists")
 
 async def get_user(telegram_id: str) -> Optional[dict]:
+    logging.info(f"[DB] get_user: telegram_id={telegram_id}")
     query = select(User).where(User.telegram_id == telegram_id)
     row = await database.fetch_one(query)
     if row:
+        logging.info(f"[DB] get_user: found {row}")
         return {"telegram_id": row["telegram_id"]}
+    logging.info(f"[DB] get_user: not found")
     return None
 
 # CRUD для project
 async def create_project(telegram_id: str, project_name: str, business_info: str, token: str) -> str:
-    # Проверяем, существует ли проект с таким именем у пользователя
+    logging.info(f"[DB] create_project: telegram_id={telegram_id}, project_name={project_name}, token={token}")
     if await check_project_name_exists(telegram_id, project_name):
+        logging.warning(f"[DB] create_project: project with name '{project_name}' already exists for user {telegram_id}")
         raise ValueError(f"Проект с именем '{project_name}' уже существует у этого пользователя")
-    
     project_id = str(uuid.uuid4())
     query = insert(Project).values(id=project_id, project_name=project_name, business_info=business_info, token=token, telegram_id=telegram_id)
     await database.execute(query)
+    logging.info(f"[DB] create_project: created project {project_id}")
     return project_id
 
 async def get_project_by_id(project_id: str) -> Optional[dict]:
+    logging.info(f"[DB] get_project_by_id: project_id={project_id}")
     query = select(Project).where(Project.id == project_id)
     row = await database.fetch_one(query)
     if row:
+        logging.info(f"[DB] get_project_by_id: found {row}")
         return {"id": row["id"], "project_name": row["project_name"], "business_info": row["business_info"], "token": row["token"], "telegram_id": row["telegram_id"]}
+    logging.info(f"[DB] get_project_by_id: not found")
     return None
 
 async def get_projects_by_user(telegram_id: str) -> list:
+    logging.info(f"[DB] get_projects_by_user: telegram_id={telegram_id}")
     query = select(Project).where(Project.telegram_id == telegram_id)
     rows = await database.fetch_all(query)
+    logging.info(f"[DB] get_projects_by_user: found {len(rows)} projects")
     return [{"id": r["id"], "project_name": r["project_name"], "business_info": r["business_info"], "token": r["token"], "telegram_id": r["telegram_id"]} for r in rows]
 
 async def get_user_business_info(telegram_id: str) -> Optional[str]:
-    """Возвращает business_info первого проекта пользователя (или None, если нет проектов)"""
+    logging.info(f"[DB] get_user_business_info: telegram_id={telegram_id}")
     query = select(Project).where(Project.telegram_id == telegram_id)
     row = await database.fetch_one(query)
     if row:
+        logging.info(f"[DB] get_user_business_info: found business_info")
         return row["business_info"]
+    logging.info(f"[DB] get_user_business_info: not found")
     return None
 
 async def get_project_by_token(token: str) -> Optional[dict]:
-    """Возвращает проект по токену"""
+    logging.info(f"[DB] get_project_by_token: token={token}")
     query = select(Project).where(Project.token == token)
     row = await database.fetch_one(query)
     if row:
+        logging.info(f"[DB] get_project_by_token: found {row}")
         return {"id": row["id"], "project_name": row["project_name"], "business_info": row["business_info"], "token": row["token"], "telegram_id": row["telegram_id"]}
+    logging.info(f"[DB] get_project_by_token: not found")
     return None
 
 async def check_project_name_exists(telegram_id: str, project_name: str) -> bool:
-    """Проверяет, существует ли проект с таким именем у пользователя"""
+    logging.info(f"[DB] check_project_name_exists: telegram_id={telegram_id}, project_name={project_name}")
     query = select(Project).where(and_(Project.telegram_id == telegram_id, Project.project_name == project_name))
     row = await database.fetch_one(query)
-    return row is not None
+    exists = row is not None
+    logging.info(f"[DB] check_project_name_exists: exists={exists}")
+    return exists
 
 async def update_project_name(project_id: str, new_name: str) -> bool:
     """Обновляет название проекта"""

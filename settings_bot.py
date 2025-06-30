@@ -232,6 +232,7 @@ async def projects_with_trial_middleware(message: types.Message, state: FSMConte
 
 @settings_router.message(SettingsStates.waiting_for_project_name)
 async def handle_project_name(message: types.Message, state: FSMContext):
+    logging.info(f"[BOT] waiting_for_project_name: user={message.from_user.id}, text={message.text}")
     # Проверяем команды через универсальную функцию
     if await handle_command_in_state(message, state):
         return
@@ -249,6 +250,7 @@ async def handle_project_name(message: types.Message, state: FSMContext):
 
 @settings_router.message(SettingsStates.waiting_for_token)
 async def handle_token(message: types.Message, state: FSMContext):
+    logging.info(f"[BOT] waiting_for_token: user={message.from_user.id}, text={message.text}")
     # Проверяем команды через универсальную функцию
     if await handle_command_in_state(message, state):
         return
@@ -314,6 +316,7 @@ async def get_text_from_message(message, bot, max_length=4096) -> str:
 
 @settings_router.message(SettingsStates.waiting_for_business_file)
 async def handle_business_file(message: types.Message, state: FSMContext):
+    logging.info(f"[BOT] waiting_for_business_file: user={message.from_user.id}")
     if message.text and await handle_command_in_state(message, state):
         return
     logger.info(f"Business data received from user {message.from_user.id}")
@@ -403,7 +406,7 @@ async def handle_projects_command(message: types.Message, state: FSMContext, tel
 
 @settings_router.callback_query(lambda c: c.data.startswith('project_'))
 async def handle_project_selection(callback_query: types.CallbackQuery, state: FSMContext):
-    """Обрабатывает выбор проекта"""
+    logging.info(f"[BOT] handle_project_selection: user={callback_query.from_user.id}, data={callback_query.data}")
     project_id = callback_query.data.replace('project_', '')
     logger.info(f"Project selected: {project_id}")
     try:
@@ -445,12 +448,13 @@ async def handle_back_to_projects(callback_query: types.CallbackQuery, state: FS
 
 @settings_router.callback_query(lambda c: c.data == "rename_project")
 async def handle_rename_project(callback_query: types.CallbackQuery, state: FSMContext):
-    """Запрашивает новое название проекта"""
+    logging.info(f"[BOT] handle_rename_project: user={callback_query.from_user.id}")
     await callback_query.message.edit_text("Введите новое название проекта:")
     await state.set_state(SettingsStates.waiting_for_new_project_name)
 
 @settings_router.message(SettingsStates.waiting_for_new_project_name)
 async def handle_new_project_name(message: types.Message, state: FSMContext):
+    logging.info(f"[BOT] waiting_for_new_project_name: user={message.from_user.id}, text={message.text}")
     # Проверяем команды через универсальную функцию
     if await handle_command_in_state(message, state):
         return
@@ -480,6 +484,7 @@ async def handle_new_project_name(message: types.Message, state: FSMContext):
 
 @settings_router.callback_query(lambda c: c.data == "add_data")
 async def handle_add_data(callback_query: types.CallbackQuery, state: FSMContext):
+    logging.info(f"[BOT] handle_add_data: user={callback_query.from_user.id}")
     await callback_query.message.edit_text(
         "Отправьте дополнительные данные о бизнесе одним из способов:\n"
         "1️⃣ Загрузите файл (txt, docx, pdf)\n"
@@ -490,6 +495,7 @@ async def handle_add_data(callback_query: types.CallbackQuery, state: FSMContext
 
 @settings_router.message(SettingsStates.waiting_for_additional_data_file)
 async def handle_additional_data_file(message: types.Message, state: FSMContext):
+    logging.info(f"[BOT] waiting_for_additional_data_file: user={message.from_user.id}")
     if message.text and await handle_command_in_state(message, state):
         return
     t0 = time.monotonic()
@@ -539,6 +545,7 @@ async def handle_additional_data_file(message: types.Message, state: FSMContext)
 
 @settings_router.callback_query(lambda c: c.data == "change_data")
 async def handle_change_data(callback_query: types.CallbackQuery, state: FSMContext):
+    logging.info(f"[BOT] handle_change_data: user={callback_query.from_user.id}")
     await callback_query.message.edit_text(
         "Отправьте новые данные о бизнесе одним из способов:\n"
         "1️⃣ Загрузите файл (txt, docx, pdf)\n"
@@ -550,6 +557,7 @@ async def handle_change_data(callback_query: types.CallbackQuery, state: FSMCont
 
 @settings_router.message(SettingsStates.waiting_for_new_data_file)
 async def handle_new_data_file(message: types.Message, state: FSMContext):
+    logging.info(f"[BOT] waiting_for_new_data_file: user={message.from_user.id}")
     if message.text and await handle_command_in_state(message, state):
         return
     t0 = time.monotonic()
@@ -599,6 +607,7 @@ async def handle_new_data_file(message: types.Message, state: FSMContext):
 
 @settings_router.callback_query(lambda c: c.data == "delete_project")
 async def handle_delete_project_request(callback_query: types.CallbackQuery, state: FSMContext):
+    logging.info(f"[BOT] handle_delete_project_request: user={callback_query.from_user.id}")
     """Запрашивает подтверждение удаления проекта"""
     data = await state.get_data()
     project = data.get("selected_project")
@@ -617,6 +626,7 @@ async def handle_delete_project_request(callback_query: types.CallbackQuery, sta
 
 @settings_router.callback_query(lambda c: c.data == "cancel_delete")
 async def handle_cancel_delete(callback_query: types.CallbackQuery, state: FSMContext):
+    logging.info(f"[BOT] handle_cancel_delete: user={callback_query.from_user.id}")
     """Отменяет удаление проекта"""
     data = await state.get_data()
     project = data.get("selected_project")
@@ -637,6 +647,7 @@ async def handle_cancel_delete(callback_query: types.CallbackQuery, state: FSMCo
 
 @settings_router.callback_query(lambda c: c.data == "confirm_delete")
 async def handle_confirm_delete(callback_query: types.CallbackQuery, state: FSMContext):
+    logging.info(f"[BOT] handle_confirm_delete: user={callback_query.from_user.id}")
     """Подтверждает удаление проекта"""
     try:
         data = await state.get_data()
@@ -673,6 +684,7 @@ async def handle_confirm_delete(callback_query: types.CallbackQuery, state: FSMC
 
 @settings_router.message()
 async def handle_any_message(message: types.Message, state: FSMContext):
+    logging.info(f"[BOT] handle_any_message: user={message.from_user.id}, text={message.text}")
     """Обрабатывает любые сообщения, которые не являются командами"""
     # Проверяем, есть ли активное состояние
     current_state = await state.get_state()
@@ -933,11 +945,13 @@ async def handle_feedback_rating(callback_query: types.CallbackQuery, state: FSM
 
 @settings_router.callback_query(lambda c: c.data == "change_token")
 async def handle_change_token(callback_query: types.CallbackQuery, state: FSMContext):
+    logging.info(f"[BOT] handle_change_token: user={callback_query.from_user.id}")
     await callback_query.message.edit_text("Введите новый API токен для этого проекта:")
     await state.set_state(SettingsStates.waiting_for_new_token)
 
 @settings_router.message(SettingsStates.waiting_for_new_token)
 async def handle_new_token(message: types.Message, state: FSMContext):
+    logging.info(f"[BOT] waiting_for_new_token: user={message.from_user.id}, text={message.text}")
     if await handle_command_in_state(message, state):
         return
     from database import update_project_token, get_project_by_token

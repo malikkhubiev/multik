@@ -31,8 +31,11 @@ def clear_dispatcher_cache(token: str):
     if token in bot_dispatchers:
         del bot_dispatchers[token]
         logging.info(f"[ASKING_BOT] Cleared dispatcher cache for token: {token}")
+    else:
+        logging.info(f"[ASKING_BOT] No dispatcher cache to clear for token: {token}")
 
 async def get_or_create_dispatcher(token: str, business_info: str):
+    logging.info(f"[ASKING_BOT] get_or_create_dispatcher: token={token}")
     # Проверяем, есть ли уже диспетчер с этим токеном
     if token in bot_dispatchers:
         # Если есть, но business_info изменился, очищаем кэш
@@ -60,6 +63,7 @@ async def get_or_create_dispatcher(token: str, business_info: str):
     async def handle_question(message: types.Message):
         user_id = message.from_user.id
         text = message.text
+        logging.info(f"[ASKING_BOT] handle_question: user_id={user_id}, text={text}")
         user = await get_user_by_id(str(user_id))
         is_trial = user and not user['paid']
         is_paid = user and user['paid']

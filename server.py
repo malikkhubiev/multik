@@ -51,6 +51,7 @@ async def super():
 
 @app.get("/stats")
 async def get_stats(request: Request):
+    logging.info(f"[API] /stats called from {request.client.host if hasattr(request, 'client') else 'unknown'}")
     # Общее количество пользователей
     total_users = await database.fetch_val(func.count(User.telegram_id).select())
     # Новые пользователи за сегодня
@@ -118,6 +119,7 @@ async def get_stats(request: Request):
         "activity_rate": activity_rate,
         "retention": retention
     }
+    logging.info(f"[API] /stats: total_users={total_users}, dau={dau}, total_messages={total_messages}")
     # Форматируем значения для HTML (None -> '—')
     avg_msg_per_user_str = f"{avg_msg_per_user:.2f}" if avg_msg_per_user is not None else "—"
     avg_response_time_str = f"{avg_response_time:.2f} сек" if avg_response_time is not None else "—"
@@ -129,6 +131,7 @@ async def get_stats(request: Request):
     retention_str = f"{retention:.1f}%" if retention is not None else "—"
     conversion_str = f"{conversion:.1f}%" if conversion is not None else "—"
     if "text/html" in request.headers.get("accept", ""):
+        logging.info("[API] /stats: returning HTML page")
         # --- Plotly графики ---
         # 1. DAU по дням (за последние 14 дней)
         from sqlalchemy import desc
@@ -250,7 +253,9 @@ async def get_stats(request: Request):
         </body></html>
         """
         return HTMLResponse(content=html)
-    return stats
+    else:
+        logging.info("[API] /stats: returning JSON")
+        return stats
 
 @app.get("/feedbacks")
 async def get_feedbacks_api():

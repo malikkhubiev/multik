@@ -20,13 +20,13 @@ def exception_handler(func):
     @wraps(func)
     async def wrapper(*args, **kwargs):
         try:
-            logging.info("inside wrapper of exception handler")
+            logging.info(f"[UTILS] exception_handler: calling {func.__name__}")
             return await func(*args, **kwargs)
         except HTTPException as e:
-            logging.error(f"HTTP error: {e.detail}")
+            logging.error(f"[UTILS] HTTP error: {e.detail}")
             return JSONResponse({"status": "error", "message": e.detail}, status_code=e.status_code)
         except Exception as e:
-            logging.error(f"Unexpected error: {e}")
+            logging.error(f"[UTILS] Unexpected error: {e}")
             return JSONResponse({"status": "error", "message": "Internal server error"}, status_code=500)
     return wrapper
 
