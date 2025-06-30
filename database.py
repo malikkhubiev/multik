@@ -282,3 +282,18 @@ async def get_payments():
     query = select(Payment)
     rows = await database.fetch_all(query)
     return [dict(r) for r in rows]
+
+async def update_project_token(project_id: str, new_token: str) -> bool:
+    """Обновляет токен проекта, если он уникален"""
+    try:
+        from sqlalchemy import update
+        # Проверяем, существует ли проект с таким токеном
+        existing = await get_project_by_token(new_token)
+        if existing and existing["id"] != project_id:
+            raise ValueError(f"Проект с таким токеном уже существует")
+        query = update(Project).where(Project.id == project_id).values(token=new_token)
+        await database.execute(query)
+        return True
+    except Exception as e:
+        logger.error(f"Error updating project token: {e}")
+        return False

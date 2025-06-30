@@ -5,7 +5,7 @@ from aiogram import Router, Dispatcher
 from aiogram.filters import Command
 import os
 from config import API_URL, SERVER_URL, DEEPSEEK_API_KEY, TRIAL_DAYS, TRIAL_PROJECTS, PAID_PROJECTS, PAYMENT_AMOUNT, PAYMENT_CARD_NUMBER, MAIN_TELEGRAM_ID
-from database import create_project, get_project_by_id, create_user, get_projects_by_user, update_project_name, update_project_business_info, append_project_business_info, delete_project, get_project_by_token, check_project_name_exists, get_user_by_id, get_users_with_expired_trial, delete_all_projects_for_user, set_user_paid, get_user_projects, log_message_stat, add_feedback
+from database import create_project, get_project_by_id, create_user, get_projects_by_user, update_project_name, update_project_business_info, append_project_business_info, delete_project, get_project_by_token, check_project_name_exists, get_user_by_id, get_users_with_expired_trial, delete_all_projects_for_user, set_user_paid, get_user_projects, log_message_stat, add_feedback, update_project_token
 from utils import set_webhook, delete_webhook
 from file_utils import extract_text_from_file, extract_text_from_file_async
 import json
@@ -45,6 +45,7 @@ class SettingsStates(StatesGroup):
     waiting_for_new_data_file = State()
     waiting_for_delete_confirmation = State()
     waiting_for_feedback_text = State()
+    waiting_for_new_token = State()  # <--- новое состояние для смены токена
 
 # Встроенное меню команд
 main_menu = ReplyKeyboardMarkup(
@@ -193,7 +194,33 @@ async def trial_middleware(message: types.Message, state: FSMContext, handler):
 # --- Обработка команд с middleware ---
 @settings_router.message(Command("start"))
 async def start_with_trial_middleware(message: types.Message, state: FSMContext):
-    await trial_middleware(message, state, handle_settings_start)
+    telegram_id = str(message.from_user.id)
+    from database import get_projects_by_user, get_user_by_id
+    user = await get_user_by_id(telegram_id)
+    projects = await get_projects_by_user(telegram_id)
+    is_paid = user and user.get("paid")
+    trial_limit = TRIAL_PROJECTS
+    paid_limit = PAID_PROJECTS
+    if not is_paid and len(projects) >= trial_limit:
+        # Trial limit reached
+        buttons = [
+            [types.KeyboardButton(text="Оплатить")],
+            [types.KeyboardButton(text="Проекты")]
+        ]
+        keyboard = types.ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
+        await message.answer(
+            f"Ваш пробный период ограничен {trial_limit} проектами.\n"
+            f"Чтобы создать до {paid_limit} проектов, оплатите подписку.\n"
+            f"Или вы можете изменить существующий проект под другой бизнес.",
+            reply_markup=keyboard
+        )
+        return
+    # Если лимит не превышен — стандартное приветствие
+    await message.answer(
+        "Добро пожаловать!\n\nВы можете создать новый проект или управлять существующими.",
+        reply_markup=main_menu
+    )
+    await state.clear()
 
 @settings_router.message(Command("help"))
 async def help_with_trial_middleware(message: types.Message, state: FSMContext):
@@ -210,6 +237,12 @@ async def handle_project_name(message: types.Message, state: FSMContext):
         return
     
     logger.info(f"Project name received from user {message.from_user.id}: {message.text}")
+    telegram_id = str(message.from_user.id)
+    from database import check_project_name_exists
+    if await check_project_name_exists(telegram_id, message.text):
+        await message.answer(f"❌ Проект с именем '{message.text}' уже существует. Пожалуйста, выберите другое имя.")
+        await state.clear()
+        return
     await state.update_data(project_name=message.text)
     await message.answer("Теперь введите API токен для Telegram-бота.")
     await state.set_state(SettingsStates.waiting_for_token)
@@ -221,6 +254,11 @@ async def handle_token(message: types.Message, state: FSMContext):
         return
     
     logger.info(f"Token received from user {message.from_user.id}: {message.text}")
+    from database import get_project_by_token
+    if await get_project_by_token(message.text):
+        await message.answer(f"❌ Проект с таким токеном уже существует. Пожалуйста, введите другой токен.")
+        await state.clear()
+        return
     await state.update_data(token=message.text)
     await message.answer(
         "Теперь отправьте информацию о вашем бизнесе одним из способов:\n"
@@ -368,32 +406,28 @@ async def handle_project_selection(callback_query: types.CallbackQuery, state: F
     """Обрабатывает выбор проекта"""
     project_id = callback_query.data.replace('project_', '')
     logger.info(f"Project selected: {project_id}")
-    
     try:
         project = await get_project_by_id(project_id)
         if not project:
             await callback_query.answer("Проект не найден")
             return
-        
         # Сохраняем выбранный проект в состоянии
         await state.update_data(selected_project_id=project_id, selected_project=project)
-        
         # Создаем меню управления проектом
         buttons = [
             [types.InlineKeyboardButton(text="Показать данные", callback_data="show_data")],
             [types.InlineKeyboardButton(text="Переименовать", callback_data="rename_project")],
+            [types.InlineKeyboardButton(text="Изменить токен", callback_data="change_token")],
             [types.InlineKeyboardButton(text="Добавить данные", callback_data="add_data")],
             [types.InlineKeyboardButton(text="Изменить данные", callback_data="change_data")],
             [types.InlineKeyboardButton(text="Удалить проект", callback_data="delete_project")],
             [types.InlineKeyboardButton(text="Назад к списку", callback_data="back_to_projects")]
         ]
         keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
-        
         await callback_query.message.edit_text(
             f"Проект: {project['project_name']}\n\nВыберите действие:",
             reply_markup=keyboard
         )
-        
     except Exception as e:
         logger.error(f"Error in handle_project_selection: {e}")
         await callback_query.answer("Произошла ошибка")
@@ -902,4 +936,32 @@ async def handle_feedback_rating(callback_query: types.CallbackQuery, state: FSM
     await add_feedback(telegram_id, username, feedback_text, is_positive)
     await callback_query.message.answer("Спасибо за ваш отзыв! Он очень важен для нас.")
     await state.clear()
-    await callback_query.answer() 
+    await callback_query.answer()
+
+@settings_router.callback_query(lambda c: c.data == "change_token")
+async def handle_change_token(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.message.edit_text("Введите новый API токен для этого проекта:")
+    await state.set_state(SettingsStates.waiting_for_new_token)
+
+@settings_router.message(SettingsStates.waiting_for_new_token)
+async def handle_new_token(message: types.Message, state: FSMContext):
+    if await handle_command_in_state(message, state):
+        return
+    from database import update_project_token, get_project_by_token
+    data = await state.get_data()
+    project_id = data.get("selected_project_id")
+    if not project_id:
+        await message.answer("Ошибка: проект не выбран")
+        await state.clear()
+        return
+    # Проверка уникальности токена
+    existing = await get_project_by_token(message.text)
+    if existing and existing["id"] != project_id:
+        await message.answer("❌ Проект с таким токеном уже существует. Пожалуйста, введите другой токен.")
+        return
+    success = await update_project_token(project_id, message.text)
+    if success:
+        await message.answer(f"Токен проекта успешно изменён на: {message.text}")
+    else:
+        await message.answer("Ошибка при изменении токена проекта")
+    await state.clear() 
