@@ -111,6 +111,15 @@ def clean_markdown(text: str) -> str:
     
     return text
 
+def clean_business_text(text: str) -> str:
+    """Удаляет лишние пробелы, табы, множественные переносы строк и приводит текст к компактному виду для экономии токенов."""
+    import re
+    text = text.replace('\r', '')
+    text = re.sub(r'[ \t]+', ' ', text)  # заменяем несколько пробелов/табов на один пробел
+    text = re.sub(r'\n+', '\n', text)   # заменяем несколько переносов на один
+    text = text.strip()
+    return text
+
 async def clear_asking_bot_cache(token: str):
     """Очищает кэш asking_bot для указанного токена"""
     try:
@@ -176,76 +185,88 @@ async def handle_token(message: types.Message, state: FSMContext):
     
     logger.info(f"Token received from user {message.from_user.id}: {message.text}")
     await state.update_data(token=message.text)
-    await message.answer("Теперь загрузите файл с информацией о вашем бизнесе (txt, docx, pdf).")
+    await message.answer(
+        "Теперь отправьте информацию о вашем бизнесе одним из способов:\n"
+        "1️⃣ Загрузите файл (txt, docx, pdf)\n"
+        "2️⃣ Просто отправьте текст сообщением\n"
+        "3️⃣ Или отправьте голосовое сообщение (мы преобразуем его в текст)"
+    )
     await state.set_state(SettingsStates.waiting_for_business_file)
+
+async def get_text_from_message(message, bot, max_length=4096) -> str:
+    """Извлекает текст из файла, текста или голосового сообщения. Очищает и ограничивает длину."""
+    text_content = None
+    # 1. Файл
+    if message.document:
+        try:
+            file_info = await bot.get_file(message.document.file_id)
+            file_path = file_info.file_path
+            file_content = await bot.download_file(file_path)
+            filename = message.document.file_name
+            from file_utils import extract_text_from_file_async
+            text_content = await extract_text_from_file_async(filename, file_content.read())
+        except Exception as e:
+            raise RuntimeError(f"Ошибка при обработке файла: {e}")
+    # 2. Текст
+    elif message.text:
+        text_content = message.text
+    # 3. Голосовое сообщение
+    elif message.voice:
+        try:
+            file_info = await bot.get_file(message.voice.file_id)
+            file_path = file_info.file_path
+            file_content = await bot.download_file(file_path)
+            import speech_recognition as sr
+            import tempfile
+            recognizer = sr.Recognizer()
+            with tempfile.NamedTemporaryFile(suffix='.ogg') as temp_audio:
+                temp_audio.write(file_content.read())
+                temp_audio.flush()
+                with sr.AudioFile(temp_audio.name) as source:
+                    audio = recognizer.record(source)
+                text_content = recognizer.recognize_google(audio, language='ru-RU')
+        except Exception as e:
+            raise RuntimeError(f"Ошибка при распознавании голоса: {e}")
+    if not text_content:
+        raise RuntimeError("Пожалуйста, отправьте файл, текст или голосовое сообщение с информацией о бизнесе.")
+    if len(text_content) > max_length:
+        raise ValueError(f"❌ Данные слишком большие!\n\nРазмер: {len(text_content)} символов\nМаксимальный размер: {max_length} символов\n\nПожалуйста, сократите или разделите на части.")
+    return clean_business_text(text_content)
 
 @settings_router.message(SettingsStates.waiting_for_business_file)
 async def handle_business_file(message: types.Message, state: FSMContext):
-    # Проверяем команды через универсальную функцию
     if message.text and await handle_command_in_state(message, state):
         return
-    
-    logger.info(f"Business file received from user {message.from_user.id}")
-    
-    if not message.document:
-        await message.answer("Пожалуйста, загрузите файл с информацией о бизнесе.")
-        return
-    
+    logger.info(f"Business data received from user {message.from_user.id}")
     try:
-        # Скачиваем файл асинхронно
-        file_info = await settings_bot.get_file(message.document.file_id)
-        file_path = file_info.file_path
-        file_content = await settings_bot.download_file(file_path)
-        
-        # Извлекаем текст из файла асинхронно
-        filename = message.document.file_name
-        text_content = await extract_text_from_file_async(filename, file_content.read())
-        
-        # Проверяем размер документа (не более 4000 символов)
-        if len(text_content) > 4000:
-            await message.answer(
-                "❌ Документ слишком большой!\n\n"
-                f"Размер документа: {len(text_content)} символов\n"
-                "Максимальный размер: 4000 символов\n\n"
-                "Пожалуйста, сократите документ или разделите его на части."
-            )
-            await state.clear()
-            return
-        
-        # Обрабатываем через Deepseek асинхронно
-        await message.answer("Обрабатываю информацию о бизнесе...")
-        processed_business_info = await process_business_file_with_deepseek(text_content)
-        
-        # Очищаем от markdown символов
-        processed_business_info = clean_markdown(processed_business_info)
-        
-        # Получаем данные из состояния
-        data = await state.get_data()
-        project_name = data.get("project_name")
-        token = data.get("token")
-        telegram_id = str(message.from_user.id)
-        
-        # Создаем проект и устанавливаем вебхук параллельно
-        try:
-            project_id = await create_project(telegram_id, project_name, processed_business_info, token)
-        except ValueError as e:
-            await message.answer(f"❌ Ошибка: {str(e)}\n\nПожалуйста, выберите другое название для проекта.")
-            await state.clear()
-            return
-        
-        logger.info(f"Перед установкой вебхука: token={token}, project_id={project_id}")
-        
-        # Устанавливаем вебхук асинхронно
-        webhook_result = await set_webhook(token, project_id)
-        if webhook_result.get("ok"):
-            await message.answer(f"Спасибо! Проект создан.\n\nПроект: {project_name}\nТокен: {token}\nВебхук успешно установлен!\n\nБот готов к работе!")
-        else:
-            await message.answer(f"Проект создан, но не удалось установить вебхук: {webhook_result}")
-            
-    except Exception as e:
-        logger.error(f"Error in handle_business_file: {e}")
-        await message.answer(f"Ошибка при обработке файла: {e}")
-    
+        text_content = await get_text_from_message(message, settings_bot)
+    except ValueError as ve:
+        await message.answer(str(ve))
+        await state.clear()
+        return
+    except RuntimeError as re:
+        await message.answer(str(re))
+        await state.clear()
+        return
+    await message.answer("Обрабатываю информацию о бизнесе...")
+    processed_business_info = await process_business_file_with_deepseek(text_content)
+    processed_business_info = clean_markdown(processed_business_info)
+    data = await state.get_data()
+    project_name = data.get("project_name")
+    token = data.get("token")
+    telegram_id = str(message.from_user.id)
+    try:
+        project_id = await create_project(telegram_id, project_name, processed_business_info, token)
+    except ValueError as e:
+        await message.answer(f"❌ Ошибка: {str(e)}\n\nПожалуйста, выберите другое название для проекта.")
+        await state.clear()
+        return
+    logger.info(f"Перед установкой вебхука: token={token}, project_id={project_id}")
+    webhook_result = await set_webhook(token, project_id)
+    if webhook_result.get("ok"):
+        await message.answer(f"Спасибо! Проект создан.\n\nПроект: {project_name}\nТокен: {token}\nВебхук успешно установлен!\n\nБот готов к работе!")
+    else:
+        await message.answer(f"Проект создан, но не удалось установить вебхук: {webhook_result}")
     await state.clear()
 
 @settings_router.message(Command("projects"))
@@ -300,6 +321,7 @@ async def handle_project_selection(callback_query: types.CallbackQuery, state: F
         
         # Создаем меню управления проектом
         buttons = [
+            [types.InlineKeyboardButton(text="Показать данные", callback_data="show_data")],
             [types.InlineKeyboardButton(text="Переименовать", callback_data="rename_project")],
             [types.InlineKeyboardButton(text="Добавить данные", callback_data="add_data")],
             [types.InlineKeyboardButton(text="Изменить данные", callback_data="change_data")],
@@ -359,153 +381,90 @@ async def handle_new_project_name(message: types.Message, state: FSMContext):
 
 @settings_router.callback_query(lambda c: c.data == "add_data")
 async def handle_add_data(callback_query: types.CallbackQuery, state: FSMContext):
-    """Запрашивает файл с дополнительными данными"""
     await callback_query.message.edit_text(
-        "Отправьте файл с дополнительными данными о бизнесе (txt, docx, pdf).\n"
-        "Эти данные будут добавлены к существующей информации."
+        "Отправьте дополнительные данные о бизнесе одним из способов:\n"
+        "1️⃣ Загрузите файл (txt, docx, pdf)\n"
+        "2️⃣ Просто отправьте текст сообщением\n"
+        "3️⃣ Или отправьте голосовое сообщение (мы преобразуем его в текст)"
     )
     await state.set_state(SettingsStates.waiting_for_additional_data_file)
 
 @settings_router.message(SettingsStates.waiting_for_additional_data_file)
 async def handle_additional_data_file(message: types.Message, state: FSMContext):
-    # Проверяем команды через универсальную функцию
     if message.text and await handle_command_in_state(message, state):
         return
-    
-    """Обрабатывает файл с дополнительными данными"""
-    if not message.document:
-        await message.answer("Пожалуйста, загрузите файл с дополнительными данными.")
-        return
-    
     try:
         data = await state.get_data()
         project_id = data.get("selected_project_id")
-        
         if not project_id:
             await message.answer("Ошибка: проект не выбран")
             await state.clear()
             return
-        
-        # Скачиваем файл
-        file_info = await settings_bot.get_file(message.document.file_id)
-        file_path = file_info.file_path
-        file_content = await settings_bot.download_file(file_path)
-        
-        # Извлекаем текст из файла
-        filename = message.document.file_name
-        text_content = await extract_text_from_file_async(filename, file_content.read())
-        
-        # Проверяем размер документа (не более 4000 символов)
-        if len(text_content) > 4000:
-            await message.answer(
-                "❌ Документ слишком большой!\n\n"
-                f"Размер документа: {len(text_content)} символов\n"
-                "Максимальный размер: 4000 символов\n\n"
-                "Пожалуйста, сократите документ или разделите его на части."
-            )
-            await state.clear()
-            return
-        
-        # Обрабатываем через Deepseek
-        await message.answer("Обрабатываю дополнительные данные...")
-        processed_additional_info = await process_business_file_with_deepseek(text_content)
-        
-        # Очищаем от markdown символов
-        processed_additional_info = clean_markdown(processed_additional_info)
-        
-        # Добавляем к существующей информации
-        success = await append_project_business_info(project_id, processed_additional_info)
-        
-        if success:
-            # Очищаем кэш asking_bot
-            project = await get_project_by_id(project_id)
-            if project:
-                await clear_asking_bot_cache(project["token"])
-            await message.answer("Дополнительные данные успешно добавлены к проекту!")
-        else:
-            await message.answer("Ошибка при добавлении дополнительных данных")
-        
+        text_content = await get_text_from_message(message, settings_bot)
+    except ValueError as ve:
+        await message.answer(str(ve))
         await state.clear()
-        
-    except Exception as e:
-        logger.error(f"Error in handle_additional_data_file: {e}")
-        await message.answer(f"Ошибка при обработке файла: {e}")
+        return
+    except RuntimeError as re:
+        await message.answer(str(re))
         await state.clear()
+        return
+    await message.answer("Обрабатываю дополнительные данные...")
+    processed_additional_info = await process_business_file_with_deepseek(text_content)
+    processed_additional_info = clean_markdown(processed_additional_info)
+    success = await append_project_business_info(project_id, processed_additional_info)
+    if success:
+        project = await get_project_by_id(project_id)
+        if project:
+            await clear_asking_bot_cache(project["token"])
+        await message.answer("Дополнительные данные успешно добавлены к проекту!")
+    else:
+        await message.answer("Ошибка при добавлении дополнительных данных")
+    await state.clear()
 
 @settings_router.callback_query(lambda c: c.data == "change_data")
 async def handle_change_data(callback_query: types.CallbackQuery, state: FSMContext):
-    """Запрашивает файл с новыми данными"""
     await callback_query.message.edit_text(
-        "Отправьте файл с новыми данными о бизнесе (txt, docx, pdf).\n"
+        "Отправьте новые данные о бизнесе одним из способов:\n"
+        "1️⃣ Загрузите файл (txt, docx, pdf)\n"
+        "2️⃣ Просто отправьте текст сообщением\n"
+        "3️⃣ Или отправьте голосовое сообщение (мы преобразуем его в текст)\n"
         "Старые данные будут полностью заменены новыми."
     )
     await state.set_state(SettingsStates.waiting_for_new_data_file)
 
 @settings_router.message(SettingsStates.waiting_for_new_data_file)
 async def handle_new_data_file(message: types.Message, state: FSMContext):
-    # Проверяем команды через универсальную функцию
     if message.text and await handle_command_in_state(message, state):
         return
-    
-    """Обрабатывает файл с новыми данными"""
-    if not message.document:
-        await message.answer("Пожалуйста, загрузите файл с новыми данными.")
-        return
-    
     try:
         data = await state.get_data()
         project_id = data.get("selected_project_id")
-        
         if not project_id:
             await message.answer("Ошибка: проект не выбран")
             await state.clear()
             return
-        
-        # Скачиваем файл
-        file_info = await settings_bot.get_file(message.document.file_id)
-        file_path = file_info.file_path
-        file_content = await settings_bot.download_file(file_path)
-        
-        # Извлекаем текст из файла
-        filename = message.document.file_name
-        text_content = await extract_text_from_file_async(filename, file_content.read())
-        
-        # Проверяем размер документа (не более 4000 символов)
-        if len(text_content) > 4000:
-            await message.answer(
-                "❌ Документ слишком большой!\n\n"
-                f"Размер документа: {len(text_content)} символов\n"
-                "Максимальный размер: 4000 символов\n\n"
-                "Пожалуйста, сократите документ или разделите его на части."
-            )
-            await state.clear()
-            return
-        
-        # Обрабатываем через Deepseek
-        await message.answer("Обрабатываю новые данные...")
-        processed_new_info = await process_business_file_with_deepseek(text_content)
-        
-        # Очищаем от markdown символов
-        processed_new_info = clean_markdown(processed_new_info)
-        
-        # Заменяем информацию
-        success = await update_project_business_info(project_id, processed_new_info)
-        
-        if success:
-            # Очищаем кэш asking_bot
-            project = await get_project_by_id(project_id)
-            if project:
-                await clear_asking_bot_cache(project["token"])
-            await message.answer("Данные проекта успешно обновлены!")
-        else:
-            await message.answer("Ошибка при обновлении данных проекта")
-        
+        text_content = await get_text_from_message(message, settings_bot)
+    except ValueError as ve:
+        await message.answer(str(ve))
         await state.clear()
-        
-    except Exception as e:
-        logger.error(f"Error in handle_new_data_file: {e}")
-        await message.answer(f"Ошибка при обработке файла: {e}")
+        return
+    except RuntimeError as re:
+        await message.answer(str(re))
         await state.clear()
+        return
+    await message.answer("Обрабатываю новые данные...")
+    processed_new_info = await process_business_file_with_deepseek(text_content)
+    processed_new_info = clean_markdown(processed_new_info)
+    success = await update_project_business_info(project_id, processed_new_info)
+    if success:
+        project = await get_project_by_id(project_id)
+        if project:
+            await clear_asking_bot_cache(project["token"])
+        await message.answer("Данные проекта успешно обновлены!")
+    else:
+        await message.answer("Ошибка при обновлении данных проекта")
+    await state.clear()
 
 @settings_router.callback_query(lambda c: c.data == "delete_project")
 async def handle_delete_project_request(callback_query: types.CallbackQuery, state: FSMContext):
@@ -660,4 +619,22 @@ async def handle_command_in_state(message: types.Message, state: FSMContext) -> 
             await message.answer("Неизвестная команда. Используйте /help для справки.")
         
         return True
-    return False 
+    return False
+
+@settings_router.callback_query(lambda c: c.data == "show_data")
+async def handle_show_data(callback_query: types.CallbackQuery, state: FSMContext):
+    """Показывает бизнес-данные выбранного проекта"""
+    data = await state.get_data()
+    project = data.get("selected_project")
+    if not project:
+        await callback_query.answer("Проект не выбран", show_alert=True)
+        return
+    business_info = project.get("business_info")
+    if not business_info:
+        await callback_query.message.answer("Нет данных о бизнесе для этого проекта.")
+    else:
+        # Если данных много, делим на части по 4096 символов (лимит Telegram)
+        max_len = 4096
+        for i in range(0, len(business_info), max_len):
+            await callback_query.message.answer(business_info[i:i+max_len])
+    await callback_query.answer() 
