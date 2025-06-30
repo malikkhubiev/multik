@@ -17,6 +17,7 @@ import httpx
 import asyncio
 from pydub import AudioSegment
 import time
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 router = APIRouter()
 
@@ -42,6 +43,14 @@ class SettingsStates(StatesGroup):
     waiting_for_additional_data_file = State()
     waiting_for_new_data_file = State()
     waiting_for_delete_confirmation = State()
+
+# Встроенное меню команд
+main_menu = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="/start"), KeyboardButton(text="/projects"), KeyboardButton(text="/help")]
+    ],
+    resize_keyboard=True
+)
 
 async def process_business_file_with_deepseek(file_content: str) -> str:
     """Обрабатывает файл с данными о бизнесе через Deepseek для создания компактной информации"""
@@ -139,7 +148,7 @@ async def handle_settings_start(message: types.Message, state: FSMContext):
         # Сбрасываем состояние перед началом
         await state.clear()
         await create_user(str(message.from_user.id))
-        await message.answer("Добро пожаловать в настройки! Введите имя вашего проекта.")
+        await message.answer("Добро пожаловать в настройки! Введите имя вашего проекта.", reply_markup=main_menu)
         await state.set_state(SettingsStates.waiting_for_project_name)
         logger.info(f"Sent welcome message to user {message.from_user.id}")
     except Exception as e:
@@ -166,7 +175,7 @@ async def handle_help_command(message: types.Message, state: FSMContext):
 💡 Для начала работы используйте /start
 💡 Для управления проектами используйте /projects
     """
-    await message.answer(help_text)
+    await message.answer(help_text, reply_markup=main_menu)
 
 @settings_router.message(SettingsStates.waiting_for_project_name)
 async def handle_project_name(message: types.Message, state: FSMContext):
@@ -258,12 +267,17 @@ async def handle_business_file(message: types.Message, state: FSMContext):
         await message.answer(str(re))
         await state.clear()
         return
-    logger.info("[LOAD] Отправка данных в Deepseek...")
-    t2 = time.monotonic()
-    await message.answer("Обрабатываю информацию о бизнесе...")
-    processed_business_info = await process_business_file_with_deepseek(text_content)
-    logger.info(f"[LOAD] Deepseek завершён за {time.monotonic() - t2:.2f} сек")
-    processed_business_info = clean_markdown(processed_business_info)
+    logger.info(f"[LOAD] Длина бизнес-данных: {len(text_content)} символов")
+    if len(text_content) > 1000:
+        logger.info("[LOAD] Отправка данных в Deepseek...")
+        t2 = time.monotonic()
+        await message.answer("Обрабатываю информацию о бизнесе...")
+        processed_business_info = await process_business_file_with_deepseek(text_content)
+        logger.info(f"[LOAD] Deepseek завершён за {time.monotonic() - t2:.2f} сек")
+        processed_business_info = clean_markdown(processed_business_info)
+    else:
+        logger.info("[LOAD] Deepseek не используется, сохраняем текст как есть.")
+        processed_business_info = text_content
     data = await state.get_data()
     project_name = data.get("project_name")
     token = data.get("token")
@@ -301,7 +315,7 @@ async def handle_projects_command(message: types.Message, state: FSMContext, tel
         await state.update_data(selected_project_id=None, selected_project=None)
         projects = await get_projects_by_user(telegram_id)
         if not projects:
-            await message.answer("У вас пока нет проектов. Создайте первый проект командой /start")
+            await message.answer("У вас пока нет проектов. Создайте первый проект командой /start", reply_markup=main_menu)
             return
         # 1. Сначала формируем список кнопок
         buttons = []
@@ -315,12 +329,13 @@ async def handle_projects_command(message: types.Message, state: FSMContext, tel
         # 2. Только потом создаём клавиатуру (если есть кнопки)
         if buttons:
             keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
-            await message.answer("Выберите проект для управления:", reply_markup=keyboard)
+            await message.answer("Выберите проект для управления:", reply_markup=main_menu)
+            await message.answer("Список проектов:", reply_markup=keyboard)
         else:
-            await message.answer("Нет доступных проектов.")
+            await message.answer("Нет доступных проектов.", reply_markup=main_menu)
     except Exception as e:
         logger.error(f"Error in handle_projects_command: {e}")
-        await message.answer("Произошла ошибка при получении списка проектов")
+        await message.answer("Произошла ошибка при получении списка проектов", reply_markup=main_menu)
 
 @settings_router.callback_query(lambda c: c.data.startswith('project_'))
 async def handle_project_selection(callback_query: types.CallbackQuery, state: FSMContext):
@@ -437,12 +452,17 @@ async def handle_additional_data_file(message: types.Message, state: FSMContext)
         await message.answer(str(re))
         await state.clear()
         return
-    logger.info("[ADD] Отправка данных в Deepseek...")
-    t2 = time.monotonic()
-    await message.answer("Обрабатываю дополнительные данные...")
-    processed_additional_info = await process_business_file_with_deepseek(text_content)
-    logger.info(f"[ADD] Deepseek завершён за {time.monotonic() - t2:.2f} сек")
-    processed_additional_info = clean_markdown(processed_additional_info)
+    logger.info(f"[ADD] Длина бизнес-данных: {len(text_content)} символов")
+    if len(text_content) > 1000:
+        logger.info("[ADD] Отправка данных в Deepseek...")
+        t2 = time.monotonic()
+        await message.answer("Обрабатываю дополнительные данные...")
+        processed_additional_info = await process_business_file_with_deepseek(text_content)
+        logger.info(f"[ADD] Deepseek завершён за {time.monotonic() - t2:.2f} сек")
+        processed_additional_info = clean_markdown(processed_additional_info)
+    else:
+        logger.info("[ADD] Deepseek не используется, сохраняем текст как есть.")
+        processed_additional_info = text_content
     logger.info("[ADD] Запись в БД...")
     t3 = time.monotonic()
     success = await append_project_business_info(project_id, processed_additional_info)
@@ -492,12 +512,17 @@ async def handle_new_data_file(message: types.Message, state: FSMContext):
         await message.answer(str(re))
         await state.clear()
         return
-    logger.info("[REPLACE] Отправка данных в Deepseek...")
-    t2 = time.monotonic()
-    await message.answer("Обрабатываю новые данные...")
-    processed_new_info = await process_business_file_with_deepseek(text_content)
-    logger.info(f"[REPLACE] Deepseek завершён за {time.monotonic() - t2:.2f} сек")
-    processed_new_info = clean_markdown(processed_new_info)
+    logger.info(f"[REPLACE] Длина бизнес-данных: {len(text_content)} символов")
+    if len(text_content) > 1000:
+        logger.info("[REPLACE] Отправка данных в Deepseek...")
+        t2 = time.monotonic()
+        await message.answer("Обрабатываю новые данные...")
+        processed_new_info = await process_business_file_with_deepseek(text_content)
+        logger.info(f"[REPLACE] Deepseek завершён за {time.monotonic() - t2:.2f} сек")
+        processed_new_info = clean_markdown(processed_new_info)
+    else:
+        logger.info("[REPLACE] Deepseek не используется, сохраняем текст как есть.")
+        processed_new_info = text_content
     logger.info("[REPLACE] Запись в БД...")
     t3 = time.monotonic()
     success = await update_project_business_info(project_id, processed_new_info)
@@ -600,7 +625,8 @@ async def handle_any_message(message: types.Message, state: FSMContext):
             "Доступные команды:\n"
             "/start - Создать новый проект\n"
             "/projects - Управление проектами\n"
-            "/help - Справка"
+            "/help - Справка",
+            reply_markup=main_menu
         )
     else:
         # Если нет активного состояния, показываем справку
@@ -608,7 +634,8 @@ async def handle_any_message(message: types.Message, state: FSMContext):
             "🤖 Используйте команды для работы с ботом:\n\n"
             "/start - Создать новый проект\n"
             "/projects - Управление существующими проектами\n"
-            "/help - Показать справку"
+            "/help - Показать справку",
+            reply_markup=main_menu
         )
 
 @router.post(SETTINGS_WEBHOOK_PATH)
