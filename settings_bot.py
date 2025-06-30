@@ -216,11 +216,12 @@ async def start_with_trial_middleware(message: types.Message, state: FSMContext)
         )
         return
     # Если лимит не превышен — стандартное приветствие
+    await state.clear()  # Сброс перед началом нового сценария
     await message.answer(
-        "Добро пожаловать!\n\nВы можете создать новый проект или управлять существующими.",
+        "Добро пожаловать!\n\nВведите имя вашего проекта:",
         reply_markup=main_menu
     )
-    await state.clear()
+    await state.set_state(SettingsStates.waiting_for_project_name)
 
 @settings_router.message(Command("help"))
 async def help_with_trial_middleware(message: types.Message, state: FSMContext):
