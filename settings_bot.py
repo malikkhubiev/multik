@@ -203,11 +203,12 @@ async def start_with_trial_middleware(message: types.Message, state: FSMContext)
     paid_limit = PAID_PROJECTS
     if not is_paid and len(projects) >= trial_limit:
         # Trial limit reached
-        buttons = [
-            [types.KeyboardButton(text="Оплатить")],
-            [types.KeyboardButton(text="Проекты")]
-        ]
-        keyboard = types.ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="Оплатить", callback_data="pay_trial")],
+                [InlineKeyboardButton(text="Проекты", callback_data="projects_menu")]
+            ]
+        )
         await message.answer(
             f"Ваш пробный период ограничен {trial_limit} проектами.\n"
             f"Чтобы создать до {paid_limit} проектов, оплатите подписку.\n"
@@ -770,6 +771,11 @@ async def handle_pay_trial(callback_query: types.CallbackQuery, state: FSMContex
     await callback_query.message.answer(
         f"Для оплаты переведите {PAYMENT_AMOUNT} рублей на карту: {PAYMENT_CARD_NUMBER}\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
     )
+    await callback_query.answer()
+
+@settings_router.callback_query(lambda c: c.data == "projects_menu")
+async def handle_projects_menu(callback_query: types.CallbackQuery, state: FSMContext):
+    await handle_projects_command(callback_query.message, state)
     await callback_query.answer()
 
 @settings_router.callback_query(lambda c: c.data == "delete_trial_projects")
