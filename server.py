@@ -118,6 +118,16 @@ async def get_stats(request: Request):
         "activity_rate": activity_rate,
         "retention": retention
     }
+    # Форматируем значения для HTML (None -> '—')
+    avg_msg_per_user_str = f"{avg_msg_per_user:.2f}" if avg_msg_per_user is not None else "—"
+    avg_response_time_str = f"{avg_response_time:.2f} сек" if avg_response_time is not None else "—"
+    arpu_str = f"{arpu:.2f} ₽" if arpu is not None else "—"
+    ltv_str = f"{ltv:.2f} ₽" if ltv is not None else "—"
+    total_revenue_str = f"{total_revenue:.2f} ₽" if total_revenue is not None else "—"
+    avg_bots_per_user_str = f"{avg_bots_per_user:.2f}" if avg_bots_per_user is not None else "—"
+    activity_rate_str = f"{activity_rate:.1f}%" if activity_rate is not None else "—"
+    retention_str = f"{retention:.1f}%" if retention is not None else "—"
+    conversion_str = f"{conversion:.1f}%" if conversion is not None else "—"
     if "text/html" in request.headers.get("accept", ""):
         # --- Plotly графики ---
         # 1. DAU по дням (за последние 14 дней)
@@ -212,16 +222,16 @@ async def get_stats(request: Request):
                 <tr><td>🆕 Новых сегодня</td><td>{new_users_today}</td></tr>
                 <tr><td>🗓️ DAU (уникальных за сегодня)</td><td>{dau}</td></tr>
                 <tr><td>💬 Всего сообщений</td><td>{total_messages}</td></tr>
-                <tr><td>💬 Среднее сообщений на пользователя</td><td>{avg_msg_per_user:.2f}</td></tr>
+                <tr><td>💬 Среднее сообщений на пользователя</td><td>{avg_msg_per_user_str}</td></tr>
                 <tr><td>⏰ Пиковые часы активности</td><td>{', '.join([f'{h}:00 ({c} сообщений)' for h, c in peak_hours]) if peak_hours else 'Нет данных'}</td></tr>
-                <tr><td>⏱️ Среднее время ответа</td><td>{avg_response_time:.2f} сек</td></tr>
-                <tr><td>🔄 Конверсия из триала в оплату</td><td>{conversion:.1f}%</td></tr>
-                <tr><td>🤖 Среднее число проектов на пользователя</td><td>{avg_bots_per_user:.2f}</td></tr>
-                <tr><td>💸 Общая выручка</td><td>{total_revenue:.2f} ₽</td></tr>
-                <tr><td>💰 ARPU (средний доход на пользователя)</td><td>{arpu:.2f} ₽</td></tr>
-                <tr><td>📈 LTV (пожизненная ценность клиента)</td><td>{ltv:.2f} ₽</td></tr>
-                <tr><td>🔥 Activity Rate</td><td>{activity_rate:.1f}%</td></tr>
-                <tr><td>🔁 Retention (удержание)</td><td>{retention:.1f}%</td></tr>
+                <tr><td>⏱️ Среднее время ответа</td><td>{avg_response_time_str}</td></tr>
+                <tr><td>🔄 Конверсия из триала в оплату</td><td>{conversion_str}</td></tr>
+                <tr><td>🤖 Среднее число проектов на пользователя</td><td>{avg_bots_per_user_str}</td></tr>
+                <tr><td>💸 Общая выручка</td><td>{total_revenue_str}</td></tr>
+                <tr><td>💰 ARPU (средний доход на пользователя)</td><td>{arpu_str}</td></tr>
+                <tr><td>📈 LTV (пожизненная ценность клиента)</td><td>{ltv_str}</td></tr>
+                <tr><td>🔥 Activity Rate</td><td>{activity_rate_str}</td></tr>
+                <tr><td>🔁 Retention (удержание)</td><td>{retention_str}</td></tr>
             </table>
             <div class='desc' style='margin-top:24px;'>
                 <b>Пояснения:</b><br>
