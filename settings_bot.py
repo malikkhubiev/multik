@@ -828,6 +828,30 @@ async def handle_payment_check_document(message: types.Message, state: FSMContex
         logger.error(f"[PAYMENT] Ошибка при пересылке чека-документа админу: {e}")
         await message.answer("Ошибка при отправке чека админу. Попробуйте позже или свяжитесь с поддержкой.")
 
+@settings_router.message(lambda m: m.document)
+async def handle_payment_check_document_any(message: types.Message, state: FSMContext):
+    telegram_id = str(message.from_user.id)
+    logger.info(f"[PAYMENT] Получен документ от пользователя {telegram_id} (file_name={message.document.file_name}). MAIN_TELEGRAM_ID={MAIN_TELEGRAM_ID}")
+    try:
+        await message.forward(MAIN_TELEGRAM_ID)
+        logger.info(f"[PAYMENT] Документ успешно отправлен админу (MAIN_TELEGRAM_ID={MAIN_TELEGRAM_ID})")
+        await message.answer("Документ отправлен на проверку. Ожидайте подтверждения оплаты.")
+    except Exception as e:
+        logger.error(f"[PAYMENT] Ошибка при пересылке документа админу: {e}")
+        await message.answer("Ошибка при отправке документа админу. Попробуйте позже или свяжитесь с поддержкой.")
+
+@settings_router.message(lambda m: m.photo)
+async def handle_payment_check_photo_any(message: types.Message, state: FSMContext):
+    telegram_id = str(message.from_user.id)
+    logger.info(f"[PAYMENT] Получено фото от пользователя {telegram_id}. MAIN_TELEGRAM_ID={MAIN_TELEGRAM_ID}")
+    try:
+        await message.forward(MAIN_TELEGRAM_ID)
+        logger.info(f"[PAYMENT] Фото успешно отправлено админу (MAIN_TELEGRAM_ID={MAIN_TELEGRAM_ID})")
+        await message.answer("Фото отправлено на проверку. Ожидайте подтверждения оплаты.")
+    except Exception as e:
+        logger.error(f"[PAYMENT] Ошибка при пересылке фото админу: {e}")
+        await message.answer("Ошибка при отправке фото админу. Попробуйте позже или свяжитесь с поддержкой.")
+
 async def handle_settings_start(message: types.Message, state: FSMContext):
     logger.info(f"/start received from user {message.from_user.id}")
     try:
