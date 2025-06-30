@@ -16,6 +16,7 @@ from settings_bot import (
 )
 import asyncio
 import logging
+from sqlalchemy import select
 
 @app.on_event("startup")
 async def startup_event():
@@ -64,10 +65,11 @@ async def get_stats():
     # Среднее сообщений на пользователя
     avg_msg_per_user = (total_messages / total_users) if total_users else 0
     # Пиковые часы активности
-    rows = await database.fetch_all(
+    hour_select = select(
         func.strftime('%H', MessageStat.datetime).label('hour'),
         func.count(MessageStat.id).label('cnt')
-    )
+    ).group_by(func.strftime('%H', MessageStat.datetime))
+    rows = await database.fetch_all(hour_select)
     hour_counts = {}
     for r in rows:
         hour = r[0]

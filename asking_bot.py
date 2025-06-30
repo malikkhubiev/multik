@@ -9,6 +9,7 @@ import httpx
 import asyncio
 from config import DEEPSEEK_API_KEY
 import time
+from settings_bot import clean_markdown
 
 router = APIRouter()
 
@@ -92,6 +93,7 @@ async def get_or_create_dispatcher(token: str, business_info: str):
                 data = resp.json()
             logging.info(f"[ASKING] Deepseek ответ получен за {time.monotonic() - t2:.2f} сек")
             content = data["choices"][0]["message"]["content"]
+            content = clean_markdown(content)
             logging.info(f"[ASKING_BOT] handle_question: deepseek response='{content}'")
             t3 = time.monotonic()
             await message.answer(content)
