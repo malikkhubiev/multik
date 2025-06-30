@@ -195,3 +195,14 @@ async def delete_all_projects_for_user(telegram_id: str):
     from sqlalchemy import delete
     query = delete(Project).where(Project.telegram_id == telegram_id)
     await database.execute(query)
+
+async def get_user_projects(telegram_id: str) -> list:
+    query = select(Project).where(Project.telegram_id == telegram_id)
+    rows = await database.fetch_all(query)
+    return [{
+        "id": r["id"],
+        "project_name": r["project_name"],
+        "business_info": r["business_info"],
+        "token": r["token"],
+        "telegram_id": r["telegram_id"]
+    } for r in rows]
