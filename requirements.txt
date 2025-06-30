@@ -18,3 +18,4 @@ PyPDF2
 SpeechRecognition
 pydub
 apscheduler
+plotly

@@ -1,5 +1,5 @@
 from base import app
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi import Request, APIRouter
 from config import PORT, SERVER_URL, API_URL
 from database import database, get_feedbacks, get_payments, get_user_by_id, get_users_with_expired_trial, get_projects_by_user, get_user_projects, log_message_stat, add_feedback, MessageStat, User, Payment
@@ -17,6 +17,8 @@ from settings_bot import (
 import asyncio
 import logging
 from sqlalchemy import select
+import plotly.graph_objs as go
+import plotly.io as pio
 
 @app.on_event("startup")
 async def startup_event():
@@ -48,7 +50,7 @@ async def super():
     return JSONResponse(content={"message": f"Сервер работает!"}, status_code=200)
 
 @app.get("/stats")
-async def get_stats():
+async def get_stats(request: Request):
     # Общее количество пользователей
     total_users = await database.fetch_val(func.count(User.telegram_id).select())
     # Новые пользователи за сегодня
@@ -100,7 +102,7 @@ async def get_stats():
     # Удержание (Retention)
     # Для MVP: считаем как (платящих сейчас / плативших когда-либо)
     retention = (paid_count / paid_count * 100) if paid_count else 100
-    return {
+    stats = {
         "total_users": total_users,
         "new_users_today": new_users_today,
         "dau": dau,
@@ -116,6 +118,129 @@ async def get_stats():
         "activity_rate": activity_rate,
         "retention": retention
     }
+    if "text/html" in request.headers.get("accept", ""):
+        # --- Plotly графики ---
+        # 1. DAU по дням (за последние 14 дней)
+        from sqlalchemy import desc
+        days = [(datetime.utcnow().date() - timedelta(days=i)) for i in range(13, -1, -1)]
+        dau_per_day = []
+        for d in days:
+            cnt = await database.fetch_val(
+                func.count(func.distinct(MessageStat.telegram_id)).select().where(func.date(MessageStat.datetime) == d)
+            )
+            dau_per_day.append(cnt or 0)
+        fig_dau = go.Figure(go.Bar(x=[d.strftime('%d.%m') for d in days], y=dau_per_day, marker_color='#1f77b4'))
+        fig_dau.update_layout(
+            title='DAU (уникальные пользователи по дням)',
+            template='plotly_dark',
+            plot_bgcolor='#222',
+            paper_bgcolor='#222',
+            font_color='#fff',
+            margin=dict(l=30, r=30, t=60, b=30)
+        )
+        dau_html = pio.to_html(fig_dau, full_html=False, include_plotlyjs='cdn')
+        # 2. Сообщения по часам (heatmap)
+        hour_counts_full = [0]*24
+        for h, c in hour_counts.items():
+            try:
+                hour_int = int(h)
+                hour_counts_full[hour_int] = c
+            except:
+                pass
+        fig_hours = go.Figure(go.Bar(x=[f"{h:02d}:00" for h in range(24)], y=hour_counts_full, marker_color='#e45756'))
+        fig_hours.update_layout(
+            title='Распределение сообщений по часам суток',
+            template='plotly_dark',
+            plot_bgcolor='#222',
+            paper_bgcolor='#222',
+            font_color='#fff',
+            margin=dict(l=30, r=30, t=60, b=30)
+        )
+        hours_html = pio.to_html(fig_hours, full_html=False, include_plotlyjs=False)
+        # 3. Выручка по месяцам (если есть платежи)
+        payments = await get_payments()
+        if payments:
+            from collections import defaultdict
+            revenue_by_month = defaultdict(float)
+            for p in payments:
+                dt = p['paid_at']
+                if isinstance(dt, str):
+                    dt = datetime.fromisoformat(dt)
+                key = dt.strftime('%Y-%m')
+                revenue_by_month[key] += p['amount']
+            months = sorted(revenue_by_month.keys())
+            values = [revenue_by_month[m] for m in months]
+            fig_rev = go.Figure(go.Bar(x=months, y=values, marker_color='#72b7b2'))
+            fig_rev.update_layout(
+                title='Выручка по месяцам',
+                template='plotly_dark',
+                plot_bgcolor='#222',
+                paper_bgcolor='#222',
+                font_color='#fff',
+                margin=dict(l=30, r=30, t=60, b=30)
+            )
+            rev_html = pio.to_html(fig_rev, full_html=False, include_plotlyjs=False)
+        else:
+            rev_html = ''
+        # --- HTML dark theme ---
+        html = f"""
+        <html lang='ru'>
+        <head>
+            <meta charset='utf-8'>
+            <title>Статистика бота</title>
+            <script src='https://cdn.plot.ly/plotly-latest.min.js'></script>
+            <style>
+                body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #181c24; color: #fff; margin: 0; padding: 0; }}
+                .container {{ max-width: 900px; margin: 40px auto; background: #232733; border-radius: 16px; box-shadow: 0 4px 24px #0008; padding: 32px; }}
+                h1 {{ text-align: center; color: #4fc3f7; margin-bottom: 32px; }}
+                table {{ width: 100%; border-collapse: collapse; margin-top: 16px; }}
+                th, td {{ padding: 12px 10px; text-align: left; }}
+                th {{ background: #232733; color: #4fc3f7; font-size: 1.1em; }}
+                tr:nth-child(even) {{ background: #232733; }}
+                tr:hover {{ background: #2a2e3a; }}
+                .desc {{ color: #aaa; font-size: 0.95em; }}
+                .charts {{ margin: 40px 0 0 0; }}
+                .charts > div {{ margin-bottom: 40px; }}
+            </style>
+        </head>
+        <body>
+        <div class='container'>
+            <h1>📊 Статистика Telegram-бота</h1>
+            <table>
+                <tr><th>Показатель</th><th>Значение</th></tr>
+                <tr><td>👥 Всего пользователей</td><td>{total_users}</td></tr>
+                <tr><td>🆕 Новых сегодня</td><td>{new_users_today}</td></tr>
+                <tr><td>🗓️ DAU (уникальных за сегодня)</td><td>{dau}</td></tr>
+                <tr><td>💬 Всего сообщений</td><td>{total_messages}</td></tr>
+                <tr><td>💬 Среднее сообщений на пользователя</td><td>{avg_msg_per_user:.2f}</td></tr>
+                <tr><td>⏰ Пиковые часы активности</td><td>{', '.join([f'{h}:00 ({c} сообщений)' for h, c in peak_hours]) if peak_hours else 'Нет данных'}</td></tr>
+                <tr><td>⏱️ Среднее время ответа</td><td>{avg_response_time:.2f} сек</td></tr>
+                <tr><td>🔄 Конверсия из триала в оплату</td><td>{conversion:.1f}%</td></tr>
+                <tr><td>🤖 Среднее число проектов на пользователя</td><td>{avg_bots_per_user:.2f}</td></tr>
+                <tr><td>💸 Общая выручка</td><td>{total_revenue:.2f} ₽</td></tr>
+                <tr><td>💰 ARPU (средний доход на пользователя)</td><td>{arpu:.2f} ₽</td></tr>
+                <tr><td>📈 LTV (пожизненная ценность клиента)</td><td>{ltv:.2f} ₽</td></tr>
+                <tr><td>🔥 Activity Rate</td><td>{activity_rate:.1f}%</td></tr>
+                <tr><td>🔁 Retention (удержание)</td><td>{retention:.1f}%</td></tr>
+            </table>
+            <div class='desc' style='margin-top:24px;'>
+                <b>Пояснения:</b><br>
+                <b>DAU</b> — Daily Active Users, уникальные пользователи за сегодня.<br>
+                <b>ARPU</b> — средний доход на пользователя.<br>
+                <b>LTV</b> — пожизненная ценность клиента.<br>
+                <b>Retention</b> — удержание платящих пользователей.<br>
+                <b>Activity Rate</b> — доля активных пользователей за сутки.<br>
+            </div>
+            <div class='charts'>
+                <div>{dau_html}</div>
+                <div>{hours_html}</div>
+                {f'<div>{rev_html}</div>' if rev_html else ''}
+            </div>
+        </div>
+        </body></html>
+        """
+        return HTMLResponse(content=html)
+    return stats
 
 @app.get("/feedbacks")
 async def get_feedbacks_api():
