@@ -807,9 +807,14 @@ async def handle_cancel_delete_trial_projects(callback_query: types.CallbackQuer
 @settings_router.message(lambda m: m.photo and m.caption and "чек" in m.caption.lower())
 async def handle_payment_check(message: types.Message, state: FSMContext):
     telegram_id = str(message.from_user.id)
-    # Пересылаем чек админу
-    await message.forward(MAIN_TELEGRAM_ID)
-    await message.answer("Чек отправлен на проверку. Ожидайте подтверждения оплаты.")
+    logger.info(f"[PAYMENT] Получен чек от пользователя {telegram_id}. MAIN_TELEGRAM_ID={MAIN_TELEGRAM_ID}")
+    try:
+        await message.forward(MAIN_TELEGRAM_ID)
+        logger.info(f"[PAYMENT] Чек успешно отправлен админу (MAIN_TELEGRAM_ID={MAIN_TELEGRAM_ID})")
+        await message.answer("Чек отправлен на проверку. Ожидайте подтверждения оплаты.")
+    except Exception as e:
+        logger.error(f"[PAYMENT] Ошибка при пересылке чека админу: {e}")
+        await message.answer("Ошибка при отправке чека админу. Попробуйте позже или свяжитесь с поддержкой.")
 
 async def handle_settings_start(message: types.Message, state: FSMContext):
     logger.info(f"/start received from user {message.from_user.id}")
