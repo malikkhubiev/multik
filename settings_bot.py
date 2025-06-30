@@ -5,7 +5,7 @@ from aiogram import Router, Dispatcher
 from aiogram.filters import Command
 import os
 from config import API_URL, SERVER_URL, DEEPSEEK_API_KEY, TRIAL_DAYS, TRIAL_PROJECTS, PAID_PROJECTS, PAYMENT_AMOUNT, PAYMENT_CARD_NUMBER, MAIN_TELEGRAM_ID
-from database import create_project, get_project_by_id, create_user, get_projects_by_user, update_project_name, update_project_business_info, append_project_business_info, delete_project, get_project_by_token, check_project_name_exists, get_user_by_id, get_users_with_expired_trial, delete_all_projects_for_user, set_user_paid, get_user_projects
+from database import create_project, get_project_by_id, create_user, get_projects_by_user, update_project_name, update_project_business_info, append_project_business_info, delete_project, get_project_by_token, check_project_name_exists, get_user_by_id, get_users_with_expired_trial, delete_all_projects_for_user, set_user_paid, get_user_projects, log_message_stat, add_feedback
 from utils import set_webhook, delete_webhook
 from file_utils import extract_text_from_file, extract_text_from_file_async
 import json
@@ -44,6 +44,7 @@ class SettingsStates(StatesGroup):
     waiting_for_additional_data_file = State()
     waiting_for_new_data_file = State()
     waiting_for_delete_confirmation = State()
+    waiting_for_feedback_text = State()
 
 # Встроенное меню команд
 main_menu = ReplyKeyboardMarkup(
@@ -686,6 +687,19 @@ async def handle_any_message(message: types.Message, state: FSMContext):
             await message.answer(f"Пользователь {paid_telegram_id} отмечен как оплативший. Вебхуки восстановлены для {restored} проектов.")
             return
 
+    user = await get_user_by_id(str(message.from_user.id))
+    is_trial = user and not user['paid']
+    is_paid = user and user['paid']
+    await log_message_stat(
+        telegram_id=str(message.from_user.id),
+        is_command=bool(message.text and message.text.startswith('/')),
+        is_reply=bool(message.reply_to_message),
+        response_time=None,
+        project_id=None,
+        is_trial=is_trial,
+        is_paid=is_paid
+    )
+
 @router.post(SETTINGS_WEBHOOK_PATH)
 async def process_settings_webhook(request: Request):
     logger.info("Received webhook call for settings bot")
@@ -729,7 +743,6 @@ async def handle_command_in_state(message: types.Message, state: FSMContext) -> 
     if message.text and message.text.startswith('/'):
         command = message.text.split()[0].lower()
         await state.clear()
-        
         if command == '/start':
             await handle_settings_start(message, state)
         elif command == '/projects':
@@ -738,7 +751,6 @@ async def handle_command_in_state(message: types.Message, state: FSMContext) -> 
             await handle_help_command(message, state)
         else:
             await message.answer("Неизвестная команда. Используйте /help для справки.")
-        
         return True
     return False
 
@@ -798,4 +810,96 @@ async def handle_payment_check(message: types.Message, state: FSMContext):
     telegram_id = str(message.from_user.id)
     # Пересылаем чек админу
     await message.forward(MAIN_TELEGRAM_ID)
-    await message.answer("Чек отправлен на проверку. Ожидайте подтверждения оплаты.") 
+    await message.answer("Чек отправлен на проверку. Ожидайте подтверждения оплаты.")
+
+async def handle_settings_start(message: types.Message, state: FSMContext):
+    logger.info(f"/start received from user {message.from_user.id}")
+    try:
+        # Сбрасываем состояние перед началом
+        await state.clear()
+        await create_user(str(message.from_user.id))
+        await message.answer("Добро пожаловать в настройки! Введите имя вашего проекта.", reply_markup=main_menu)
+        await state.set_state(SettingsStates.waiting_for_project_name)
+        logger.info(f"Sent welcome message to user {message.from_user.id}")
+    except Exception as e:
+        logger.error(f"Error in handle_settings_start: {e}")
+
+async def handle_help_command(message: types.Message, state: FSMContext):
+    """Показывает справку по командам"""
+    await state.clear()
+    help_text = """
+🤖 Доступные команды:
+
+/start - Создать новый проект
+/projects - Управление существующими проектами
+/help - Показать эту справку
+
+📋 Функции управления проектами:
+• Переименование проекта
+• Добавление дополнительных данных
+• Изменение данных о бизнесе
+• Удаление проекта (с отключением webhook)
+
+💡 Для начала работы используйте /start
+💡 Для управления проектами используйте /projects
+    """
+    await message.answer(help_text, reply_markup=main_menu)
+
+async def handle_projects_command(message: types.Message, state: FSMContext, telegram_id: str = None):
+    logger.info(f"/projects received from user {message.from_user.id}")
+    try:
+        if telegram_id is None:
+            telegram_id = str(message.from_user.id)
+        await state.update_data(telegram_id=telegram_id)
+        await state.update_data(selected_project_id=None, selected_project=None)
+        projects = await get_projects_by_user(telegram_id)
+        if not projects:
+            await message.answer("У вас пока нет проектов. Создайте первый проект командой /start", reply_markup=main_menu)
+            return
+        buttons = []
+        for project in projects:
+            buttons.append([
+                types.InlineKeyboardButton(
+                    text=project["project_name"],
+                    callback_data=f"project_{project['id']}"
+                )
+            ])
+        if buttons:
+            keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
+            await message.answer("Выберите проект для управления:", reply_markup=main_menu)
+            await message.answer("Список проектов:", reply_markup=keyboard)
+        else:
+            await message.answer("Нет доступных проектов.", reply_markup=main_menu)
+    except Exception as e:
+        logger.error(f"Error in handle_projects_command: {e}")
+        await message.answer("Произошла ошибка при получении списка проектов", reply_markup=main_menu)
+
+@settings_router.message(Command("feedback"))
+async def handle_feedback_command(message: types.Message, state: FSMContext):
+    await message.answer(
+        "Пожалуйста, напишите ваш отзыв о сервисе. После отправки вы сможете отметить, положительный он или нет."
+    )
+    await state.set_state("waiting_for_feedback_text")
+
+@settings_router.message(state="waiting_for_feedback_text")
+async def handle_feedback_text(message: types.Message, state: FSMContext):
+    await state.update_data(feedback_text=message.text)
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="👍 Положительный", callback_data="feedback_positive")],
+            [InlineKeyboardButton(text="👎 Отрицательный", callback_data="feedback_negative")]
+        ]
+    )
+    await message.answer("Спасибо! Отметьте, как вы оцениваете сервис:", reply_markup=kb)
+
+@settings_router.callback_query(lambda c: c.data in ["feedback_positive", "feedback_negative"])
+async def handle_feedback_rating(callback_query: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    feedback_text = data.get("feedback_text")
+    is_positive = callback_query.data == "feedback_positive"
+    username = callback_query.from_user.username
+    telegram_id = str(callback_query.from_user.id)
+    await add_feedback(telegram_id, username, feedback_text, is_positive)
+    await callback_query.message.answer("Спасибо за ваш отзыв! Он очень важен для нас.")
+    await state.clear()
+    await callback_query.answer() 

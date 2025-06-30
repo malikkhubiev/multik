@@ -43,6 +43,37 @@ class Project(Base):
         {'sqlite_autoincrement': True}
     )
 
+# Новая таблица MessageStat
+class MessageStat(Base):
+    __tablename__ = 'message_stat'
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    telegram_id = Column(String, nullable=False)
+    datetime = Column(DateTime, default=datetime.utcnow)
+    is_command = Column(Boolean, default=False)
+    is_reply = Column(Boolean, default=False)
+    response_time = Column(Float, nullable=True)
+    project_id = Column(String, nullable=True)
+    is_trial = Column(Boolean, default=True)
+    is_paid = Column(Boolean, default=False)
+
+# Новая таблица Feedback
+class Feedback(Base):
+    __tablename__ = 'feedback'
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    telegram_id = Column(String, nullable=False)
+    username = Column(String, nullable=True)
+    feedback_text = Column(String, nullable=False)
+    is_positive = Column(Boolean, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+# Новая таблица Payment
+class Payment(Base):
+    __tablename__ = 'payment'
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    telegram_id = Column(String, nullable=False)
+    amount = Column(Float, nullable=False)
+    paid_at = Column(DateTime, default=datetime.utcnow)
+
 engine = create_engine(DATABASE_URL.replace("sqlite+aiosqlite", "sqlite"))
 Base.metadata.create_all(bind=engine)
 
@@ -206,3 +237,47 @@ async def get_user_projects(telegram_id: str) -> list:
         "token": r["token"],
         "telegram_id": r["telegram_id"]
     } for r in rows]
+
+# --- MessageStat ---
+async def log_message_stat(telegram_id, is_command, is_reply, response_time, project_id, is_trial, is_paid):
+    query = insert(MessageStat).values(
+        telegram_id=telegram_id,
+        datetime=datetime.utcnow(),
+        is_command=is_command,
+        is_reply=is_reply,
+        response_time=response_time,
+        project_id=project_id,
+        is_trial=is_trial,
+        is_paid=is_paid
+    )
+    await database.execute(query)
+
+# --- Feedback ---
+async def add_feedback(telegram_id, username, feedback_text, is_positive=None):
+    query = insert(Feedback).values(
+        telegram_id=telegram_id,
+        username=username,
+        feedback_text=feedback_text,
+        is_positive=is_positive,
+        created_at=datetime.utcnow()
+    )
+    await database.execute(query)
+
+async def get_feedbacks():
+    query = select(Feedback)
+    rows = await database.fetch_all(query)
+    return [dict(r) for r in rows]
+
+# --- Payment ---
+async def log_payment(telegram_id, amount):
+    query = insert(Payment).values(
+        telegram_id=telegram_id,
+        amount=amount,
+        paid_at=datetime.utcnow()
+    )
+    await database.execute(query)
+
+async def get_payments():
+    query = select(Payment)
+    rows = await database.fetch_all(query)
+    return [dict(r) for r in rows]

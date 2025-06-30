@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request
 from aiogram import Bot, types
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram import Router, Dispatcher
-from database import get_project_by_id, get_project_by_token
+from database import get_project_by_id, get_project_by_token, log_message_stat, get_user_by_id
 from aiogram.filters import Command
 import logging
 import httpx
@@ -59,9 +59,10 @@ async def get_or_create_dispatcher(token: str, business_info: str):
     async def handle_question(message: types.Message):
         user_id = message.from_user.id
         text = message.text
-        logging.info(f"[ASKING_BOT] handle_question: from user {user_id}, text: {text}")
+        user = await get_user_by_id(str(user_id))
+        is_trial = user and not user['paid']
+        is_paid = user and user['paid']
         t0 = time.monotonic()
-        # Отправляем сообщение о начале обработки
         processing_msg = await message.answer("Изучаем базу данных...")
         if not business_info:
             await message.answer("Информация о бизнесе не найдена. Обратитесь к администратору.")
@@ -94,8 +95,18 @@ async def get_or_create_dispatcher(token: str, business_info: str):
             logging.info(f"[ASKING_BOT] handle_question: deepseek response='{content}'")
             t3 = time.monotonic()
             await message.answer(content)
-            logging.info(f"[ASKING] Ответ пользователю отправлен за {time.monotonic() - t3:.2f} сек")
-            logging.info(f"[ASKING] ВСЕГО времени на ответ: {time.monotonic() - t0:.2f} сек")
+            response_time = time.monotonic() - t0
+            await log_message_stat(
+                telegram_id=str(user_id),
+                is_command=False,
+                is_reply=False,
+                response_time=response_time,
+                project_id=None,  # Можно добавить project_id, если есть
+                is_trial=is_trial,
+                is_paid=is_paid
+            )
+            logging.info(f"[ASKING] Ответ пользователю отправлен за {response_time:.2f} сек")
+            logging.info(f"[ASKING] ВСЕГО времени на ответ: {response_time:.2f} сек")
         except Exception as e:
             import traceback
             logging.error(f"[ASKING_BOT] handle_question: error: {e}\n{traceback.format_exc()}")
