@@ -230,8 +230,13 @@ async def help_with_trial_middleware(message: types.Message, state: FSMContext):
 async def projects_with_trial_middleware(message: types.Message, state: FSMContext):
     await trial_middleware(message, state, handle_projects_command)
 
+async def log_fsm_state(message, state):
+    current_state = await state.get_state()
+    logging.info(f"[FSM] user={message.from_user.id} current_state={current_state}")
+
 @settings_router.message(SettingsStates.waiting_for_project_name)
 async def handle_project_name(message: types.Message, state: FSMContext):
+    await log_fsm_state(message, state)
     logging.info(f"[BOT] waiting_for_project_name: user={message.from_user.id}, text={message.text}")
     # Проверяем команды через универсальную функцию
     if await handle_command_in_state(message, state):
@@ -250,6 +255,7 @@ async def handle_project_name(message: types.Message, state: FSMContext):
 
 @settings_router.message(SettingsStates.waiting_for_token)
 async def handle_token(message: types.Message, state: FSMContext):
+    await log_fsm_state(message, state)
     logging.info(f"[BOT] waiting_for_token: user={message.from_user.id}, text={message.text}")
     # Проверяем команды через универсальную функцию
     if await handle_command_in_state(message, state):
@@ -316,6 +322,7 @@ async def get_text_from_message(message, bot, max_length=4096) -> str:
 
 @settings_router.message(SettingsStates.waiting_for_business_file)
 async def handle_business_file(message: types.Message, state: FSMContext):
+    await log_fsm_state(message, state)
     logging.info(f"[BOT] waiting_for_business_file: user={message.from_user.id}")
     if message.text and await handle_command_in_state(message, state):
         return
@@ -454,6 +461,7 @@ async def handle_rename_project(callback_query: types.CallbackQuery, state: FSMC
 
 @settings_router.message(SettingsStates.waiting_for_new_project_name)
 async def handle_new_project_name(message: types.Message, state: FSMContext):
+    await log_fsm_state(message, state)
     logging.info(f"[BOT] waiting_for_new_project_name: user={message.from_user.id}, text={message.text}")
     # Проверяем команды через универсальную функцию
     if await handle_command_in_state(message, state):
@@ -495,6 +503,7 @@ async def handle_add_data(callback_query: types.CallbackQuery, state: FSMContext
 
 @settings_router.message(SettingsStates.waiting_for_additional_data_file)
 async def handle_additional_data_file(message: types.Message, state: FSMContext):
+    await log_fsm_state(message, state)
     logging.info(f"[BOT] waiting_for_additional_data_file: user={message.from_user.id}")
     if message.text and await handle_command_in_state(message, state):
         return
@@ -557,6 +566,7 @@ async def handle_change_data(callback_query: types.CallbackQuery, state: FSMCont
 
 @settings_router.message(SettingsStates.waiting_for_new_data_file)
 async def handle_new_data_file(message: types.Message, state: FSMContext):
+    await log_fsm_state(message, state)
     logging.info(f"[BOT] waiting_for_new_data_file: user={message.from_user.id}")
     if message.text and await handle_command_in_state(message, state):
         return
@@ -681,63 +691,6 @@ async def handle_confirm_delete(callback_query: types.CallbackQuery, state: FSMC
         logger.error(f"Error in handle_confirm_delete: {e}")
         await callback_query.message.edit_text("Произошла ошибка при удалении проекта")
         await state.clear()
-
-@settings_router.message()
-async def handle_any_message(message: types.Message, state: FSMContext):
-    logging.info(f"[BOT] handle_any_message: user={message.from_user.id}, text={message.text}")
-    """Обрабатывает любые сообщения, которые не являются командами"""
-    # Проверяем, есть ли активное состояние
-    current_state = await state.get_state()
-    
-    if current_state:
-        # Если есть активное состояние, но это не ожидаемое сообщение, сбрасываем
-        await state.clear()
-        await message.answer(
-            "❌ Операция была прервана.\n\n"
-            "Доступные команды:\n"
-            "/start - Создать новый проект\n"
-            "/projects - Управление проектами\n"
-            "/help - Справка",
-            reply_markup=main_menu
-        )
-    # Если нет активного состояния, ничего не отвечаем (или можно логировать для отладки)
-    # (Раньше здесь была справка, теперь убрано)
-
-    # --- Обработка подтверждения оплаты админом ---
-    if message.text and message.text.lower().startswith("оплатил ") and str(message.from_user.id) == str(MAIN_TELEGRAM_ID):
-        parts = message.text.strip().split()
-        if len(parts) == 2 and parts[1].isdigit():
-            paid_telegram_id = parts[1]
-            await set_user_paid(paid_telegram_id, True)
-            # Восстановить вебхуки на все проекты пользователя
-            projects = await get_user_projects(paid_telegram_id)
-            restored = 0
-            for project in projects:
-                try:
-                    await set_webhook(project['token'], project['id'])
-                    restored += 1
-                except Exception as e:
-                    logger.error(f"[PAYMENT] Ошибка при восстановлении вебхука: {e}")
-            # Уведомить пользователя
-            try:
-                await settings_bot.send_message(paid_telegram_id, f"Оплата подтверждена! Ваши проекты снова активны. Теперь вы можете создавать до {PAID_PROJECTS} проектов.")
-            except Exception as e:
-                logger.error(f"[PAYMENT] Не удалось отправить сообщение пользователю: {e}")
-            await message.answer(f"Пользователь {paid_telegram_id} отмечен как оплативший. Вебхуки восстановлены для {restored} проектов.")
-            return
-
-    user = await get_user_by_id(str(message.from_user.id))
-    is_trial = user and not user['paid']
-    is_paid = user and user['paid']
-    await log_message_stat(
-        telegram_id=str(message.from_user.id),
-        is_command=bool(message.text and message.text.startswith('/')),
-        is_reply=bool(message.reply_to_message),
-        response_time=None,
-        project_id=None,
-        is_trial=is_trial,
-        is_paid=is_paid
-    )
 
 @router.post(SETTINGS_WEBHOOK_PATH)
 async def process_settings_webhook(request: Request):
@@ -951,6 +904,7 @@ async def handle_change_token(callback_query: types.CallbackQuery, state: FSMCon
 
 @settings_router.message(SettingsStates.waiting_for_new_token)
 async def handle_new_token(message: types.Message, state: FSMContext):
+    await log_fsm_state(message, state)
     logging.info(f"[BOT] waiting_for_new_token: user={message.from_user.id}, text={message.text}")
     if await handle_command_in_state(message, state):
         return
@@ -972,3 +926,61 @@ async def handle_new_token(message: types.Message, state: FSMContext):
     else:
         await message.answer("Ошибка при изменении токена проекта")
     await state.clear() 
+
+@settings_router.message()
+async def handle_any_message(message: types.Message, state: FSMContext):
+    await log_fsm_state(message, state)
+    logging.info(f"[BOT] handle_any_message: user={message.from_user.id}, text={message.text}")
+    """Обрабатывает любые сообщения, которые не являются командами"""
+    # Проверяем, есть ли активное состояние
+    current_state = await state.get_state()
+    
+    if current_state:
+        # Если есть активное состояние, но это не ожидаемое сообщение, сбрасываем
+        await state.clear()
+        await message.answer(
+            "❌ Операция была прервана.\n\n"
+            "Доступные команды:\n"
+            "/start - Создать новый проект\n"
+            "/projects - Управление проектами\n"
+            "/help - Справка",
+            reply_markup=main_menu
+        )
+    # Если нет активного состояния, ничего не отвечаем (или можно логировать для отладки)
+    # (Раньше здесь была справка, теперь убрано)
+
+    # --- Обработка подтверждения оплаты админом ---
+    if message.text and message.text.lower().startswith("оплатил ") and str(message.from_user.id) == str(MAIN_TELEGRAM_ID):
+        parts = message.text.strip().split()
+        if len(parts) == 2 and parts[1].isdigit():
+            paid_telegram_id = parts[1]
+            await set_user_paid(paid_telegram_id, True)
+            # Восстановить вебхуки на все проекты пользователя
+            projects = await get_user_projects(paid_telegram_id)
+            restored = 0
+            for project in projects:
+                try:
+                    await set_webhook(project['token'], project['id'])
+                    restored += 1
+                except Exception as e:
+                    logger.error(f"[PAYMENT] Ошибка при восстановлении вебхука: {e}")
+            # Уведомить пользователя
+            try:
+                await settings_bot.send_message(paid_telegram_id, f"Оплата подтверждена! Ваши проекты снова активны. Теперь вы можете создавать до {PAID_PROJECTS} проектов.")
+            except Exception as e:
+                logger.error(f"[PAYMENT] Не удалось отправить сообщение пользователю: {e}")
+            await message.answer(f"Пользователь {paid_telegram_id} отмечен как оплативший. Вебхуки восстановлены для {restored} проектов.")
+            return
+
+    user = await get_user_by_id(str(message.from_user.id))
+    is_trial = user and not user['paid']
+    is_paid = user and user['paid']
+    await log_message_stat(
+        telegram_id=str(message.from_user.id),
+        is_command=bool(message.text and message.text.startswith('/')),
+        is_reply=bool(message.reply_to_message),
+        response_time=None,
+        project_id=None,
+        is_trial=is_trial,
+        is_paid=is_paid
+    )
