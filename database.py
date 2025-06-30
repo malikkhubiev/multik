@@ -241,6 +241,7 @@ async def get_user_projects(telegram_id: str) -> list:
 # --- MessageStat ---
 async def log_message_stat(telegram_id, is_command, is_reply, response_time, project_id, is_trial, is_paid):
     query = insert(MessageStat).values(
+        id=str(uuid.uuid4()),
         telegram_id=telegram_id,
         datetime=datetime.utcnow(),
         is_command=is_command,
