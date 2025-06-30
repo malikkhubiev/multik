@@ -10,7 +10,7 @@ from utils import set_webhook, delete_webhook
 from file_utils import extract_text_from_file, extract_text_from_file_async
 import json
 import logging
-from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.state import State, StatesGroup, StateFilter
 from aiogram.fsm.context import FSMContext
 import traceback
 import httpx
@@ -879,9 +879,9 @@ async def handle_feedback_command(message: types.Message, state: FSMContext):
     await message.answer(
         "Пожалуйста, напишите ваш отзыв о сервисе. После отправки вы сможете отметить, положительный он или нет."
     )
-    await state.set_state("waiting_for_feedback_text")
+    await state.set_state(StateFilter("waiting_for_feedback_text"))
 
-@settings_router.message(state="waiting_for_feedback_text")
+@settings_router.message(StateFilter("waiting_for_feedback_text"))
 async def handle_feedback_text(message: types.Message, state: FSMContext):
     await state.update_data(feedback_text=message.text)
     kb = InlineKeyboardMarkup(
