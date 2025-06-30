@@ -16,6 +16,7 @@ import traceback
 import httpx
 import asyncio
 from pydub import AudioSegment
+import time
 
 router = APIRouter()
 
@@ -243,8 +244,12 @@ async def handle_business_file(message: types.Message, state: FSMContext):
     if message.text and await handle_command_in_state(message, state):
         return
     logger.info(f"Business data received from user {message.from_user.id}")
+    t0 = time.monotonic()
     try:
+        logger.info("[LOAD] Получение данных пользователя...")
+        t1 = time.monotonic()
         text_content = await get_text_from_message(message, settings_bot)
+        logger.info(f"[LOAD] Получение данных пользователя завершено за {time.monotonic() - t1:.2f} сек")
     except ValueError as ve:
         await message.answer(str(ve))
         await state.clear()
@@ -253,21 +258,30 @@ async def handle_business_file(message: types.Message, state: FSMContext):
         await message.answer(str(re))
         await state.clear()
         return
+    logger.info("[LOAD] Отправка данных в Deepseek...")
+    t2 = time.monotonic()
     await message.answer("Обрабатываю информацию о бизнесе...")
     processed_business_info = await process_business_file_with_deepseek(text_content)
+    logger.info(f"[LOAD] Deepseek завершён за {time.monotonic() - t2:.2f} сек")
     processed_business_info = clean_markdown(processed_business_info)
     data = await state.get_data()
     project_name = data.get("project_name")
     token = data.get("token")
     telegram_id = str(message.from_user.id)
     try:
+        logger.info("[LOAD] Запись проекта в БД...")
+        t3 = time.monotonic()
         project_id = await create_project(telegram_id, project_name, processed_business_info, token)
+        logger.info(f"[LOAD] Запись в БД завершена за {time.monotonic() - t3:.2f} сек")
     except ValueError as e:
         await message.answer(f"❌ Ошибка: {str(e)}\n\nПожалуйста, выберите другое название для проекта.")
         await state.clear()
         return
-    logger.info(f"Перед установкой вебхука: token={token}, project_id={project_id}")
+    logger.info("[LOAD] Установка вебхука...")
+    t4 = time.monotonic()
     webhook_result = await set_webhook(token, project_id)
+    logger.info(f"[LOAD] Установка вебхука завершена за {time.monotonic() - t4:.2f} сек")
+    logger.info(f"[LOAD] ВСЕГО времени на загрузку: {time.monotonic() - t0:.2f} сек")
     if webhook_result.get("ok"):
         await message.answer(f"Спасибо! Проект создан.\n\nПроект: {project_name}\nТокен: {token}\nВебхук успешно установлен!\n\nБот готов к работе!")
     else:
@@ -403,6 +417,7 @@ async def handle_add_data(callback_query: types.CallbackQuery, state: FSMContext
 async def handle_additional_data_file(message: types.Message, state: FSMContext):
     if message.text and await handle_command_in_state(message, state):
         return
+    t0 = time.monotonic()
     try:
         data = await state.get_data()
         project_id = data.get("selected_project_id")
@@ -410,7 +425,10 @@ async def handle_additional_data_file(message: types.Message, state: FSMContext)
             await message.answer("Ошибка: проект не выбран")
             await state.clear()
             return
+        logger.info("[ADD] Получение данных пользователя...")
+        t1 = time.monotonic()
         text_content = await get_text_from_message(message, settings_bot)
+        logger.info(f"[ADD] Получение данных пользователя завершено за {time.monotonic() - t1:.2f} сек")
     except ValueError as ve:
         await message.answer(str(ve))
         await state.clear()
@@ -419,10 +437,17 @@ async def handle_additional_data_file(message: types.Message, state: FSMContext)
         await message.answer(str(re))
         await state.clear()
         return
+    logger.info("[ADD] Отправка данных в Deepseek...")
+    t2 = time.monotonic()
     await message.answer("Обрабатываю дополнительные данные...")
     processed_additional_info = await process_business_file_with_deepseek(text_content)
+    logger.info(f"[ADD] Deepseek завершён за {time.monotonic() - t2:.2f} сек")
     processed_additional_info = clean_markdown(processed_additional_info)
+    logger.info("[ADD] Запись в БД...")
+    t3 = time.monotonic()
     success = await append_project_business_info(project_id, processed_additional_info)
+    logger.info(f"[ADD] Запись в БД завершена за {time.monotonic() - t3:.2f} сек")
+    logger.info(f"[ADD] ВСЕГО времени на добавление: {time.monotonic() - t0:.2f} сек")
     if success:
         project = await get_project_by_id(project_id)
         if project:
@@ -447,6 +472,7 @@ async def handle_change_data(callback_query: types.CallbackQuery, state: FSMCont
 async def handle_new_data_file(message: types.Message, state: FSMContext):
     if message.text and await handle_command_in_state(message, state):
         return
+    t0 = time.monotonic()
     try:
         data = await state.get_data()
         project_id = data.get("selected_project_id")
@@ -454,7 +480,10 @@ async def handle_new_data_file(message: types.Message, state: FSMContext):
             await message.answer("Ошибка: проект не выбран")
             await state.clear()
             return
+        logger.info("[REPLACE] Получение данных пользователя...")
+        t1 = time.monotonic()
         text_content = await get_text_from_message(message, settings_bot)
+        logger.info(f"[REPLACE] Получение данных пользователя завершено за {time.monotonic() - t1:.2f} сек")
     except ValueError as ve:
         await message.answer(str(ve))
         await state.clear()
@@ -463,10 +492,17 @@ async def handle_new_data_file(message: types.Message, state: FSMContext):
         await message.answer(str(re))
         await state.clear()
         return
+    logger.info("[REPLACE] Отправка данных в Deepseek...")
+    t2 = time.monotonic()
     await message.answer("Обрабатываю новые данные...")
     processed_new_info = await process_business_file_with_deepseek(text_content)
+    logger.info(f"[REPLACE] Deepseek завершён за {time.monotonic() - t2:.2f} сек")
     processed_new_info = clean_markdown(processed_new_info)
+    logger.info("[REPLACE] Запись в БД...")
+    t3 = time.monotonic()
     success = await update_project_business_info(project_id, processed_new_info)
+    logger.info(f"[REPLACE] Запись в БД завершена за {time.monotonic() - t3:.2f} сек")
+    logger.info(f"[REPLACE] ВСЕГО времени на замену: {time.monotonic() - t0:.2f} сек")
     if success:
         project = await get_project_by_id(project_id)
         if project:

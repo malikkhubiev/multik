@@ -8,6 +8,7 @@ import logging
 import httpx
 import asyncio
 from config import DEEPSEEK_API_KEY
+import time
 
 router = APIRouter()
 
@@ -59,16 +60,16 @@ async def get_or_create_dispatcher(token: str, business_info: str):
         user_id = message.from_user.id
         text = message.text
         logging.info(f"[ASKING_BOT] handle_question: from user {user_id}, text: {text}")
-
+        t0 = time.monotonic()
         # Отправляем сообщение о начале обработки
         processing_msg = await message.answer("Изучаем базу данных...")
-
         if not business_info:
             await message.answer("Информация о бизнесе не найдена. Обратитесь к администратору.")
             logging.warning(f"[ASKING_BOT] handle_question: business_info not found for project")
             return
-        
         try:
+            logging.info("[ASKING] Формирование запроса к Deepseek...")
+            t1 = time.monotonic()
             url = "https://api.deepseek.com/v1/chat/completions"
             headers = {
                 "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
@@ -82,17 +83,19 @@ async def get_or_create_dispatcher(token: str, business_info: str):
                 ],
                 "temperature": 0.9
             }
-            
-            # Используем asyncio.create_task для неблокирующего выполнения
+            logging.info(f"[ASKING] Deepseek запрос сформирован за {time.monotonic() - t1:.2f} сек")
+            t2 = time.monotonic()
             async with httpx.AsyncClient(timeout=60.0) as client:
                 resp = await client.post(url, headers=headers, json=payload)
                 resp.raise_for_status()
                 data = resp.json()
-            
+            logging.info(f"[ASKING] Deepseek ответ получен за {time.monotonic() - t2:.2f} сек")
             content = data["choices"][0]["message"]["content"]
             logging.info(f"[ASKING_BOT] handle_question: deepseek response='{content}'")
+            t3 = time.monotonic()
             await message.answer(content)
-            
+            logging.info(f"[ASKING] Ответ пользователю отправлен за {time.monotonic() - t3:.2f} сек")
+            logging.info(f"[ASKING] ВСЕГО времени на ответ: {time.monotonic() - t0:.2f} сек")
         except Exception as e:
             import traceback
             logging.error(f"[ASKING_BOT] handle_question: error: {e}\n{traceback.format_exc()}")
