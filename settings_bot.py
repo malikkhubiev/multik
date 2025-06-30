@@ -4,8 +4,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram import Router, Dispatcher
 from aiogram.filters import Command
 import os
-from config import API_URL, SERVER_URL, DEEPSEEK_API_KEY
-from database import create_project, get_project_by_id, create_user, get_projects_by_user, update_project_name, update_project_business_info, append_project_business_info, delete_project, get_project_by_token, check_project_name_exists
+from config import API_URL, SERVER_URL, DEEPSEEK_API_KEY, TRIAL_DAYS, TRIAL_PROJECTS, PAID_PROJECTS, PAYMENT_AMOUNT, PAYMENT_CARD_NUMBER, MAIN_TELEGRAM_ID
+from database import create_project, get_project_by_id, create_user, get_projects_by_user, update_project_name, update_project_business_info, append_project_business_info, delete_project, get_project_by_token, check_project_name_exists, get_user_by_id, get_users_with_expired_trial, delete_all_projects_for_user, set_user_paid, get_user_projects
 from utils import set_webhook, delete_webhook
 from file_utils import extract_text_from_file, extract_text_from_file_async
 import json
@@ -17,7 +17,8 @@ import httpx
 import asyncio
 from pydub import AudioSegment
 import time
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 router = APIRouter()
 
@@ -51,6 +52,28 @@ main_menu = ReplyKeyboardMarkup(
     ],
     resize_keyboard=True
 )
+
+# --- APScheduler ---
+scheduler = AsyncIOScheduler()
+
+async def check_expired_trials():
+    users = await get_users_with_expired_trial()
+    for user in users:
+        telegram_id = user['telegram_id']
+        # Удаляем вебхуки на все проекты пользователя (если есть)
+        projects = await get_user_projects(telegram_id)
+        for project in projects:
+            try:
+                await delete_webhook(project['token'])
+            except Exception as e:
+                logger.error(f"[TRIAL] Ошибка при удалении вебхука: {e}")
+        # Можно добавить флаг в user FSM или просто полагаться на paid/start_date
+        # Отправить пользователю уведомление (если нужно)
+        # (В реальном боте — отправка через Telegram API)
+        logger.info(f"[TRIAL] Пользователь {telegram_id} — trial истёк, вебхуки удалены")
+
+scheduler.add_job(check_expired_trials, 'interval', hours=1)
+scheduler.start()
 
 async def process_business_file_with_deepseek(file_content: str) -> str:
     """Обрабатывает файл с данными о бизнесе через Deepseek для создания компактной информации"""
@@ -141,41 +164,43 @@ async def clear_asking_bot_cache(token: str):
     except Exception as e:
         logger.error(f"Error clearing asking_bot cache: {e}")
 
+# --- Middleware для перехвата команд, если trial истёк ---
+async def trial_middleware(message: types.Message, state: FSMContext, handler):
+    user = await get_user_by_id(str(message.from_user.id))
+    if user and not user['paid']:
+        from datetime import datetime, timezone, timedelta
+        start_date = user['start_date']
+        if isinstance(start_date, str):
+            from dateutil.parser import parse
+            start_date = parse(start_date)
+        now = datetime.utcnow()
+        if (now - start_date).days >= TRIAL_DAYS:
+            # Показываем меню оплаты/удаления
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Оплатить", callback_data="pay_trial")],
+                    [InlineKeyboardButton(text="Удалить проекты", callback_data="delete_trial_projects")]
+                ]
+            )
+            await message.answer(
+                f"Пробный период завершён!\n\nДля продолжения работы оплатите {PAYMENT_AMOUNT} рублей за первый месяц или удалите проекты.\n\nВыберите действие:",
+                reply_markup=kb
+            )
+            return  # Не передаём управление дальше
+    await handler(message, state)
+
+# --- Обработка команд с middleware ---
 @settings_router.message(Command("start"))
-async def handle_settings_start(message: types.Message, state: FSMContext):
-    logger.info(f"/start received from user {message.from_user.id}")
-    try:
-        # Сбрасываем состояние перед началом
-        await state.clear()
-        await create_user(str(message.from_user.id))
-        await message.answer("Добро пожаловать в настройки! Введите имя вашего проекта.", reply_markup=main_menu)
-        await state.set_state(SettingsStates.waiting_for_project_name)
-        logger.info(f"Sent welcome message to user {message.from_user.id}")
-    except Exception as e:
-        logger.error(f"Error in handle_settings_start: {e}")
+async def start_with_trial_middleware(message: types.Message, state: FSMContext):
+    await trial_middleware(message, state, handle_settings_start)
 
 @settings_router.message(Command("help"))
-async def handle_help_command(message: types.Message, state: FSMContext):
-    """Показывает справку по командам"""
-    # Сбрасываем состояние
-    await state.clear()
-    help_text = """
-🤖 Доступные команды:
+async def help_with_trial_middleware(message: types.Message, state: FSMContext):
+    await trial_middleware(message, state, handle_help_command)
 
-/start - Создать новый проект
-/projects - Управление существующими проектами
-/help - Показать эту справку
-
-📋 Функции управления проектами:
-• Переименование проекта
-• Добавление дополнительных данных
-• Изменение данных о бизнесе
-• Удаление проекта (с отключением webhook)
-
-💡 Для начала работы используйте /start
-💡 Для управления проектами используйте /projects
-    """
-    await message.answer(help_text, reply_markup=main_menu)
+@settings_router.message(Command("projects"))
+async def projects_with_trial_middleware(message: types.Message, state: FSMContext):
+    await trial_middleware(message, state, handle_projects_command)
 
 @settings_router.message(SettingsStates.waiting_for_project_name)
 async def handle_project_name(message: types.Message, state: FSMContext):
@@ -638,6 +663,29 @@ async def handle_any_message(message: types.Message, state: FSMContext):
             reply_markup=main_menu
         )
 
+    # --- Обработка подтверждения оплаты админом ---
+    if message.text and message.text.lower().startswith("оплатил ") and str(message.from_user.id) == str(MAIN_TELEGRAM_ID):
+        parts = message.text.strip().split()
+        if len(parts) == 2 and parts[1].isdigit():
+            paid_telegram_id = parts[1]
+            await set_user_paid(paid_telegram_id, True)
+            # Восстановить вебхуки на все проекты пользователя
+            projects = await get_user_projects(paid_telegram_id)
+            restored = 0
+            for project in projects:
+                try:
+                    await set_webhook(project['token'], project['id'])
+                    restored += 1
+                except Exception as e:
+                    logger.error(f"[PAYMENT] Ошибка при восстановлении вебхука: {e}")
+            # Уведомить пользователя
+            try:
+                await settings_bot.send_message(paid_telegram_id, f"Оплата подтверждена! Ваши проекты снова активны. Теперь вы можете создавать до {PAID_PROJECTS} проектов.")
+            except Exception as e:
+                logger.error(f"[PAYMENT] Не удалось отправить сообщение пользователю: {e}")
+            await message.answer(f"Пользователь {paid_telegram_id} отмечен как оплативший. Вебхуки восстановлены для {restored} проектов.")
+            return
+
 @router.post(SETTINGS_WEBHOOK_PATH)
 async def process_settings_webhook(request: Request):
     logger.info("Received webhook call for settings bot")
@@ -710,4 +758,44 @@ async def handle_show_data(callback_query: types.CallbackQuery, state: FSMContex
         max_len = 4096
         for i in range(0, len(business_info), max_len):
             await callback_query.message.answer(business_info[i:i+max_len])
-    await callback_query.answer() 
+    await callback_query.answer()
+
+@settings_router.callback_query(lambda c: c.data == "pay_trial")
+async def handle_pay_trial(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.message.answer(
+        f"Для оплаты переведите {PAYMENT_AMOUNT} рублей на карту: {PAYMENT_CARD_NUMBER}\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
+    )
+    await callback_query.answer()
+
+@settings_router.callback_query(lambda c: c.data == "delete_trial_projects")
+async def handle_delete_trial_projects(callback_query: types.CallbackQuery, state: FSMContext):
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Да, удалить", callback_data="confirm_delete_trial_projects")],
+            [InlineKeyboardButton(text="Отмена", callback_data="cancel_delete_trial_projects")]
+        ]
+    )
+    await callback_query.message.answer(
+        "Вы уверены, что хотите удалить все проекты? Восстановить их будет невозможно!",
+        reply_markup=kb
+    )
+    await callback_query.answer()
+
+@settings_router.callback_query(lambda c: c.data == "confirm_delete_trial_projects")
+async def handle_confirm_delete_trial_projects(callback_query: types.CallbackQuery, state: FSMContext):
+    telegram_id = str(callback_query.from_user.id)
+    await delete_all_projects_for_user(telegram_id)
+    await callback_query.message.answer("Все ваши проекты удалены. Вы можете начать заново с пробным периодом или оплатить для расширения возможностей.")
+    await callback_query.answer()
+
+@settings_router.callback_query(lambda c: c.data == "cancel_delete_trial_projects")
+async def handle_cancel_delete_trial_projects(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.message.answer("Удаление отменено.")
+    await callback_query.answer()
+
+@settings_router.message(lambda m: m.photo and m.caption and "чек" in m.caption.lower())
+async def handle_payment_check(message: types.Message, state: FSMContext):
+    telegram_id = str(message.from_user.id)
+    # Пересылаем чек админу
+    await message.forward(MAIN_TELEGRAM_ID)
+    await message.answer("Чек отправлен на проверку. Ожидайте подтверждения оплаты.") 

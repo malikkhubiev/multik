@@ -23,6 +23,8 @@ Base = declarative_base()
 class User(Base):
     __tablename__ = 'user'
     telegram_id = Column(String, primary_key=True)
+    paid = Column(Boolean, default=False)
+    start_date = Column(DateTime, default=datetime.utcnow)
     projects = relationship("Project", back_populates="user")
 
 # Новая таблица project
@@ -45,11 +47,12 @@ engine = create_engine(DATABASE_URL.replace("sqlite+aiosqlite", "sqlite"))
 Base.metadata.create_all(bind=engine)
 
 # CRUD для user
-async def create_user(telegram_id: str):
+async def create_user(telegram_id: str) -> None:
+    # Проверяем, есть ли уже такой пользователь
     query = select(User).where(User.telegram_id == telegram_id)
-    row = await database.fetch_one(query)
-    if not row:
-        query = insert(User).values(telegram_id=telegram_id)
+    user = await database.fetch_one(query)
+    if not user:
+        query = insert(User).values(telegram_id=telegram_id, paid=False, start_date=datetime.utcnow())
         await database.execute(query)
 
 async def get_user(telegram_id: str) -> Optional[dict]:
@@ -172,3 +175,23 @@ async def delete_project(project_id: str) -> bool:
     except Exception as e:
         logger.error(f"Error deleting project: {e}")
         return False
+
+async def set_user_paid(telegram_id: str, paid: bool = True):
+    from sqlalchemy import update
+    query = update(User).where(User.telegram_id == telegram_id).values(paid=paid)
+    await database.execute(query)
+
+async def get_user_by_id(telegram_id: str):
+    query = select(User).where(User.telegram_id == telegram_id)
+    return await database.fetch_one(query)
+
+async def get_users_with_expired_trial():
+    # Возвращает пользователей, у которых trial истёк и не оплачено
+    two_weeks_ago = datetime.utcnow() - timedelta(days=14)
+    query = select(User).where(User.paid == False, User.start_date < two_weeks_ago)
+    return await database.fetch_all(query)
+
+async def delete_all_projects_for_user(telegram_id: str):
+    from sqlalchemy import delete
+    query = delete(Project).where(Project.telegram_id == telegram_id)
+    await database.execute(query)
