@@ -306,6 +306,7 @@ async def log_message_stat(telegram_id, is_command, is_reply, response_time, pro
 async def add_feedback(telegram_id, username, feedback_text, is_positive=None):
     logging.info(f"[METRIC] add_feedback: telegram_id={telegram_id}, username={username}, is_positive={is_positive}, feedback_text={feedback_text}")
     query = insert(Feedback).values(
+        id=str(uuid.uuid4()),
         telegram_id=telegram_id,
         username=username,
         feedback_text=feedback_text,
