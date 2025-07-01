@@ -5,7 +5,7 @@ from aiogram import Router, Dispatcher
 from aiogram.filters import Command
 import os
 from config import API_URL, SERVER_URL, DEEPSEEK_API_KEY, TRIAL_DAYS, TRIAL_PROJECTS, PAID_PROJECTS, PAYMENT_AMOUNT, PAYMENT_CARD_NUMBER, MAIN_TELEGRAM_ID
-from database import create_project, get_project_by_id, create_user, get_projects_by_user, update_project_name, update_project_business_info, append_project_business_info, delete_project, get_project_by_token, check_project_name_exists, get_user_by_id, get_users_with_expired_trial, delete_all_projects_for_user, set_user_paid, get_user_projects, log_message_stat, add_feedback, update_project_token, get_users_with_expired_paid_month
+from database import create_project, get_project_by_id, create_user, get_projects_by_user, update_project_name, update_project_business_info, append_project_business_info, delete_project, get_project_by_token, check_project_name_exists, get_user_by_id, get_users_with_expired_trial, delete_all_projects_for_user, set_user_paid, get_user_projects, log_message_stat, add_feedback, update_project_token, get_users_with_expired_paid_month, set_trial_expired_notified
 from utils import set_webhook, delete_webhook
 from aiogram.fsm.context import FSMContext
 from settings_states import SettingsStates
@@ -67,6 +67,7 @@ async def check_expired_trials():
                     reply_markup=pay_kb
                 )
                 logging.info(f"[TRIAL] Пользователь {telegram_id} — trial истёк, уведомление отправлено")
+                await set_trial_expired_notified(telegram_id, True)
             except Exception as e:
                 logging.error(f"[TRIAL] Ошибка при отправке уведомления: {e}")
         except Exception as e:

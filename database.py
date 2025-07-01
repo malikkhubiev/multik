@@ -26,6 +26,7 @@ class User(Base):
     telegram_id = Column(String, primary_key=True)
     paid = Column(Boolean, default=False)
     start_date = Column(DateTime, default=datetime.now(timezone.utc))
+    trial_expired_notified = Column(Boolean, default=False)
     projects = relationship("Project", back_populates="user")
 
 # Новая таблица project
@@ -87,14 +88,14 @@ async def create_user(telegram_id: str) -> None:
     user = await database.fetch_one(query)
     if not user:
         logging.info(f"[DB] create_user: creating new user {telegram_id}")
-        query = insert(User).values(telegram_id=telegram_id, paid=False, start_date=datetime.now(timezone.utc))
+        query = insert(User).values(telegram_id=telegram_id, paid=False, start_date=datetime.now(timezone.utc), trial_expired_notified=False)
         await database.execute(query)
     else:
         logging.info(f"[DB] create_user: user {telegram_id} already exists, не обновляем paid/start_date")
     # Диагностика: выводим всех пользователей после создания
     all_users = await database.fetch_all(select(User))
     for u in all_users:
-        logging.info(f"[DB] DEBUG: после create_user: telegram_id={u['telegram_id']}, paid={u['paid']}, start_date={u['start_date']}")
+        logging.info(f"[DB] DEBUG: после create_user: telegram_id={u['telegram_id']}, paid={u['paid']}, start_date={u['start_date']}, trial_expired_notified={u['trial_expired_notified']}")
 
 async def get_user(telegram_id: str) -> Optional[dict]:
     logging.info(f"[DB] get_user: telegram_id={telegram_id}")
@@ -234,7 +235,10 @@ async def delete_project(project_id: str) -> bool:
 
 async def set_user_paid(telegram_id: str, paid: bool = True):
     from sqlalchemy import update
-    query = update(User).where(User.telegram_id == telegram_id).values(paid=paid)
+    values = {'paid': paid}
+    if paid:
+        values['trial_expired_notified'] = False
+    query = update(User).where(User.telegram_id == telegram_id).values(**values)
     await database.execute(query)
 
 async def get_user_by_id(telegram_id: str):
@@ -245,19 +249,25 @@ async def get_user_by_id(telegram_id: str):
 async def get_users_with_expired_trial():
     from datetime import datetime, timedelta
     from config import TRIAL_DAYS
+    from sqlalchemy import and_, update
     trial_period = timedelta(days=TRIAL_DAYS)
     trial_expired_before = datetime.now(timezone.utc) - trial_period
     logger.info(f"[DB] get_users_with_expired_trial: ищем пользователей с start_date < {trial_expired_before}")
     logger.info(f"[DB] get_users_with_expired_trial: TRIAL_DAYS = {TRIAL_DAYS}")
     now = datetime.now(timezone.utc)
     logger.info(f"[DB] get_users_with_expired_trial: текущее время UTC = {now}")
-    # Логируем всех пользователей для отладки
     all_users = await database.fetch_all(select(User))
     logger.info(all_users)
     logger.info(f"[DB] get_users_with_expired_trial: все пользователи:")
     for u in all_users:
-        logger.info(f"[DB] USER: telegram_id={u['telegram_id']}, paid={u['paid']}, start_date={u['start_date']}")
-    query = select(User).where(User.paid == False, User.start_date < trial_expired_before)
+        logger.info(f"[DB] USER: telegram_id={u['telegram_id']}, paid={u['paid']}, start_date={u['start_date']}, trial_expired_notified={u['trial_expired_notified']}")
+    query = select(User).where(
+        and_(
+            User.paid == False,
+            User.start_date < trial_expired_before,
+            User.trial_expired_notified == False
+        )
+    )
     logger.info(f"[DB] get_users_with_expired_trial: SQL запрос = {query}")
     rows = await database.fetch_all(query)
     logger.info(f"[DB] get_users_with_expired_trial: найдено пользователей = {len(rows)}")
@@ -269,6 +279,11 @@ async def get_users_with_expired_trial():
         time_diff = now - start_date
         logger.info(f"[DB] get_users_with_expired_trial: пользователь {i+1} - разница времени: {time_diff}")
     return [dict(r) for r in rows]
+
+async def set_trial_expired_notified(telegram_id: str, notified: bool = True):
+    from sqlalchemy import update
+    query = update(User).where(User.telegram_id == telegram_id).values(trial_expired_notified=notified)
+    await database.execute(query)
 
 async def delete_all_projects_for_user(telegram_id: str):
     from sqlalchemy import delete
