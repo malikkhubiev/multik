@@ -8,6 +8,7 @@ from sqlalchemy.sql import select
 from typing import Optional
 import logging
 from pathlib import Path
+from config import TRIAL_DAYS
 
 logger = logging.getLogger(__name__)
 
@@ -236,10 +237,30 @@ async def get_user_by_id(telegram_id: str):
 
 async def get_users_with_expired_trial():
     # Возвращает пользователей, у которых trial истёк и не оплачено
-    # two_weeks_ago = datetime.utcnow() - timedelta(days=14)
-    two_weeks_ago = datetime.utcnow() - timedelta(minutes=1)
-    query = select(User).where(User.paid == False, User.start_date < two_weeks_ago)
-    return await database.fetch_all(query)
+    from datetime import datetime, timedelta
+    # Используем TRIAL_DAYS из конфига (1/1440 = 1 минута)
+    trial_period = timedelta(days=TRIAL_DAYS)
+    trial_expired_before = datetime.utcnow() - trial_period
+    logger.info(f"[DB] get_users_with_expired_trial: ищем пользователей с start_date < {trial_expired_before}")
+    logger.info(f"[DB] get_users_with_expired_trial: TRIAL_DAYS = {TRIAL_DAYS}")
+    
+    # Для отладки: показываем текущее время и разницу
+    now = datetime.utcnow()
+    logger.info(f"[DB] get_users_with_expired_trial: текущее время UTC = {now}")
+    
+    query = select(User).where(User.paid == False, User.start_date < trial_expired_before)
+    logger.info(f"[DB] get_users_with_expired_trial: SQL запрос = {query}")
+    
+    rows = await database.fetch_all(query)
+    logger.info(f"[DB] get_users_with_expired_trial: найдено пользователей = {len(rows)}")
+    
+    for i, row in enumerate(rows):
+        logger.info(f"[DB] get_users_with_expired_trial: пользователь {i+1}: {row}")
+        if hasattr(row, 'start_date') and row.start_date:
+            time_diff = now - row.start_date
+            logger.info(f"[DB] get_users_with_expired_trial: пользователь {i+1} - разница времени: {time_diff}")
+    
+    return rows
 
 async def delete_all_projects_for_user(telegram_id: str):
     from sqlalchemy import delete
@@ -321,7 +342,13 @@ async def get_users_with_expired_paid_month():
     """Возвращает пользователей, у которых прошла 1 минута с момента первого платежа и которые уже оплатили (paid=True)"""
     from sqlalchemy import select, and_
     from datetime import datetime, timedelta
-    one_minute_ago = datetime.utcnow() - timedelta(minutes=1)
+    one_minute_ago = datetime.utcnow() - timedelta(TRIAL_DAYS)
+    logger.info(f"[DB] get_users_with_expired_paid_month: ищем пользователей с paid=True и paid_at < {one_minute_ago}")
+    
+    # Для отладки: показываем текущее время
+    now = datetime.utcnow()
+    logger.info(f"[DB] get_users_with_expired_paid_month: текущее время UTC = {now}")
+    
     # Получаем пользователей, у которых есть платеж, и paid_at < one_minute_ago
     # и которые paid=True
     query = select(User).join(Payment, User.telegram_id == Payment.telegram_id).where(
@@ -330,7 +357,11 @@ async def get_users_with_expired_paid_month():
             Payment.paid_at < one_minute_ago
         )
     )
+    logger.info(f"[DB] get_users_with_expired_paid_month: SQL запрос = {query}")
+    
     rows = await database.fetch_all(query)
+    logger.info(f"[DB] get_users_with_expired_paid_month: найдено записей = {len(rows)}")
+    
     # Оставляем только уникальных пользователей по telegram_id
     seen = set()
     result = []
@@ -338,4 +369,9 @@ async def get_users_with_expired_paid_month():
         if row['telegram_id'] not in seen:
             seen.add(row['telegram_id'])
             result.append(row)
+            logger.info(f"[DB] get_users_with_expired_paid_month: добавлен пользователь: {row}")
+        else:
+            logger.info(f"[DB] get_users_with_expired_paid_month: пропущен дубликат для telegram_id: {row['telegram_id']}")
+    
+    logger.info(f"[DB] get_users_with_expired_paid_month: итоговый результат (уникальных пользователей) = {len(result)}")
     return result
