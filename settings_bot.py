@@ -100,19 +100,25 @@ scheduler.start()
 # --- Middleware для перехвата команд, если trial истёк ---
 async def trial_middleware(message: types.Message, state: FSMContext, handler):
     user = await get_user_by_id(str(message.from_user.id))
+    logger.info(f"[TRIAL_MW] user: {user}")
     if user and not user['paid']:
         start_date = user['start_date']
-        logger.info(f"start_date {start_date}")
+        logger.info(f"[TRIAL_MW] start_date raw: {start_date} (type: {type(start_date)})")
         if isinstance(start_date, str):
             from dateutil.parser import parse
             start_date = parse(start_date)
-            logger.info(f"start_date parsed {start_date}")
+            logger.info(f"[TRIAL_MW] start_date parsed: {start_date} (type: {type(start_date)})")
+        # Приводим к naive datetime (без tzinfo)
+        if hasattr(start_date, 'tzinfo') and start_date.tzinfo is not None:
+            start_date = start_date.replace(tzinfo=None)
+            logger.info(f"[TRIAL_MW] start_date made naive: {start_date} (type: {type(start_date)})")
         now = datetime.datetime.utcnow()
-        logger.info(f"now {now}")
-        logger.info(f"(now - start_date).days {(now - start_date).days}")
-        logger.info(f"TRIAL_DAYS {TRIAL_DAYS}")
-        if (now - start_date).days >= TRIAL_DAYS:
-            logger.info(f"(now - start_date).days >= TRIAL_DAYS")
+        logger.info(f"[TRIAL_MW] now: {now} (type: {type(now)})")
+        diff = now - start_date
+        logger.info(f"[TRIAL_MW] now - start_date: {diff}, days: {diff.days}")
+        logger.info(f"[TRIAL_MW] TRIAL_DAYS: {TRIAL_DAYS}, paid: {user['paid']}")
+        if diff.days >= TRIAL_DAYS:
+            logger.info(f"[TRIAL_MW] TRIAL EXPIRED: (now - start_date).days >= TRIAL_DAYS")
             # Показываем меню оплаты/удаления
             kb = InlineKeyboardMarkup(
                 inline_keyboard=[
@@ -757,9 +763,11 @@ async def handle_new_token(message: types.Message, state: FSMContext):
 
 @settings_router.message()
 async def handle_any_message(message: types.Message, state: FSMContext):
+    await trial_middleware(message, state, _handle_any_message_inner)
+
+async def _handle_any_message_inner(message: types.Message, state: FSMContext):
     await log_fsm_state(message, state)
     logging.info(f"[BOT] handle_any_message: user={message.from_user.id}, text={message.text}")
-    """Обрабатывает любые сообщения, которые не являются командами"""
     # --- Обработка подтверждения оплаты админом ---
     if message.text and message.text.lower().startswith("оплатил ") and str(message.from_user.id) == str(MAIN_TELEGRAM_ID):
         parts = message.text.strip().split()
