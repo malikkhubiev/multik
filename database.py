@@ -267,7 +267,7 @@ async def get_users_with_expired_trial():
             start_date = start_date.replace(tzinfo=timezone.utc)
         time_diff = now - start_date
         logger.info(f"[DB] get_users_with_expired_trial: пользователь {i+1} - разница времени: {time_diff}")
-    return rows
+    return [dict(r) for r in rows]
 
 async def delete_all_projects_for_user(telegram_id: str):
     from sqlalchemy import delete
@@ -380,4 +380,4 @@ async def get_users_with_expired_paid_month():
         else:
             logger.info(f"[DB] get_users_with_expired_paid_month: пропущен дубликат для telegram_id: {row['telegram_id']}")
     logger.info(f"[DB] get_users_with_expired_paid_month: итоговый результат (уникальных пользователей) = {len(result)}")
-    return result
+    return [dict(r) for r in result]
