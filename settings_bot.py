@@ -15,11 +15,10 @@ from settings_feedback import handle_feedback_command, handle_feedback_text, han
 from settings_payment import handle_pay_command, handle_pay_callback, handle_payment_check, handle_payment_check_document, handle_payment_check_document_any, handle_payment_check_photo_any
 from settings_middleware import trial_middleware, clear_asking_bot_cache
 from settings_logging import log_message_stat
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import traceback
-from settings_handlers import handle_settings_start, handle_projects_command, handle_help_command
 
 router = APIRouter()
 
@@ -795,3 +794,73 @@ main_menu = ReplyKeyboardMarkup(
     ],
     resize_keyboard=True
 )
+
+async def handle_settings_start(message: types.Message, state: FSMContext):
+    logger = logging.getLogger(__name__)
+    logger.info(f"/start received from user {message.from_user.id}")
+    try:
+        await state.clear()
+        await create_user(str(message.from_user.id))
+        await message.answer("Добро пожаловать в настройки! Введите имя вашего проекта.", reply_markup=main_menu)
+        await state.set_state(SettingsStates.waiting_for_project_name)
+        logger.info(f"Sent welcome message to user {message.from_user.id}")
+    except Exception as e:
+        logger.error(f"Error in handle_settings_start: {e}")
+
+async def handle_help_command(message: types.Message, state: FSMContext):
+    await state.clear()
+    help_text = """
+🤖 Доступные команды:
+
+/start - Создать новый проект
+/projects - Управление существующими проектами
+/help - Показать эту справку
+
+💳 Оплатить — перейти к оплате подписки
+
+📋 Функции управления проектами:
+• Переименование проекта
+• Добавление дополнительных данных
+• Изменение данных о бизнесе
+• Удаление проекта (с отключением webhook)
+
+💡 Для начала работы используйте /start
+💡 Для управления проектами используйте /projects
+💡 Для оплаты используйте кнопку 'Оплатить' или команду /pay
+    """
+    pay_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Оплатить", callback_data="pay")]
+        ]
+    )
+    await message.answer(help_text, reply_markup=pay_kb)
+
+async def handle_projects_command(message: types.Message, state: FSMContext, telegram_id: str = None):
+    logger = logging.getLogger(__name__)
+    logger.info(f"/projects received from user {message.from_user.id}")
+    try:
+        if telegram_id is None:
+            telegram_id = str(message.from_user.id)
+        await state.update_data(telegram_id=telegram_id)
+        await state.update_data(selected_project_id=None, selected_project=None)
+        projects = await get_projects_by_user(telegram_id)
+        if not projects:
+            await message.answer("У вас пока нет проектов. Создайте первый проект командой /start", reply_markup=main_menu)
+            return
+        buttons = []
+        for project in projects:
+            buttons.append([
+                types.InlineKeyboardButton(
+                    text=project["project_name"],
+                    callback_data=f"project_{project['id']}"
+                )
+            ])
+        if buttons:
+            keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
+            await message.answer("Выберите проект для управления:", reply_markup=main_menu)
+            await message.answer("Список проектов:", reply_markup=keyboard)
+        else:
+            await message.answer("Нет доступных проектов.", reply_markup=main_menu)
+    except Exception as e:
+        logger.error(f"Error in handle_projects_command: {e}")
+        await message.answer("Произошла ошибка при получении списка проектов", reply_markup=main_menu)

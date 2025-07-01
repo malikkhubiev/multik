@@ -6,7 +6,7 @@ async def log_fsm_state(message, state):
 
 async def handle_command_in_state(message, state) -> bool:
     from settings_states import SettingsStates
-    from settings_handlers import handle_settings_start, handle_projects_command, handle_help_command
+    from settings_bot import handle_settings_start, handle_projects_command, handle_help_command
     if message.text and message.text.startswith('/'):
         command = message.text.split()[0].lower()
         await state.clear()
