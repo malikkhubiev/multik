@@ -961,6 +961,20 @@ async def handle_projects_command(message: types.Message, state: FSMContext, tel
         logger.error(f"Error in handle_projects_command: {e}")
         await message.answer("Произошла ошибка при получении списка проектов", reply_markup=main_menu)
 
+async def send_pay_instructions(send_method):
+    await send_method(
+        f"Для оплаты переведите {PAYMENT_AMOUNT} рублей на карту: {PAYMENT_CARD_NUMBER}\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
+    )
+
+@settings_router.message(Command("pay"))
+async def handle_pay_command(message: types.Message, state: FSMContext):
+    await send_pay_instructions(message.answer)
+
+@settings_router.callback_query(lambda c: c.data == "pay")
+async def handle_pay_callback(callback_query: types.CallbackQuery, state: FSMContext):
+    await send_pay_instructions(callback_query.message.answer)
+    await callback_query.answer()
+
 @settings_router.message(Command("feedback"))
 async def handle_feedback_command(message: types.Message, state: FSMContext):
     await message.answer(
