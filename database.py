@@ -315,3 +315,26 @@ async def update_project_token(project_id: str, new_token: str) -> bool:
     except Exception as e:
         logger.error(f"Error updating project token: {e}")
         return False
+
+async def get_users_with_expired_paid_month():
+    """Возвращает пользователей, у которых прошла 1 минута с момента первого платежа и которые уже оплатили (paid=True)"""
+    from sqlalchemy import select, and_
+    from datetime import datetime, timedelta
+    one_minute_ago = datetime.utcnow() - timedelta(minutes=1)
+    # Получаем пользователей, у которых есть платеж, и paid_at < one_minute_ago
+    # и которые paid=True
+    query = select(User).join(Payment, User.telegram_id == Payment.telegram_id).where(
+        and_(
+            User.paid == True,
+            Payment.paid_at < one_minute_ago
+        )
+    )
+    rows = await database.fetch_all(query)
+    # Оставляем только уникальных пользователей по telegram_id
+    seen = set()
+    result = []
+    for row in rows:
+        if row['telegram_id'] not in seen:
+            seen.add(row['telegram_id'])
+            result.append(row)
+    return result

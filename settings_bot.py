@@ -5,7 +5,7 @@ from aiogram import Router, Dispatcher
 from aiogram.filters import Command
 import os
 from config import API_URL, SERVER_URL, DEEPSEEK_API_KEY, TRIAL_DAYS, TRIAL_PROJECTS, PAID_PROJECTS, PAYMENT_AMOUNT, PAYMENT_CARD_NUMBER, MAIN_TELEGRAM_ID
-from database import create_project, get_project_by_id, create_user, get_projects_by_user, update_project_name, update_project_business_info, append_project_business_info, delete_project, get_project_by_token, check_project_name_exists, get_user_by_id, get_users_with_expired_trial, delete_all_projects_for_user, set_user_paid, get_user_projects, log_message_stat, add_feedback, update_project_token
+from database import create_project, get_project_by_id, create_user, get_projects_by_user, update_project_name, update_project_business_info, append_project_business_info, delete_project, get_project_by_token, check_project_name_exists, get_user_by_id, get_users_with_expired_trial, delete_all_projects_for_user, set_user_paid, get_user_projects, log_message_stat, add_feedback, update_project_token, get_users_with_expired_paid_month
 from utils import set_webhook, delete_webhook
 from file_utils import extract_text_from_file, extract_text_from_file_async
 import json
@@ -51,7 +51,7 @@ class SettingsStates(StatesGroup):
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="/start"), KeyboardButton(text="/projects"), KeyboardButton(text="/help")],
-        [KeyboardButton(text="Оплатить")]
+        [KeyboardButton(text="/pay")]
     ],
     resize_keyboard=True
 )
@@ -75,7 +75,21 @@ async def check_expired_trials():
         # (В реальном боте — отправка через Telegram API)
         logger.info(f"[TRIAL] Пользователь {telegram_id} — trial истёк, вебхуки удалены")
 
-scheduler.add_job(check_expired_trials, 'interval', hours=1)
+async def check_expired_paid_month():
+    users = await get_users_with_expired_paid_month()
+    for user in users:
+        telegram_id = user['telegram_id']
+        try:
+            await settings_bot.send_message(
+                telegram_id,
+                "Первый оплаченный месяц завершён!\n\nДля продолжения работы оплатите полную стоимость подписки."
+            )
+            logger.info(f"[PAID_MONTH] Пользователь {telegram_id} — первый оплаченный месяц истёк, отправлено уведомление")
+        except Exception as e:
+            logger.error(f"[PAID_MONTH] Ошибка при отправке уведомления: {e}")
+
+scheduler.add_job(check_expired_trials, 'interval', minutes=1)
+scheduler.add_job(check_expired_paid_month, 'interval', minutes=1)
 scheduler.start()
 
 async def process_business_file_with_deepseek(file_content: str) -> str:
