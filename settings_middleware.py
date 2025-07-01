@@ -2,7 +2,7 @@ import logging
 from database import get_user_by_id
 from config import TRIAL_DAYS, PAYMENT_AMOUNT
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from datetime import datetime, timezone, timedelta
+import datetime
 
 async def clear_asking_bot_cache(token: str):
     try:
@@ -21,7 +21,7 @@ async def trial_middleware(message, state, handler):
             from dateutil.parser import parse
             start_date = parse(start_date)
             logging.info(f"start_date parsed {start_date}")
-        now = datetime.now(datetime.timezone.utc)
+        now = datetime.datetime.utcnow()
         logging.info(f"now {now}")
         logging.info(f"(now - start_date).days {(now - start_date).days}")
         logging.info(f"TRIAL_DAYS {TRIAL_DAYS}")

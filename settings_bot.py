@@ -20,7 +20,7 @@ import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import traceback
 import time
-from datetime import datetime, timezone, timedelta
+import datetime
 
 router = APIRouter()
 
@@ -107,7 +107,7 @@ async def trial_middleware(message: types.Message, state: FSMContext, handler):
             from dateutil.parser import parse
             start_date = parse(start_date)
             logger.info(f"start_date parsed {start_date}")
-        now = datetime.now(datetime.timezone.utc)
+        now = datetime.datetime.utcnow()
         logger.info(f"now {now}")
         logger.info(f"(now - start_date).days {(now - start_date).days}")
         logger.info(f"TRIAL_DAYS {TRIAL_DAYS}")
