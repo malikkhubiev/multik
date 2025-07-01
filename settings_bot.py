@@ -10,13 +10,14 @@ from utils import set_webhook, delete_webhook
 from aiogram.fsm.context import FSMContext
 from settings_states import SettingsStates
 from settings_business import process_business_file_with_deepseek, clean_markdown, clean_business_text, get_text_from_message
-from settings_scheduler import start_scheduler
 from settings_utils import handle_command_in_state, log_fsm_state
 from settings_feedback import handle_feedback_command, handle_feedback_text, handle_feedback_rating
 from settings_payment import handle_pay_command, handle_pay_callback, handle_payment_check, handle_payment_check_document, handle_payment_check_document_any, handle_payment_check_photo_any
 from settings_middleware import trial_middleware, clear_asking_bot_cache
 from settings_logging import log_message_stat
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+import logging
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 router = APIRouter()
 
@@ -33,8 +34,65 @@ settings_dp.include_router(settings_router)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- APScheduler ---
-# (удалить определения check_expired_trials, check_expired_paid_month, scheduler, scheduler.start() и все, что связано с APScheduler)
+scheduler = AsyncIOScheduler()
+
+async def check_expired_trials():
+    users = await get_users_with_expired_trial()
+    logging.info(f"[TRIAL] Найдено пользователей с истекшим trial: {len(users)}")
+    for user in users:
+        telegram_id = user.get('telegram_id')
+        logging.info(f"[TRIAL] Проверяю пользователя: {user}")
+        try:
+            projects = await get_user_projects(telegram_id)
+            logging.info(f"[TRIAL] У пользователя {telegram_id} найдено проектов: {len(projects)}")
+            for project in projects:
+                try:
+                    await delete_webhook(project['token'])
+                    logging.info(f"[TRIAL] Вебхук удалён для проекта {project['id']} (token={project['token']})")
+                except Exception as e:
+                    logging.error(f"[TRIAL] Ошибка при удалении вебхука: {e}")
+            try:
+                pay_kb = InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [InlineKeyboardButton(text="Оплатить", callback_data="pay")],
+                        [InlineKeyboardButton(text="Удалить проекты", callback_data="delete_trial_projects")]
+                    ]
+                )
+                await settings_bot.send_message(
+                    telegram_id,
+                    f"Пробный период завершён!\n\nДля продолжения работы оплатите {PAYMENT_AMOUNT} рублей за первый месяц или удалите проекты.",
+                    reply_markup=pay_kb
+                )
+                logging.info(f"[TRIAL] Пользователь {telegram_id} — trial истёк, уведомление отправлено")
+            except Exception as e:
+                logging.error(f"[TRIAL] Ошибка при отправке уведомления: {e}")
+        except Exception as e:
+            logging.error(f"[TRIAL] Ошибка при обработке пользователя {telegram_id}: {e}")
+
+async def check_expired_paid_month():
+    users = await get_users_with_expired_paid_month()
+    logging.info(f"[PAID_MONTH] Найдено пользователей с истекшим первым оплачиваемым месяцем: {len(users)}")
+    for user in users:
+        telegram_id = user.get('telegram_id')
+        logging.info(f"[PAID_MONTH] Проверяю пользователя: {user}")
+        try:
+            pay_kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Оплатить", callback_data="pay")]
+                ]
+            )
+            await settings_bot.send_message(
+                telegram_id,
+                "Первый оплаченный месяц завершён!\n\nДля продолжения работы оплатите полную стоимость подписки.",
+                reply_markup=pay_kb
+            )
+            logging.info(f"[PAID_MONTH] Пользователь {telegram_id} — первый оплаченный месяц истёк, уведомление отправлено")
+        except Exception as e:
+            logging.error(f"[PAID_MONTH] Ошибка при отправке уведомления: {e}")
+
+scheduler.add_job(check_expired_trials, 'interval', minutes=1)
+scheduler.add_job(check_expired_paid_month, 'interval', minutes=1)
+scheduler.start()
 
 # --- Middleware для перехвата команд, если trial истёк ---
 async def trial_middleware(message: types.Message, state: FSMContext, handler):
@@ -727,8 +785,6 @@ async def handle_any_message(message: types.Message, state: FSMContext):
         is_trial=is_trial,
         is_paid=is_paid
     )
-
-start_scheduler()
 
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
