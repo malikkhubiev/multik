@@ -262,9 +262,11 @@ async def get_users_with_expired_trial():
     logger.info(f"[DB] get_users_with_expired_trial: найдено пользователей = {len(rows)}")
     for i, row in enumerate(rows):
         logger.info(f"[DB] get_users_with_expired_trial: пользователь {i+1}: {row}")
-        if hasattr(row, 'start_date') and row.start_date:
-            time_diff = now - row.start_date
-            logger.info(f"[DB] get_users_with_expired_trial: пользователь {i+1} - разница времени: {time_diff}")
+        start_date = row.start_date
+        if start_date.tzinfo is None:
+            start_date = start_date.replace(tzinfo=timezone.utc)
+        time_diff = now - start_date
+        logger.info(f"[DB] get_users_with_expired_trial: пользователь {i+1} - разница времени: {time_diff}")
     return rows
 
 async def delete_all_projects_for_user(telegram_id: str):
@@ -370,6 +372,11 @@ async def get_users_with_expired_paid_month():
             seen.add(row['telegram_id'])
             result.append(row)
             logger.info(f"[DB] get_users_with_expired_paid_month: добавлен пользователь: {row}")
+            paid_at = row['paid_at'] if 'paid_at' in row else None
+            if paid_at and paid_at.tzinfo is None:
+                paid_at = paid_at.replace(tzinfo=timezone.utc)
+            if paid_at and paid_at < one_month_ago:
+                logger.info(f"[DB] get_users_with_expired_paid_month: пользователь {row['telegram_id']} - платный период истек")
         else:
             logger.info(f"[DB] get_users_with_expired_paid_month: пропущен дубликат для telegram_id: {row['telegram_id']}")
     logger.info(f"[DB] get_users_with_expired_paid_month: итоговый результат (уникальных пользователей) = {len(result)}")
