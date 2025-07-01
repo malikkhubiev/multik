@@ -367,37 +367,32 @@ async def update_project_token(project_id: str, new_token: str) -> bool:
 
 async def get_users_with_expired_paid_month():
     """Возвращает пользователей, у которых прошёл первый платный месяц (тест: 30 секунд), и которые уже оплатили (paid=True)"""
-    from sqlalchemy import select, and_
-    from datetime import datetime, timedelta
-    # Для реального продакшена:
-    # one_month_ago = datetime.now(timezone.utc) - timedelta(days=30)
-    # Для теста используем 30 секунд:
+    from sqlalchemy import select, and_, func
+    from datetime import datetime, timedelta, timezone
     one_month_ago = datetime.now(timezone.utc) - timedelta(seconds=30)
-    logger.info(f"[DB] get_users_with_expired_paid_month: ищем пользователей с paid=True и paid_at < {one_month_ago}")
-    now = datetime.now(timezone.utc)
-    logger.info(f"[DB] get_users_with_expired_paid_month: текущее время UTC = {now}")
-    query = select(User).join(Payment, User.telegram_id == Payment.telegram_id).where(
+    logger.info(f"[DB] get_users_with_expired_paid_month: ищем пользователей с paid=True и последним paid_at < {one_month_ago}")
+    # Подзапрос: для каждого пользователя выбрать последний платёж
+    subq = select(
+        Payment.telegram_id,
+        func.max(Payment.paid_at).label('last_paid_at')
+    ).group_by(Payment.telegram_id).subquery()
+    # Основной запрос: только если последний платёж старше 30 секунд
+    query = select(User, subq.c.last_paid_at).join(subq, User.telegram_id == subq.c.telegram_id).where(
         and_(
             User.paid == True,
-            Payment.paid_at < one_month_ago
+            subq.c.last_paid_at < one_month_ago
         )
     )
     logger.info(f"[DB] get_users_with_expired_paid_month: SQL запрос = {query}")
     rows = await database.fetch_all(query)
     logger.info(f"[DB] get_users_with_expired_paid_month: найдено записей = {len(rows)}")
-    seen = set()
+    for i, row in enumerate(rows):
+        logger.info(f"[DB] get_users_with_expired_paid_month: пользователь {i+1}: telegram_id={row['telegram_id']}, last_paid_at={row['last_paid_at']}")
+    # Возвращаем только пользователей (dict)
     result = []
     for row in rows:
-        if row['telegram_id'] not in seen:
-            seen.add(row['telegram_id'])
-            result.append(row)
-            logger.info(f"[DB] get_users_with_expired_paid_month: добавлен пользователь: {row}")
-            paid_at = row['paid_at'] if 'paid_at' in row else None
-            if paid_at and paid_at.tzinfo is None:
-                paid_at = paid_at.replace(tzinfo=timezone.utc)
-            if paid_at and paid_at < one_month_ago:
-                logger.info(f"[DB] get_users_with_expired_paid_month: пользователь {row['telegram_id']} - платный период истек")
-        else:
-            logger.info(f"[DB] get_users_with_expired_paid_month: пропущен дубликат для telegram_id: {row['telegram_id']}")
+        user_dict = dict(row)
+        user_dict['last_paid_at'] = row['last_paid_at']
+        result.append(user_dict)
     logger.info(f"[DB] get_users_with_expired_paid_month: итоговый результат (уникальных пользователей) = {len(result)}")
-    return [dict(r) for r in result]
+    return result
