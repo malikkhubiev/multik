@@ -909,7 +909,7 @@ async def handle_help_command(message: types.Message, state: FSMContext):
     """
     pay_kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Оплатить", callback_data="pay_trial")]
+            [InlineKeyboardButton(text="Оплатить", callback_data="pay")]
         ]
     )
     await message.answer(help_text, reply_markup=pay_kb)
