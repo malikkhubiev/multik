@@ -812,7 +812,7 @@ async def _handle_any_message_inner(message: types.Message, state: FSMContext):
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="/start"), KeyboardButton(text="/projects"), KeyboardButton(text="/help")],
-        [KeyboardButton(text="/pay")]
+        [KeyboardButton(text="/pay"), KeyboardButton(text="/feedback")]
     ],
     resize_keyboard=True
 )
@@ -837,6 +837,7 @@ async def handle_help_command(message: types.Message, state: FSMContext):
 /start - Создать новый проект
 /projects - Управление существующими проектами
 /help - Показать эту справку
+/feedback - Оставить отзыв о сервисе
 
 💳 Оплатить — перейти к оплате подписки
 
@@ -849,6 +850,7 @@ async def handle_help_command(message: types.Message, state: FSMContext):
 💡 Для начала работы используйте /start
 💡 Для управления проектами используйте /projects
 💡 Для оплаты используйте кнопку 'Оплатить' или команду /pay
+💡 Для отзыва используйте /feedback или кнопку в меню
     """
     pay_kb = InlineKeyboardMarkup(
         inline_keyboard=[
