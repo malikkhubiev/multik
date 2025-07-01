@@ -173,11 +173,17 @@ async def trial_middleware(message: types.Message, state: FSMContext, handler):
     if user and not user['paid']:
         from datetime import datetime, timezone, timedelta
         start_date = user['start_date']
+        logger.info(f"start_date {start_date}")
         if isinstance(start_date, str):
             from dateutil.parser import parse
             start_date = parse(start_date)
+            logger.info(f"start_date parsed {start_date}")
         now = datetime.utcnow()
+        logger.info(f"now {now}")
+        logger.info(f"(now - start_date).days {(now - start_date).days}")
+        logger.info(f"TRIAL_DAYS {TRIAL_DAYS}")
         if (now - start_date).days >= TRIAL_DAYS:
+            logger.info(f"(now - start_date).days >= TRIAL_DAYS")
             # Показываем меню оплаты/удаления
             kb = InlineKeyboardMarkup(
                 inline_keyboard=[
