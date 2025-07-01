@@ -339,30 +339,25 @@ async def update_project_token(project_id: str, new_token: str) -> bool:
         return False
 
 async def get_users_with_expired_paid_month():
-    """Возвращает пользователей, у которых прошла 1 минута с момента первого платежа и которые уже оплатили (paid=True)"""
+    """Возвращает пользователей, у которых прошёл первый платный месяц (тест: 30 секунд), и которые уже оплатили (paid=True)"""
     from sqlalchemy import select, and_
     from datetime import datetime, timedelta
-    one_minute_ago = datetime.utcnow() - timedelta(TRIAL_DAYS)
-    logger.info(f"[DB] get_users_with_expired_paid_month: ищем пользователей с paid=True и paid_at < {one_minute_ago}")
-    
-    # Для отладки: показываем текущее время
+    # Для реального продакшена:
+    # one_month_ago = datetime.utcnow() - timedelta(days=30)
+    # Для теста используем 30 секунд:
+    one_month_ago = datetime.utcnow() - timedelta(seconds=30)
+    logger.info(f"[DB] get_users_with_expired_paid_month: ищем пользователей с paid=True и paid_at < {one_month_ago}")
     now = datetime.utcnow()
     logger.info(f"[DB] get_users_with_expired_paid_month: текущее время UTC = {now}")
-    
-    # Получаем пользователей, у которых есть платеж, и paid_at < one_minute_ago
-    # и которые paid=True
     query = select(User).join(Payment, User.telegram_id == Payment.telegram_id).where(
         and_(
             User.paid == True,
-            Payment.paid_at < one_minute_ago
+            Payment.paid_at < one_month_ago
         )
     )
     logger.info(f"[DB] get_users_with_expired_paid_month: SQL запрос = {query}")
-    
     rows = await database.fetch_all(query)
     logger.info(f"[DB] get_users_with_expired_paid_month: найдено записей = {len(rows)}")
-    
-    # Оставляем только уникальных пользователей по telegram_id
     seen = set()
     result = []
     for row in rows:
@@ -372,6 +367,5 @@ async def get_users_with_expired_paid_month():
             logger.info(f"[DB] get_users_with_expired_paid_month: добавлен пользователь: {row}")
         else:
             logger.info(f"[DB] get_users_with_expired_paid_month: пропущен дубликат для telegram_id: {row['telegram_id']}")
-    
     logger.info(f"[DB] get_users_with_expired_paid_month: итоговый результат (уникальных пользователей) = {len(result)}")
     return result
