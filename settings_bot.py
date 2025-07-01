@@ -61,36 +61,44 @@ scheduler = AsyncIOScheduler()
 
 async def check_expired_trials():
     users = await get_users_with_expired_trial()
+    logger.info(f"[TRIAL] Найдено пользователей с истекшим trial: {len(users)}")
     for user in users:
-        telegram_id = user['telegram_id']
-        # Удаляем вебхуки на все проекты пользователя (если есть)
-        projects = await get_user_projects(telegram_id)
-        for project in projects:
-            try:
-                await delete_webhook(project['token'])
-            except Exception as e:
-                logger.error(f"[TRIAL] Ошибка при удалении вебхука: {e}")
-        # Отправляем уведомление пользователю
+        telegram_id = user.get('telegram_id')
+        logger.info(f"[TRIAL] Проверяю пользователя: {user}")
         try:
-            pay_kb = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="Оплатить", callback_data="pay")],
-                    [InlineKeyboardButton(text="Удалить проекты", callback_data="delete_trial_projects")]
-                ]
-            )
-            await settings_bot.send_message(
-                telegram_id,
-                f"Пробный период завершён!\n\nДля продолжения работы оплатите {PAYMENT_AMOUNT} рублей за первый месяц или удалите проекты.",
-                reply_markup=pay_kb
-            )
-            logger.info(f"[TRIAL] Пользователь {telegram_id} — trial истёк, уведомление отправлено")
+            projects = await get_user_projects(telegram_id)
+            logger.info(f"[TRIAL] У пользователя {telegram_id} найдено проектов: {len(projects)}")
+            for project in projects:
+                try:
+                    await delete_webhook(project['token'])
+                    logger.info(f"[TRIAL] Вебхук удалён для проекта {project['id']} (token={project['token']})")
+                except Exception as e:
+                    logger.error(f"[TRIAL] Ошибка при удалении вебхука: {e}")
+            # Отправляем уведомление пользователю
+            try:
+                pay_kb = InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [InlineKeyboardButton(text="Оплатить", callback_data="pay")],
+                        [InlineKeyboardButton(text="Удалить проекты", callback_data="delete_trial_projects")]
+                    ]
+                )
+                await settings_bot.send_message(
+                    telegram_id,
+                    f"Пробный период завершён!\n\nДля продолжения работы оплатите {PAYMENT_AMOUNT} рублей за первый месяц или удалите проекты.",
+                    reply_markup=pay_kb
+                )
+                logger.info(f"[TRIAL] Пользователь {telegram_id} — trial истёк, уведомление отправлено")
+            except Exception as e:
+                logger.error(f"[TRIAL] Ошибка при отправке уведомления: {e}")
         except Exception as e:
-            logger.error(f"[TRIAL] Ошибка при отправке уведомления: {e}")
+            logger.error(f"[TRIAL] Ошибка при обработке пользователя {telegram_id}: {e}")
 
 async def check_expired_paid_month():
     users = await get_users_with_expired_paid_month()
+    logger.info(f"[PAID_MONTH] Найдено пользователей с истекшим первым оплачиваемым месяцем: {len(users)}")
     for user in users:
-        telegram_id = user['telegram_id']
+        telegram_id = user.get('telegram_id')
+        logger.info(f"[PAID_MONTH] Проверяю пользователя: {user}")
         try:
             pay_kb = InlineKeyboardMarkup(
                 inline_keyboard=[
