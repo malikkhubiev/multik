@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Telegram Bots | Автоматизируйте продажи 24/7</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.11.4/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.11.4/ScrollTrigger.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap');
+        
+        :root {
+            --dark-space: #0a0a14;
+            --neon-purple: #6e44ff;
+            --cyan-gradient: #00f0ff;
+            --pink-accent: #ff2d95;
+        }
+        
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background-color: var(--dark-space);
+            color: white;
+            overflow-x: hidden;
+        }
+        
+        .glassmorphism {
+            background: rgba(10, 10, 20, 0.5);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.2);
+        }
+        
+        .neon-purple-gradient {
+            background: linear-gradient(135deg, var(--neon-purple), var(--cyan-gradient));
+        }
+        
+        .neon-pink-gradient {
+            background: linear-gradient(135deg, var(--pink-accent), var(--neon-purple));
+        }
+        
+        .radial-gradient {
+            background: radial-gradient(circle, var(--neon-purple), var(--cyan-gradient));
+        }
+        
+        .pulse-animation {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(110, 68, 255, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 15px rgba(110, 68, 255, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(110, 68, 255, 0);
+            }
+        }
+        
+        .glow-text {
+            text-shadow: 0 0 10px rgba(110, 68, 255, 0.7);
+        }
+        
+        .floating {
+            animation: floating 3s ease-in-out infinite;
+        }
+        
+        @keyframes floating {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-15px); }
+            100% { transform: translateY(0px); }
+        }
+        
+        .counter {
+            font-variant-numeric: tabular-nums;
+        }
+        
+        .progress-bar {
+            height: 6px;
+            background: linear-gradient(90deg, var(--pink-accent), var(--neon-purple));
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+        
+        .notification {
+            animation: slideIn 0.5s forwards, fadeOut 0.5s 3s forwards;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); }
+            to { transform: translateX(0); }
+        }
+        
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+        
+        .typing-demo {
+            width: 22ch;
+            animation: typing 2s steps(22), blink .5s step-end infinite alternate;
+            white-space: nowrap;
+            overflow: hidden;
+            border-right: 3px solid;
+        }
+        
+        @keyframes typing {
+            from { width: 0 }
+        }
+        
+        @keyframes blink {
+            50% { border-color: transparent }
+        }
+        
+        .matrix-rain {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            opacity: 0.3;
+        }
+        
+        .sticky-cta {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 100;
+            animation: pulse 1.5s infinite;
+        }
+        
+        .rotate-3d {
+            transform-style: preserve-3d;
+            transition: transform 1s;
+        }
+        
+        .rotate-3d:hover {
+            transform: rotateY(20deg) rotateX(10deg);
+        }
+        
+        .blink {
+            animation: blink-animation 1s infinite;
+        }
+        
+        @keyframes blink-animation {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Notification Popup -->
+    <div id="notification" class="fixed top-5 right-5 z-50 hidden">
+        <div class="notification glassmorphism rounded-lg p-4 max-w-xs neon-pink-gradient">
+            <div class="flex items-center">
+                <div class="mr-3">
+                    <i class="fas fa-bolt text-yellow-300"></i>
+                </div>
+                <div>
+                    <p class="font-bold">Только что <span class="text-yellow-300">Нижний Новгород</span> запустил 3 бота!</p>
+                    <p class="text-sm">Ваша очередь?</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sticky CTA Mobile -->
+    <div class="sticky-cta md:hidden">
+        <button class="bg-gradient-to-r from-pink-500 to-purple-600 text-white font-bold py-3 px-6 rounded-full shadow-lg transform hover:scale-105 transition-all">
+            🪙 Заблокировать 50% скидку
+        </button>
+    </div>
+
+    <!-- Hero Section -->
+    <section class="relative overflow-hidden min-h-screen flex items-center">
+        <div class="matrix-rain" id="matrixCanvas"></div>
+        <div class="container mx-auto px-4 py-20 relative z-10">
+            <div class="flex flex-col lg:flex-row items-center">
+                <div class="lg:w-1/2 mb-10 lg:mb-0">
+                    <h1 class="text-4xl md:text-6xl font-extrabold mb-6 glow-text">
+                        ✨ Ваш бизнес общается 24/7, пока вы спите!
+                    </h1>
+                    <p class="text-xl md:text-2xl mb-8 text-gray-300">
+                        > 87% клиентов теряются без мгновенных ответов. Запустите 3 бота за 1 минуту БЕСПЛАТНО — успевайте до конца месяца!
+                    </p>
+                    
+                    <div class="glassmorphism rounded-xl p-6 mb-8">
+                        <div class="flex items-center justify-between mb-4">
+                            <span class="font-bold text-lg">⏱ Осталось <span class="text-pink-500">17</span> мест по акции!</span>
+                            <span class="bg-pink-500 text-white text-xs px-2 py-1 rounded">ГОРЯЧЕЕ ПРЕДЛОЖЕНИЕ</span>
+                        </div>
+                        <div class="flex justify-center space-x-2">
+                            <div class="text-center">
+                                <div class="text-3xl font-bold bg-gray-800 rounded-lg py-2 px-4" id="countdown-hours">72</div>
+                                <div class="text-xs mt-1">часов</div>
+                            </div>
+                            <div class="text-3xl font-bold pt-2">:</div>
+                            <div class="text-center">
+                                <div class="text-3xl font-bold bg-gray-800 rounded-lg py-2 px-4" id="countdown-minutes">00</div>
+                                <div class="text-xs mt-1">минут</div>
+                            </div>
+                            <div class="text-3xl font-bold pt-2">:</div>
+                            <div class="text-center">
+                                <div class="text-3xl font-bold bg-gray-800 rounded-lg py-2 px-4" id="countdown-seconds">00</div>
+                                <div class="text-xs mt-1">секунд</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button class="neon-purple-gradient text-white font-bold py-4 px-8 rounded-full text-lg pulse-animation transform hover:scale-105 transition-all">
+                        🚀 Попробовать 10 дней бесплатно →
+                    </button>
+                    
+                    <div class="mt-6 flex items-center">
+                        <div class="flex -space-x-2">
+                            <img src="https://randomuser.me/api/portraits/women/44.jpg" class="w-10 h-10 rounded-full border-2 border-purple-500">
+                            <img src="https://randomuser.me/api/portraits/men/32.jpg" class="w-10 h-10 rounded-full border-2 border-purple-500">
+                            <img src="https://randomuser.me/api/portraits/women/68.jpg" class="w-10 h-10 rounded-full border-2 border-purple-500">
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm text-gray-300">Уже <span class="font-bold text-white">12,850+</span> бизнесов автоматизировали продажи</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="lg:w-1/2 relative">
+                    <div class="relative floating">
+                        <div class="absolute -inset-4 bg-purple-500 rounded-3xl opacity-20 blur-xl"></div>
+                        <div class="relative glassmorphism rounded-3xl overflow-hidden">
+                            <div class="bg-gray-900 p-4">
+                                <div class="flex space-x-2">
+                                    <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                                    <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                                    <div class="w-3 h-3 rounded-full bg-green-500"></div>
+                                </div>
+                            </div>
+                            <div class="p-6">
+                                <div class="flex items-center mb-4">
+                                    <div class="w-10 h-10 rounded-full bg-purple-500 flex items-center justify-center">
+                                        <i class="fas fa-robot text-white"></i>
+                                    </div>
+                                    <div class="ml-3">
+                                        <div class="font-bold">AI Sales Bot</div>
+                                        <div class="text-xs text-gray-400">online</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="chat-message bg-gray-800 rounded-lg p-4 mb-3 max-w-xs">
+                                    <div class="typing-demo">Привет! Чем могу помочь?</div>
+                                </div>
+                                
+                                <div class="chat-message bg-gray-800 rounded-lg p-4 mb-3 max-w-xs ml-auto">
+                                    <div>Хочу узнать про скидки</div>
+                                </div>
+                                
+                                <div class="chat-message bg-purple-900 rounded-lg p-4 mb-3 max-w-xs">
+                                    <div>🔥 Специальное предложение! Сегодня скидка 20% на все товары. Хотите получить промокод?</div>
+                                </div>
+                                
+                                <div class="chat-message bg-gray-800 rounded-lg p-4 mb-3 max-w-xs ml-auto">
+                                    <div>Да, конечно!</div>
+                                </div>
+                                
+                                <div class="chat-message bg-purple-900 rounded-lg p-4 max-w-xs">
+                                    <div>Ваш промокод: <span class="font-bold">BOT20</span>. Действует 24 часа. Что-то ещё?</div>
+                                </div>
+                                
+                                <div class="mt-4 pt-4 border-t border-gray-700">
+                                    <div class="relative">
+                                        <input type="text" placeholder="Напишите сообщение..." class="w-full bg-gray-800 rounded-full py-3 px-4 pr-12 focus:outline-none focus:ring-2 focus:ring-purple-500">
+                                        <button class="absolute right-2 top-1/2 transform -translate-y-1/2 bg-purple-500 rounded-full p-2">
+                                            <i class="fas fa-paper-plane"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="absolute -bottom-10 -left-10 w-32 h-32 bg-cyan-500 rounded-full filter blur-3xl opacity-20"></div>
+                    <div class="absolute -top-10 -right-10 w-32 h-32 bg-pink-500 rounded-full filter blur-3xl opacity-20"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works Section -->
+    <section class="py-20 relative overflow-hidden">
+        <div class="container mx-auto px-4">
+            <h2 class="text-3xl md:text-4xl font-bold text-center mb-16 glow-text">
+                Как это работает <span class="text-purple-500">(за 60 секунд)</span>
+            </h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <div class="glassmorphism rounded-xl p-6 text-center transform hover:-translate-y-2 transition-all">
+                    <div class="w-20 h-20 neon-purple-gradient rounded-full flex items-center justify-center mx-auto mb-4">
+                        <span class="text-2xl font-bold">1</span>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2">Название бота</h3>
+                    <p class="text-gray-300">Придумайте имя для вашего бота</p>
+                </div>
+                
+                <div class="glassmorphism rounded-xl p-6 text-center transform hover:-translate-y-2 transition-all">
+                    <div class="w-20 h-20 neon-purple-gradient rounded-full flex items-center justify-center mx-auto mb-4">
+                        <span class="text-2xl font-bold">2</span>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2">Загрузите данные</h3>
+                    <p class="text-gray-300">Текст, PDF или голосовые сообщения</p>
+                </div>
+                
+                <div class="glassmorphism rounded-xl p-6 text-center transform hover:-translate-y-2 transition-all">
+                    <div class="w-20 h-20 neon-purple-gradient rounded-full flex items-center justify-center mx-auto mb-4">
+                        <span class="text-2xl font-bold">3</span>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2">Добавьте токен</h3>
+                    <p class="text-gray-300">Подключите Telegram API</p>
+                </div>
+                
+                <div class="glassmorphism rounded-xl p-6 text-center transform hover:-translate-y-2 transition-all">
+                    <div class="w-20 h-20 neon-purple-gradient rounded-full flex items-center justify-center mx-auto mb-4">
+                        <span class="text-2xl font-bold">4</span>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2">Бот запущен!</h3>
+                    <p class="text-gray-300">Начните общение с клиентами</p>
+                </div>
+            </div>
+            
+            <div class="mt-16 glassmorphism rounded-2xl p-8">
+                <h3 class="text-2xl font-bold mb-6 text-center">Попробуйте прямо сейчас</h3>
+                
+                <div class="flex flex-col md:flex-row gap-8">
+                    <div class="md:w-1/2">
+                        <div class="mb-4">
+                            <label class="block text-gray-300 mb-2">Ваш вопрос</label>
+                            <input type="text" class="w-full bg-gray-800 rounded-lg py-3 px-4 focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="Например: Какие у вас скидки?">
+                        </div>
+                        <button class="neon-purple-gradient text-white font-bold py-3 px-6 rounded-lg w-full">
+                            Отправить боту
+                        </button>
+                    </div>
+                    
+                    <div class="md:w-1/2">
+                        <div class="bg-gray-800 rounded-lg p-4 h-full">
+                            <div class="flex items-center mb-3">
+                                <div class="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center">
+                                    <i class="fas fa-robot text-white text-sm"></i>
+                                </div>
+                                <div class="ml-2 font-bold">AI Бот</div>
+                            </div>
+                            <div class="bg-gray-700 rounded-lg p-3 min-h-20">
+                                <p id="bot-response">Здесь появится ответ бота...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-500 rounded-full filter blur-3xl opacity-10"></div>
+        <div class="absolute -top-40 -right-40 w-80 h-80 bg-cyan-500 rounded-full filter blur-3xl opacity-10"></div>
+    </section>
+
+    <!-- FOMO Statistics Section -->
+    <section class="py-20 bg-gradient-to-b from-gray-900 to-gray-900 relative overflow-hidden">
+        <div class="container mx-auto px-4">
+            <h2 class="text-3xl md:text-4xl font-bold text-center mb-16 glow-text">
+                Вас уже <span class="text-pink-500">обгоняют</span>:
+            </h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+                <div class="glassmorphism rounded-xl p-6 text-center">
+                    <div class="text-4xl font-bold mb-2 text-purple-500 counter" data-target="12850">0</div>
+                    <p class="text-gray-300">Всего пользователей</p>
+                    <div class="mt-2 text-green-400 text-sm flex items-center justify-center">
+                        <i class="fas fa-arrow-up mr-1"></i> +12% за месяц
+                    </div>
+                </div>
+                
+                <div class="glassmorphism rounded-xl p-6 text-center">
+                    <div class="text-4xl font-bold mb-2 text-pink-500 counter" id="today-users">143</div>
+                    <p class="text-gray-300">Новых сегодня</p>
+                </div>
+                
+                <div class="glassmorphism rounded-xl p-6 text-center">
+                    <div class="text-4xl font-bold mb-2 text-cyan-500 counter" data-target="2564901">0</div>
+                    <p class="text-gray-300">Обработано сообщений</p>
+                </div>
+                
+                <div class="glassmorphism rounded-xl p-6 text-center">
+                    <div class="text-3xl font-bold mb-2 text-yellow-400 blink">14:00–16:00 МСК</div>
+                    <p class="text-gray-300">Пиковая активность</p>
+                </div>
+                
+                <div class="glassmorphism rounded-xl p-6 text-center">
+                    <div class="text-4xl font-bold mb-2 text-green-400">0.7 <span class="text-xl">сек</span></div>
+                    <p class="text-gray-300">Средний ответ</p>
+                </div>
+            </div>
+            
+            <div class="mt-12 text-center">
+                <p class="text-xl text-pink-500 font-bold">
+                    Каждая минута промедления = 9 потерянных клиентов.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing Section -->
+    <section class="py-20 relative overflow-hidden">
+        <div class="container mx-auto px-4">
+            <h2 class="text-3xl md:text-4xl font-bold text-center mb-16 glow-text">
+                Выберите свой <span class="text-purple-500">тариф</span>
+            </h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+                <div class="glassmorphism rounded-xl p-6 transform hover:scale-105 transition-all">
+                    <div class="flex justify-between items-start mb-4">
+                        <h3 class="text-xl font-bold">10 дней</h3>
+                        <span class="bg-pink-500 text-white text-xs px-2 py-1 rounded">🔥 92% ВЫБИРАЮТ</span>
+                    </div>
+                    <div class="text-3xl font-bold mb-4">БЕСПЛАТНО</div>
+                    <ul class="space-y-3 mb-6">
+                        <li class="flex items-center">
+                            <i class="fas fa-check text-green-400 mr-2"></i>
+                            <span>3 бота</span>
+                        </li>
+                        <li class="flex items-center">
+                            <i class="fas fa-check text-green-400 mr-2"></i>
+                            <span>До 1000 сообщений</span>
+                        </li>
+                        <li class="flex items-center">
+                            <i class="fas fa-check text-green-400 mr-2"></i>
+                            <span>Базовые шаблоны</span>
+                        </li>
+                    </ul>
+                    <button class="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-lg transition-all">
+                        Начать бесплатно
+                    </button>
+                    <div class="mt-3 text-xs text-gray-400 text-center">Без кредитной карты</div>
+                </div>
+                
+                <div class="glassmorphism rounded-xl p-6 border-2 border-purple-500 relative transform hover:scale-105 transition-all">
+                    <div class="absolute -top-3 -right-3 bg-purple-500 text-white text-xs px-2 py-1 rounded">
+                        ⚡ Только до 30 июля!
+                    </div>
+                    <div class="absolute -bottom-3 -left-3 bg-gray-700 text-white text-xs px-2 py-1 rounded">
+                        Купили 5 мин назад
+                    </div>
+                    <h3 class="text-xl font-bold mb-4">1-й месяц</h3>
+                    <div class="text-3xl font-bold mb-4">2 500 ₽</div>
+                    <ul class="space-y-3 mb-6">
+                        <li class="flex items-center">
+                            <i class="fas fa-check text-green-400 mr-2"></i>
+                            <span>5 ботов</span>
+                        </li>
+                        <li class="flex items-center">
+                            <i class="fas fa-check text-green-400 mr-2"></i>
+                            <span>Безлимитные сообщения</span>
+                        </li>
+                        <li class="flex items-center">
+                            <i class="fas fa-check text-green-400 mr-2"></i>
+                            <span>Расширенные шаблоны</span>
+                        </li>
+                        <li class="flex items-center">
+                            <i class="fas fa-check text-green-400 mr-2"></i>
+                            <span>Аналитика</span>
+                        </li>
+                    </ul>
+                    <button class="w-full neon-purple-gradient text-white font-bold py-3 px-4 rounded-lg transition-all">
+                        Сэкономить 50%
+                    </button>
+                </div>
+                
+                <div class="glassmorphism rounded-xl p-6 transform hover:scale-105 transition-all">
+                    <div class="flex justify-between items-start mb-4">
+                        <h3 class="text-xl font-bold">Далее</h3>
+                        <span class="bg-gray-700 text-white text-xs px-2 py-1 rounded">⏳ ЦЕНА ВЫРАСТЕТ</span>
+                    </div>
+                    <div class="text-3xl font-bold mb-4">5 000 ₽<span class="text-base">/мес</span></div>
+                    <ul class="space-y-3 mb-6">
+                        <li class="flex items-center">
+                            <i class="fas fa-check text-green-400 mr-2"></i>
+                            <span>5 ботов</span>
+                        </li>
+                        <li class="flex items-center">
+                            <i class="fas fa-check text-green-400 mr-2"></i>
+                            <span>Безлимитные сообщения</span>
+                        </li>
+                        <li class="flex items-center">
+                            <i class="fas fa-check text-green-400 mr-2"></i>
+                            <span>Все шаблоны</span>
+                        </li>
+                        <li class="flex items-center">
+                            <i class="fas fa-check text-green-400 mr-2"></i>
+                            <span>Расширенная аналитика</span>
+                       
+</html>

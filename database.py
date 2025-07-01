@@ -25,7 +25,7 @@ class User(Base):
     __tablename__ = 'user'
     telegram_id = Column(String, primary_key=True)
     paid = Column(Boolean, default=False)
-    start_date = Column(DateTime, default=datetime.utcnow)
+    start_date = Column(DateTime, default=datetime.now(timezone.utc))
     projects = relationship("Project", back_populates="user")
 
 # Новая таблица project
@@ -49,7 +49,7 @@ class MessageStat(Base):
     __tablename__ = 'message_stat'
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     telegram_id = Column(String, nullable=False)
-    datetime = Column(DateTime, default=datetime.utcnow)
+    datetime = Column(DateTime, default=datetime.now(timezone.utc))
     is_command = Column(Boolean, default=False)
     is_reply = Column(Boolean, default=False)
     response_time = Column(Float, nullable=True)
@@ -65,7 +65,7 @@ class Feedback(Base):
     username = Column(String, nullable=True)
     feedback_text = Column(String, nullable=False)
     is_positive = Column(Boolean, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
 
 # Новая таблица Payment
 class Payment(Base):
@@ -73,7 +73,7 @@ class Payment(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     telegram_id = Column(String, nullable=False)
     amount = Column(Float, nullable=False)
-    paid_at = Column(DateTime, default=datetime.utcnow)
+    paid_at = Column(DateTime, default=datetime.now(timezone.utc))
 
 # ВАЖНО: ниже используется синхронный движок только для создания таблиц!
 engine = create_engine(DATABASE_URL.replace("sqlite+aiosqlite", "sqlite"))
@@ -87,7 +87,7 @@ async def create_user(telegram_id: str) -> None:
     user = await database.fetch_one(query)
     if not user:
         logging.info(f"[DB] create_user: creating new user {telegram_id}")
-        query = insert(User).values(telegram_id=telegram_id, paid=False, start_date=datetime.now(datetime.timezone.utc))
+        query = insert(User).values(telegram_id=telegram_id, paid=False, start_date=datetime.now(timezone.utc))
         await database.execute(query)
     else:
         logging.info(f"[DB] create_user: user {telegram_id} already exists, не обновляем paid/start_date")
@@ -245,10 +245,10 @@ async def get_users_with_expired_trial():
     from datetime import datetime, timedelta
     from config import TRIAL_DAYS
     trial_period = timedelta(days=TRIAL_DAYS)
-    trial_expired_before = datetime.now(datetime.timezone.utc) - trial_period
+    trial_expired_before = datetime.now(timezone.utc) - trial_period
     logger.info(f"[DB] get_users_with_expired_trial: ищем пользователей с start_date < {trial_expired_before}")
     logger.info(f"[DB] get_users_with_expired_trial: TRIAL_DAYS = {TRIAL_DAYS}")
-    now = datetime.now(datetime.timezone.utc)
+    now = datetime.now(timezone.utc)
     logger.info(f"[DB] get_users_with_expired_trial: текущее время UTC = {now}")
     # Логируем всех пользователей для отладки
     all_users = await database.fetch_all(select(User))
@@ -288,7 +288,7 @@ async def log_message_stat(telegram_id, is_command, is_reply, response_time, pro
     query = insert(MessageStat).values(
         id=str(uuid.uuid4()),
         telegram_id=telegram_id,
-        datetime=datetime.now(datetime.timezone.utc),
+        datetime=datetime.now(timezone.utc),
         is_command=is_command,
         is_reply=is_reply,
         response_time=response_time,
@@ -305,7 +305,7 @@ async def add_feedback(telegram_id, username, feedback_text, is_positive=None):
         username=username,
         feedback_text=feedback_text,
         is_positive=is_positive,
-        created_at=datetime.now(datetime.timezone.utc)
+        created_at=datetime.now(timezone.utc)
     )
     await database.execute(query)
 
@@ -319,7 +319,7 @@ async def log_payment(telegram_id, amount):
     query = insert(Payment).values(
         telegram_id=telegram_id,
         amount=amount,
-        paid_at=datetime.now(datetime.timezone.utc)
+        paid_at=datetime.now(timezone.utc)
     )
     await database.execute(query)
 
@@ -348,11 +348,11 @@ async def get_users_with_expired_paid_month():
     from sqlalchemy import select, and_
     from datetime import datetime, timedelta
     # Для реального продакшена:
-    # one_month_ago = datetime.now(datetime.timezone.utc) - timedelta(days=30)
+    # one_month_ago = datetime.now(timezone.utc) - timedelta(days=30)
     # Для теста используем 30 секунд:
-    one_month_ago = datetime.now(datetime.timezone.utc) - timedelta(seconds=30)
+    one_month_ago = datetime.now(timezone.utc) - timedelta(seconds=30)
     logger.info(f"[DB] get_users_with_expired_paid_month: ищем пользователей с paid=True и paid_at < {one_month_ago}")
-    now = datetime.now(datetime.timezone.utc)
+    now = datetime.now(timezone.utc)
     logger.info(f"[DB] get_users_with_expired_paid_month: текущее время UTC = {now}")
     query = select(User).join(Payment, User.telegram_id == Payment.telegram_id).where(
         and_(
