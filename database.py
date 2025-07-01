@@ -88,7 +88,11 @@ async def create_user(telegram_id: str) -> None:
         query = insert(User).values(telegram_id=telegram_id, paid=False, start_date=datetime.utcnow())
         await database.execute(query)
     else:
-        logging.info(f"[DB] create_user: user {telegram_id} already exists")
+        # Обновляем paid и start_date, если вдруг пользователь уже есть (для тестов)
+        from sqlalchemy import update
+        logging.info(f"[DB] create_user: user {telegram_id} already exists, updating paid/start_date for test")
+        query = update(User).where(User.telegram_id == telegram_id).values(paid=False, start_date=datetime.utcnow())
+        await database.execute(query)
 
 async def get_user(telegram_id: str) -> Optional[dict]:
     logging.info(f"[DB] get_user: telegram_id={telegram_id}")
@@ -236,30 +240,28 @@ async def get_user_by_id(telegram_id: str):
     return await database.fetch_one(query)
 
 async def get_users_with_expired_trial():
-    # Возвращает пользователей, у которых trial истёк и не оплачено
     from datetime import datetime, timedelta
-    # Используем TRIAL_DAYS из конфига (1/1440 = 1 минута)
+    from config import TRIAL_DAYS
     trial_period = timedelta(days=TRIAL_DAYS)
     trial_expired_before = datetime.utcnow() - trial_period
     logger.info(f"[DB] get_users_with_expired_trial: ищем пользователей с start_date < {trial_expired_before}")
     logger.info(f"[DB] get_users_with_expired_trial: TRIAL_DAYS = {TRIAL_DAYS}")
-    
-    # Для отладки: показываем текущее время и разницу
     now = datetime.utcnow()
     logger.info(f"[DB] get_users_with_expired_trial: текущее время UTC = {now}")
-    
+    # Логируем всех пользователей для отладки
+    all_users = await database.fetch_all(select(User))
+    logger.info(f"[DB] get_users_with_expired_trial: все пользователи:")
+    for u in all_users:
+        logger.info(f"[DB] USER: telegram_id={u['telegram_id']}, paid={u['paid']}, start_date={u['start_date']}")
     query = select(User).where(User.paid == False, User.start_date < trial_expired_before)
     logger.info(f"[DB] get_users_with_expired_trial: SQL запрос = {query}")
-    
     rows = await database.fetch_all(query)
     logger.info(f"[DB] get_users_with_expired_trial: найдено пользователей = {len(rows)}")
-    
     for i, row in enumerate(rows):
         logger.info(f"[DB] get_users_with_expired_trial: пользователь {i+1}: {row}")
         if hasattr(row, 'start_date') and row.start_date:
             time_diff = now - row.start_date
             logger.info(f"[DB] get_users_with_expired_trial: пользователь {i+1} - разница времени: {time_diff}")
-    
     return rows
 
 async def delete_all_projects_for_user(telegram_id: str):
