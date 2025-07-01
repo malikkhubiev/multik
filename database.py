@@ -76,8 +76,8 @@ class Payment(Base):
     paid_at = Column(DateTime, default=datetime.utcnow)
 
 # ВАЖНО: ниже используется синхронный движок только для создания таблиц!
-# engine = create_engine(DATABASE_URL.replace("sqlite+aiosqlite", "sqlite"))
-# Base.metadata.create_all(bind=engine)
+engine = create_engine(DATABASE_URL.replace("sqlite+aiosqlite", "sqlite"))
+Base.metadata.create_all(bind=engine)
 # Это безопасно, так как используется только при старте для миграции схемы.
 
 # CRUD для user
