@@ -236,7 +236,8 @@ async def get_user_by_id(telegram_id: str):
 
 async def get_users_with_expired_trial():
     # Возвращает пользователей, у которых trial истёк и не оплачено
-    two_weeks_ago = datetime.utcnow() - timedelta(days=14)
+    # two_weeks_ago = datetime.utcnow() - timedelta(days=14)
+    two_weeks_ago = datetime.utcnow() - timedelta(minutes=1)
     query = select(User).where(User.paid == False, User.start_date < two_weeks_ago)
     return await database.fetch_all(query)
 

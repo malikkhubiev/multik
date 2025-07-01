@@ -822,7 +822,8 @@ async def handle_pay_trial(callback_query: types.CallbackQuery, state: FSMContex
 
 @settings_router.callback_query(lambda c: c.data == "projects_menu")
 async def handle_projects_menu(callback_query: types.CallbackQuery, state: FSMContext):
-    await handle_projects_command(callback_query.message, state)
+    telegram_id = str(callback_query.from_user.id)
+    await handle_projects_command(callback_query.message, state, telegram_id=telegram_id)
     await callback_query.answer()
 
 @settings_router.callback_query(lambda c: c.data == "delete_trial_projects")
