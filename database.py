@@ -75,8 +75,10 @@ class Payment(Base):
     amount = Column(Float, nullable=False)
     paid_at = Column(DateTime, default=datetime.utcnow)
 
-engine = create_engine(DATABASE_URL.replace("sqlite+aiosqlite", "sqlite"))
-Base.metadata.create_all(bind=engine)
+# ВАЖНО: ниже используется синхронный движок только для создания таблиц!
+# engine = create_engine(DATABASE_URL.replace("sqlite+aiosqlite", "sqlite"))
+# Base.metadata.create_all(bind=engine)
+# Это безопасно, так как используется только при старте для миграции схемы.
 
 # CRUD для user
 async def create_user(telegram_id: str) -> None:
@@ -89,6 +91,10 @@ async def create_user(telegram_id: str) -> None:
         await database.execute(query)
     else:
         logging.info(f"[DB] create_user: user {telegram_id} already exists, не обновляем paid/start_date")
+    # Диагностика: выводим всех пользователей после создания
+    all_users = await database.fetch_all(select(User))
+    for u in all_users:
+        logging.info(f"[DB] DEBUG: после create_user: telegram_id={u['telegram_id']}, paid={u['paid']}, start_date={u['start_date']}")
 
 async def get_user(telegram_id: str) -> Optional[dict]:
     logging.info(f"[DB] get_user: telegram_id={telegram_id}")
