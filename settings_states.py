@@ -9,5 +9,6 @@ class SettingsStates(StatesGroup):
     waiting_for_additional_data_file = State()
     waiting_for_new_data_file = State()
     waiting_for_delete_confirmation = State()
+    waiting_for_feedback_rating = State()
     waiting_for_feedback_text = State()
     waiting_for_new_token = State()  # <--- новое состояние для смены токена 

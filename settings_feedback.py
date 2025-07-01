@@ -3,28 +3,55 @@ from database import add_feedback
 from settings_states import SettingsStates
 
 async def handle_feedback_command(message, state):
-    await message.answer(
-        "Пожалуйста, напишите ваш отзыв о сервисе. После отправки вы сможете отметить, положительный он или нет."
-    )
-    await state.set_state(SettingsStates.waiting_for_feedback_text)
-
-async def handle_feedback_text(message, state):
-    await state.update_data(feedback_text=message.text)
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="👍 Положительный", callback_data="feedback_positive")],
-            [InlineKeyboardButton(text="👎 Отрицательный", callback_data="feedback_negative")]
+            [InlineKeyboardButton(text="Супер", callback_data="feedback_rate:positive"),
+             InlineKeyboardButton(text="Так себе", callback_data="feedback_rate:negative")]
         ]
     )
-    await message.answer("Спасибо! Отметьте, как вы оцениваете сервис:", reply_markup=kb)
+    await message.answer(
+        "Как вам впечатление от сервиса?",
+        reply_markup=kb
+    )
+    await state.set_state(SettingsStates.waiting_for_feedback_rating)
 
-async def handle_feedback_rating(callback_query, state):
+async def handle_feedback_rating_callback(callback_query, state):
+    # Сохраняем выбранную оценку
+    rate = callback_query.data.split(":")[1]
+    await state.update_data(feedback_rating=rate)
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Изменить выбор", callback_data="feedback_change_rating")]
+        ]
+    )
+    text = "Пожалуйста, опишите своё впечатление. Нам важно ваше мнение!\n\nВыбранная оценка: "
+    text += "Супер" if rate == "positive" else "Так себе"
+    await callback_query.message.answer(text, reply_markup=kb)
+    await state.set_state(SettingsStates.waiting_for_feedback_text)
+    await callback_query.answer()
+
+async def handle_feedback_change_rating(callback_query, state):
+    # Возврат к выбору оценки
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Супер", callback_data="feedback_rate:positive"),
+             InlineKeyboardButton(text="Так себе", callback_data="feedback_rate:negative")]
+        ]
+    )
+    await callback_query.message.answer(
+        "Как вам впечатление от сервиса?",
+        reply_markup=kb
+    )
+    await state.set_state(SettingsStates.waiting_for_feedback_rating)
+    await callback_query.answer()
+
+async def handle_feedback_text(message, state):
     data = await state.get_data()
-    feedback_text = data.get("feedback_text")
-    is_positive = callback_query.data == "feedback_positive"
-    username = callback_query.from_user.username
-    telegram_id = str(callback_query.from_user.id)
+    feedback_rating = data.get("feedback_rating")
+    feedback_text = message.text
+    username = message.from_user.username
+    telegram_id = str(message.from_user.id)
+    is_positive = True if feedback_rating == "positive" else False if feedback_rating == "negative" else None
     await add_feedback(telegram_id, username, feedback_text, is_positive)
-    await callback_query.message.answer("Спасибо за ваш отзыв! Он очень важен для нас.")
-    await state.clear()
-    await callback_query.answer() 
+    await message.answer("Спасибо за ваш отзыв! Он очень важен для нас.")
+    await state.clear() 

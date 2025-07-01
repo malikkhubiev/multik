@@ -11,7 +11,7 @@ from aiogram.fsm.context import FSMContext
 from settings_states import SettingsStates
 from settings_business import process_business_file_with_deepseek, clean_markdown, clean_business_text, get_text_from_message
 from settings_utils import handle_command_in_state, log_fsm_state
-from settings_feedback import handle_feedback_command, handle_feedback_text, handle_feedback_rating
+from settings_feedback import handle_feedback_command, handle_feedback_text, handle_feedback_rating_callback, handle_feedback_change_rating
 from settings_payment import handle_pay_command, handle_pay_callback, handle_payment_check, handle_payment_check_document, handle_payment_check_document_any, handle_payment_check_photo_any
 from settings_middleware import trial_middleware, clear_asking_bot_cache
 from settings_logging import log_message_stat
@@ -723,13 +723,17 @@ async def payment_check_photo_any(message: types.Message, state: FSMContext):
 async def feedback_command(message: types.Message, state: FSMContext):
     await handle_feedback_command(message, state)
 
+@settings_router.callback_query(lambda c: c.data.startswith("feedback_rate:"))
+async def feedback_rating_callback(callback_query: types.CallbackQuery, state: FSMContext):
+    await handle_feedback_rating_callback(callback_query, state)
+
+@settings_router.callback_query(lambda c: c.data == "feedback_change_rating")
+async def feedback_change_rating(callback_query: types.CallbackQuery, state: FSMContext):
+    await handle_feedback_change_rating(callback_query, state)
+
 @settings_router.message(SettingsStates.waiting_for_feedback_text)
 async def feedback_text(message: types.Message, state: FSMContext):
     await handle_feedback_text(message, state)
-
-@settings_router.callback_query(lambda c: c.data in ["feedback_positive", "feedback_negative"])
-async def feedback_rating(callback_query: types.CallbackQuery, state: FSMContext):
-    await handle_feedback_rating(callback_query, state)
 
 @settings_router.callback_query(lambda c: c.data == "change_token")
 async def handle_change_token(callback_query: types.CallbackQuery, state: FSMContext):
