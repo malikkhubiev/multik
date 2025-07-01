@@ -82,7 +82,7 @@ Base.metadata.create_all(bind=engine)
 
 # CRUD для user
 async def create_user(telegram_id: str) -> None:
-    logging.info(f"[DB] create_user: telegram_id={telegram_id}")
+    logging.info(f"[METRIC] create_user: telegram_id={telegram_id}")
     query = select(User).where(User.telegram_id == telegram_id)
     user = await database.fetch_one(query)
     if not user:
@@ -108,7 +108,7 @@ async def get_user(telegram_id: str) -> Optional[dict]:
 
 # CRUD для project
 async def create_project(telegram_id: str, project_name: str, business_info: str, token: str) -> str:
-    logging.info(f"[DB] create_project: telegram_id={telegram_id}, project_name={project_name}, token={token}")
+    logging.info(f"[METRIC] create_project: telegram_id={telegram_id}, project_name={project_name}, token={token}")
     if await check_project_name_exists(telegram_id, project_name):
         logging.warning(f"[DB] create_project: project with name '{project_name}' already exists for user {telegram_id}")
         raise ValueError(f"Проект с именем '{project_name}' уже существует у этого пользователя")
@@ -288,6 +288,7 @@ async def get_user_projects(telegram_id: str) -> list:
 
 # --- MessageStat ---
 async def log_message_stat(telegram_id, is_command, is_reply, response_time, project_id, is_trial, is_paid):
+    logging.info(f"[METRIC] log_message_stat: telegram_id={telegram_id}, is_command={is_command}, is_reply={is_reply}, response_time={response_time}, project_id={project_id}, is_trial={is_trial}, is_paid={is_paid}")
     query = insert(MessageStat).values(
         id=str(uuid.uuid4()),
         telegram_id=telegram_id,
@@ -303,6 +304,7 @@ async def log_message_stat(telegram_id, is_command, is_reply, response_time, pro
 
 # --- Feedback ---
 async def add_feedback(telegram_id, username, feedback_text, is_positive=None):
+    logging.info(f"[METRIC] add_feedback: telegram_id={telegram_id}, username={username}, is_positive={is_positive}, feedback_text={feedback_text}")
     query = insert(Feedback).values(
         telegram_id=telegram_id,
         username=username,
@@ -319,6 +321,7 @@ async def get_feedbacks():
 
 # --- Payment ---
 async def log_payment(telegram_id, amount):
+    logging.info(f"[METRIC] log_payment: telegram_id={telegram_id}, amount={amount}")
     query = insert(Payment).values(
         telegram_id=telegram_id,
         amount=amount,

@@ -16,37 +16,40 @@ async def handle_pay_callback(callback_query, state):
     await send_pay_instructions(callback_query.message.answer)
     await callback_query.answer()
 
-async def handle_payment_check(message, state):
+async def forward_check_with_notice(message, notice_text=None):
     telegram_id = str(message.from_user.id)
+    await message.forward(MAIN_TELEGRAM_ID)
+    if notice_text is None:
+        notice_text = f"Оплатил {telegram_id}"
+    await message.bot.send_message(MAIN_TELEGRAM_ID, notice_text)
+
+async def handle_payment_check(message, state):
     try:
-        await message.forward(MAIN_TELEGRAM_ID)
+        await forward_check_with_notice(message)
         await message.answer("Чек отправлен на проверку. Ожидайте подтверждения оплаты.")
     except Exception as e:
         logging.error(f"[PAYMENT] Ошибка при пересылке чека админу: {e}")
         await message.answer("Ошибка при отправке чека админу. Попробуйте позже или свяжитесь с поддержкой.")
 
 async def handle_payment_check_document(message, state):
-    telegram_id = str(message.from_user.id)
     try:
-        await message.forward(MAIN_TELEGRAM_ID)
+        await forward_check_with_notice(message)
         await message.answer("Чек отправлен на проверку. Ожидайте подтверждения оплаты.")
     except Exception as e:
         logging.error(f"[PAYMENT] Ошибка при пересылке чека-документа админу: {e}")
         await message.answer("Ошибка при отправке чека админу. Попробуйте позже или свяжитесь с поддержкой.")
 
 async def handle_payment_check_document_any(message, state):
-    telegram_id = str(message.from_user.id)
     try:
-        await message.forward(MAIN_TELEGRAM_ID)
+        await forward_check_with_notice(message)
         await message.answer("Документ отправлен на проверку. Ожидайте подтверждения оплаты.")
     except Exception as e:
         logging.error(f"[PAYMENT] Ошибка при пересылке документа админу: {e}")
         await message.answer("Ошибка при отправке документа админу. Попробуйте позже или свяжитесь с поддержкой.")
 
 async def handle_payment_check_photo_any(message, state):
-    telegram_id = str(message.from_user.id)
     try:
-        await message.forward(MAIN_TELEGRAM_ID)
+        await forward_check_with_notice(message)
         await message.answer("Фото отправлено на проверку. Ожидайте подтверждения оплаты.")
     except Exception as e:
         logging.error(f"[PAYMENT] Ошибка при пересылке фото админу: {e}")
