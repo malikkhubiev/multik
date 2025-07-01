@@ -19,6 +19,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import traceback
+from settings_handlers import handle_settings_start, handle_projects_command, handle_help_command
 
 router = APIRouter()
 
