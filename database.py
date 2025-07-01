@@ -88,11 +88,7 @@ async def create_user(telegram_id: str) -> None:
         query = insert(User).values(telegram_id=telegram_id, paid=False, start_date=datetime.utcnow())
         await database.execute(query)
     else:
-        # Обновляем paid и start_date, если вдруг пользователь уже есть (для тестов)
-        from sqlalchemy import update
-        logging.info(f"[DB] create_user: user {telegram_id} already exists, updating paid/start_date for test")
-        query = update(User).where(User.telegram_id == telegram_id).values(paid=False, start_date=datetime.utcnow())
-        await database.execute(query)
+        logging.info(f"[DB] create_user: user {telegram_id} already exists, не обновляем paid/start_date")
 
 async def get_user(telegram_id: str) -> Optional[dict]:
     logging.info(f"[DB] get_user: telegram_id={telegram_id}")
