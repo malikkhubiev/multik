@@ -239,7 +239,8 @@ async def set_user_paid(telegram_id: str, paid: bool = True):
 
 async def get_user_by_id(telegram_id: str):
     query = select(User).where(User.telegram_id == telegram_id)
-    return await database.fetch_one(query)
+    row = await database.fetch_one(query)
+    return dict(row) if row else None
 
 async def get_users_with_expired_trial():
     from datetime import datetime, timedelta
