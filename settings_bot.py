@@ -20,6 +20,7 @@ import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import traceback
 import time
+from datetime import datetime, timezone, timedelta
 
 router = APIRouter()
 
@@ -100,7 +101,6 @@ scheduler.start()
 async def trial_middleware(message: types.Message, state: FSMContext, handler):
     user = await get_user_by_id(str(message.from_user.id))
     if user and not user['paid']:
-        from datetime import datetime, timezone, timedelta
         start_date = user['start_date']
         logger.info(f"start_date {start_date}")
         if isinstance(start_date, str):

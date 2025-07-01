@@ -2,6 +2,7 @@ import logging
 from database import get_user_by_id
 from config import TRIAL_DAYS, PAYMENT_AMOUNT
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from datetime import datetime, timezone, timedelta
 
 async def clear_asking_bot_cache(token: str):
     try:
@@ -14,7 +15,6 @@ async def clear_asking_bot_cache(token: str):
 async def trial_middleware(message, state, handler):
     user = await get_user_by_id(str(message.from_user.id))
     if user and not user['paid']:
-        from datetime import datetime, timezone, timedelta
         start_date = user['start_date']
         logging.info(f"start_date {start_date}")
         if isinstance(start_date, str):
