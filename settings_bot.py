@@ -130,15 +130,23 @@ async def trial_middleware(message: types.Message, state: FSMContext, handler):
 # --- Обработка команд с middleware ---
 @settings_router.message(Command("start"))
 async def start_with_trial_middleware(message: types.Message, state: FSMContext):
+    await trial_middleware(message, state, _start_inner)
+
+def _get_trial_and_paid_limits(user):
+    trial_limit = TRIAL_PROJECTS
+    paid_limit = PAID_PROJECTS
+    is_paid = user and user.get("paid")
+    return trial_limit, paid_limit, is_paid
+
+async def _start_inner(message: types.Message, state: FSMContext):
     telegram_id = str(message.from_user.id)
-    from database import get_projects_by_user, get_user_by_id
+    from database import get_projects_by_user, get_user_by_id, create_user
     user = await get_user_by_id(telegram_id)
     if not user:
         await create_user(str(message.from_user.id))
+        user = await get_user_by_id(telegram_id)
     projects = await get_projects_by_user(telegram_id)
-    is_paid = user and user.get("paid")
-    trial_limit = TRIAL_PROJECTS
-    paid_limit = PAID_PROJECTS
+    trial_limit, paid_limit, is_paid = _get_trial_and_paid_limits(user)
     if not is_paid and len(projects) >= trial_limit:
         # Trial limit reached
         keyboard = InlineKeyboardMarkup(
