@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Form, UploadFile, File
+from fastapi import APIRouter, Request, Form
 from aiogram import Bot, types
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram import Router, Dispatcher
@@ -7,18 +7,16 @@ import os
 from config import API_URL, SERVER_URL, DEEPSEEK_API_KEY, TRIAL_DAYS, TRIAL_PROJECTS, PAID_PROJECTS, PAYMENT_AMOUNT, PAYMENT_CARD_NUMBER, MAIN_TELEGRAM_ID
 from database import create_project, get_project_by_id, create_user, get_projects_by_user, update_project_name, update_project_business_info, append_project_business_info, delete_project, get_project_by_token, check_project_name_exists, get_user_by_id, get_users_with_expired_trial, delete_all_projects_for_user, set_user_paid, get_user_projects, log_message_stat, add_feedback, update_project_token, get_users_with_expired_paid_month
 from utils import set_webhook, delete_webhook
-from file_utils import extract_text_from_file, extract_text_from_file_async
-import json
-import logging
-from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
-import traceback
-import httpx
-import asyncio
-from pydub import AudioSegment
-import time
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from settings_states import SettingsStates
+from settings_business import process_business_file_with_deepseek, clean_markdown, clean_business_text, get_text_from_message
+from settings_scheduler import start_scheduler
+from settings_utils import handle_command_in_state, log_fsm_state
+from settings_feedback import handle_feedback_command, handle_feedback_text, handle_feedback_rating
+from settings_payment import handle_pay_command, handle_pay_callback, handle_payment_check, handle_payment_check_document, handle_payment_check_document_any, handle_payment_check_photo_any
+from settings_middleware import trial_middleware, clear_asking_bot_cache
+from settings_logging import log_message_stat
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 router = APIRouter()
 
@@ -35,177 +33,8 @@ settings_dp.include_router(settings_router)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class SettingsStates(StatesGroup):
-    waiting_for_project_name = State()
-    waiting_for_token = State()
-    waiting_for_business_file = State()
-    # Новые состояния для управления проектами
-    waiting_for_new_project_name = State()
-    waiting_for_additional_data_file = State()
-    waiting_for_new_data_file = State()
-    waiting_for_delete_confirmation = State()
-    waiting_for_feedback_text = State()
-    waiting_for_new_token = State()  # <--- новое состояние для смены токена
-
-# Встроенное меню команд
-main_menu = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="/start"), KeyboardButton(text="/projects"), KeyboardButton(text="/help")],
-        [KeyboardButton(text="/pay")]
-    ],
-    resize_keyboard=True
-)
-
 # --- APScheduler ---
-scheduler = AsyncIOScheduler()
-
-async def check_expired_trials():
-    users = await get_users_with_expired_trial()
-    logger.info(f"[TRIAL] Найдено пользователей с истекшим trial: {len(users)}")
-    for user in users:
-        telegram_id = user.get('telegram_id')
-        logger.info(f"[TRIAL] Проверяю пользователя: {user}")
-        try:
-            projects = await get_user_projects(telegram_id)
-            logger.info(f"[TRIAL] У пользователя {telegram_id} найдено проектов: {len(projects)}")
-            for project in projects:
-                try:
-                    await delete_webhook(project['token'])
-                    logger.info(f"[TRIAL] Вебхук удалён для проекта {project['id']} (token={project['token']})")
-                except Exception as e:
-                    logger.error(f"[TRIAL] Ошибка при удалении вебхука: {e}")
-            # Отправляем уведомление пользователю
-            try:
-                pay_kb = InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [InlineKeyboardButton(text="Оплатить", callback_data="pay")],
-                        [InlineKeyboardButton(text="Удалить проекты", callback_data="delete_trial_projects")]
-                    ]
-                )
-                await settings_bot.send_message(
-                    telegram_id,
-                    f"Пробный период завершён!\n\nДля продолжения работы оплатите {PAYMENT_AMOUNT} рублей за первый месяц или удалите проекты.",
-                    reply_markup=pay_kb
-                )
-                logger.info(f"[TRIAL] Пользователь {telegram_id} — trial истёк, уведомление отправлено")
-            except Exception as e:
-                logger.error(f"[TRIAL] Ошибка при отправке уведомления: {e}")
-        except Exception as e:
-            logger.error(f"[TRIAL] Ошибка при обработке пользователя {telegram_id}: {e}")
-
-async def check_expired_paid_month():
-    users = await get_users_with_expired_paid_month()
-    logger.info(f"[PAID_MONTH] Найдено пользователей с истекшим первым оплачиваемым месяцем: {len(users)}")
-    for user in users:
-        telegram_id = user.get('telegram_id')
-        logger.info(f"[PAID_MONTH] Проверяю пользователя: {user}")
-        try:
-            pay_kb = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="Оплатить", callback_data="pay")]
-                ]
-            )
-            await settings_bot.send_message(
-                telegram_id,
-                "Первый оплаченный месяц завершён!\n\nДля продолжения работы оплатите полную стоимость подписки.",
-                reply_markup=pay_kb
-            )
-            logger.info(f"[PAID_MONTH] Пользователь {telegram_id} — первый оплаченный месяц истёк, уведомление отправлено")
-        except Exception as e:
-            logger.error(f"[PAID_MONTH] Ошибка при отправке уведомления: {e}")
-
-scheduler.add_job(check_expired_trials, 'interval', minutes=1)
-scheduler.add_job(check_expired_paid_month, 'interval', minutes=1)
-scheduler.start()
-
-async def process_business_file_with_deepseek(file_content: str) -> str:
-    """Обрабатывает файл с данными о бизнесе через Deepseek для создания компактной информации"""
-    try:
-        url = "https://api.deepseek.com/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "model": "deepseek-chat",
-            "messages": [
-                {"role": "system", "content": "Ты - эксперт по анализу и сжатию информации. Твоя задача - извлечь из данных ключевую информацию, убрать лишние детали, символы, смайлики и т.д. и представить её в самом компактном виде без потери смысла для использования минимально необходимого количества токенов"},
-                {"role": "user", "content": f"Обработай {file_content}"}
-            ],
-            "temperature": 0.3
-        }
-        
-        # Используем asyncio.create_task для неблокирующего выполнения
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(url, headers=headers, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-        return data["choices"][0]["message"]["content"]
-    except Exception as e:
-        logger.error(f"Ошибка при обработке файла через Deepseek: {e}")
-        # Возвращаем исходный текст, если обработка не удалась
-        return file_content
-
-def clean_markdown(text: str) -> str:
-    """Очищает текст от markdown символов"""
-    import re
-    
-    # Удаляем заголовки (###, ##, #)
-    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
-    
-    # Удаляем жирный текст (**текст** или __текст__)
-    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
-    text = re.sub(r'__(.*?)__', r'\1', text)
-    
-    # Удаляем курсив (*текст* или _текст_)
-    text = re.sub(r'\*(.*?)\*', r'\1', text)
-    text = re.sub(r'_(.*?)_', r'\1', text)
-    
-    # Удаляем зачёркнутый текст (~~текст~~)
-    text = re.sub(r'~~(.*?)~~', r'\1', text)
-    
-    # Удаляем код в бэктиках (`код`)
-    text = re.sub(r'`(.*?)`', r'\1', text)
-    
-    # Удаляем блоки кода (```код```)
-    text = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
-    
-    # Удаляем ссылки [текст](url)
-    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
-    
-    # Удаляем изображения ![alt](url)
-    text = re.sub(r'!\[([^\]]*)\]\([^)]+\)', '', text)
-    
-    # Удаляем списки (-, *, +)
-    text = re.sub(r'^[\s]*[-*+]\s+', '', text, flags=re.MULTILINE)
-    
-    # Удаляем нумерованные списки (1., 2., etc.)
-    text = re.sub(r'^[\s]*\d+\.\s+', '', text, flags=re.MULTILINE)
-    
-    # Удаляем лишние пробелы и переносы строк
-    text = re.sub(r'\n\s*\n', '\n\n', text)
-    text = text.strip()
-    
-    return text
-
-def clean_business_text(text: str) -> str:
-    """Удаляет лишние пробелы, табы, множественные переносы строк и приводит текст к компактному виду для экономии токенов."""
-    import re
-    text = text.replace('\r', '')
-    text = re.sub(r'[ \t]+', ' ', text)  # заменяем несколько пробелов/табов на один пробел
-    text = re.sub(r'\n+', '\n', text)   # заменяем несколько переносов на один
-    text = text.strip()
-    return text
-
-async def clear_asking_bot_cache(token: str):
-    """Очищает кэш asking_bot для указанного токена"""
-    try:
-        # Импортируем функцию очистки из asking_bot
-        from asking_bot import clear_dispatcher_cache
-        clear_dispatcher_cache(token)
-        logger.info(f"Cleared asking_bot cache for token: {token}")
-    except Exception as e:
-        logger.error(f"Error clearing asking_bot cache: {e}")
+# (удалить определения check_expired_trials, check_expired_paid_month, scheduler, scheduler.start() и все, что связано с APScheduler)
 
 # --- Middleware для перехвата команд, если trial истёк ---
 async def trial_middleware(message: types.Message, state: FSMContext, handler):
@@ -218,7 +47,7 @@ async def trial_middleware(message: types.Message, state: FSMContext, handler):
             from dateutil.parser import parse
             start_date = parse(start_date)
             logger.info(f"start_date parsed {start_date}")
-        now = datetime.utcnow()
+        now = datetime.now(datetime.timezone.utc)
         logger.info(f"now {now}")
         logger.info(f"(now - start_date).days {(now - start_date).days}")
         logger.info(f"TRIAL_DAYS {TRIAL_DAYS}")
@@ -244,6 +73,8 @@ async def start_with_trial_middleware(message: types.Message, state: FSMContext)
     telegram_id = str(message.from_user.id)
     from database import get_projects_by_user, get_user_by_id
     user = await get_user_by_id(telegram_id)
+    if not user:
+        await create_user(str(message.from_user.id))
     projects = await get_projects_by_user(telegram_id)
     is_paid = user and user.get("paid")
     trial_limit = TRIAL_PROJECTS
@@ -278,10 +109,6 @@ async def help_with_trial_middleware(message: types.Message, state: FSMContext):
 @settings_router.message(Command("projects"))
 async def projects_with_trial_middleware(message: types.Message, state: FSMContext):
     await trial_middleware(message, state, handle_projects_command)
-
-async def log_fsm_state(message, state):
-    current_state = await state.get_state()
-    logging.info(f"[FSM] user={message.from_user.id} current_state={current_state}")
 
 @settings_router.message(SettingsStates.waiting_for_project_name)
 async def handle_project_name(message: types.Message, state: FSMContext):
@@ -324,50 +151,6 @@ async def handle_token(message: types.Message, state: FSMContext):
         "3️⃣ Или отправьте голосовое сообщение (мы преобразуем его в текст)"
     )
     await state.set_state(SettingsStates.waiting_for_business_file)
-
-async def get_text_from_message(message, bot, max_length=4096) -> str:
-    """Извлекает текст из файла, текста или голосового сообщения. Очищает и ограничивает длину."""
-    text_content = None
-    # 1. Файл
-    if message.document:
-        try:
-            file_info = await bot.get_file(message.document.file_id)
-            file_path = file_info.file_path
-            file_content = await bot.download_file(file_path)
-            filename = message.document.file_name
-            from file_utils import extract_text_from_file_async
-            text_content = await extract_text_from_file_async(filename, file_content.read())
-        except Exception as e:
-            raise RuntimeError(f"Ошибка при обработке файла: {e}")
-    # 2. Текст
-    elif message.text:
-        text_content = message.text
-    # 3. Голосовое сообщение
-    elif message.voice:
-        try:
-            file_info = await bot.get_file(message.voice.file_id)
-            file_path = file_info.file_path
-            file_content = await bot.download_file(file_path)
-            import speech_recognition as sr
-            import tempfile
-            recognizer = sr.Recognizer()
-            with tempfile.NamedTemporaryFile(suffix='.ogg') as temp_ogg, tempfile.NamedTemporaryFile(suffix='.wav') as temp_wav:
-                temp_ogg.write(file_content.read())
-                temp_ogg.flush()
-                # Конвертируем ogg/opus в wav через pydub
-                audio = AudioSegment.from_file(temp_ogg.name)
-                audio.export(temp_wav.name, format='wav')
-                temp_wav.flush()
-                with sr.AudioFile(temp_wav.name) as source:
-                    audio_data = recognizer.record(source)
-                text_content = recognizer.recognize_google(audio_data, language='ru-RU')
-        except Exception as e:
-            raise RuntimeError(f"Ошибка при распознавании голоса: {e}")
-    if not text_content:
-        raise RuntimeError("Пожалуйста, отправьте файл, текст или голосовое сообщение с информацией о бизнесе.")
-    if len(text_content) > max_length:
-        raise ValueError(f"❌ Данные слишком большие!\n\nРазмер: {len(text_content)} символов\nМаксимальный размер: {max_length} символов\n\nПожалуйста, сократите или разделите на части.")
-    return clean_business_text(text_content)
 
 @settings_router.message(SettingsStates.waiting_for_business_file)
 async def handle_business_file(message: types.Message, state: FSMContext):
@@ -779,22 +562,6 @@ async def create_project_meta(
 async def set_settings_webhook():
     await settings_bot.set_webhook(SETTINGS_WEBHOOK_URL)
 
-async def handle_command_in_state(message: types.Message, state: FSMContext) -> bool:
-    """Универсальная функция для обработки команд в любом состоянии"""
-    if message.text and message.text.startswith('/'):
-        command = message.text.split()[0].lower()
-        await state.clear()
-        if command == '/start':
-            await handle_settings_start(message, state)
-        elif command == '/projects':
-            await handle_projects_command(message, state)
-        elif command == '/help':
-            await handle_help_command(message, state)
-        else:
-            await message.answer("Неизвестная команда. Используйте /help для справки.")
-        return True
-    return False
-
 @settings_router.callback_query(lambda c: c.data == "show_data")
 async def handle_show_data(callback_query: types.CallbackQuery, state: FSMContext):
     """Показывает бизнес-данные выбранного проекта"""
@@ -852,167 +619,42 @@ async def handle_cancel_delete_trial_projects(callback_query: types.CallbackQuer
     await callback_query.message.answer("Удаление отменено.")
     await callback_query.answer()
 
-@settings_router.message(lambda m: m.photo and m.caption and "чек" in m.caption.lower())
-async def handle_payment_check(message: types.Message, state: FSMContext):
-    telegram_id = str(message.from_user.id)
-    logger.info(f"[PAYMENT] Получен чек от пользователя {telegram_id}. MAIN_TELEGRAM_ID={MAIN_TELEGRAM_ID}")
-    try:
-        await message.forward(MAIN_TELEGRAM_ID)
-        logger.info(f"[PAYMENT] Чек успешно отправлен админу (MAIN_TELEGRAM_ID={MAIN_TELEGRAM_ID})")
-        await message.answer("Чек отправлен на проверку. Ожидайте подтверждения оплаты.")
-    except Exception as e:
-        logger.error(f"[PAYMENT] Ошибка при пересылке чека админу: {e}")
-        await message.answer("Ошибка при отправке чека админу. Попробуйте позже или свяжитесь с поддержкой.")
-
-@settings_router.message(lambda m: m.document and m.caption and "чек" in m.caption.lower())
-async def handle_payment_check_document(message: types.Message, state: FSMContext):
-    telegram_id = str(message.from_user.id)
-    logger.info(f"[PAYMENT] Получен чек (документ) от пользователя {telegram_id}. MAIN_TELEGRAM_ID={MAIN_TELEGRAM_ID}")
-    try:
-        await message.forward(MAIN_TELEGRAM_ID)
-        logger.info(f"[PAYMENT] Чек-документ успешно отправлен админу (MAIN_TELEGRAM_ID={MAIN_TELEGRAM_ID})")
-        await message.answer("Чек отправлен на проверку. Ожидайте подтверждения оплаты.")
-    except Exception as e:
-        logger.error(f"[PAYMENT] Ошибка при пересылке чека-документа админу: {e}")
-        await message.answer("Ошибка при отправке чека админу. Попробуйте позже или свяжитесь с поддержкой.")
-
-@settings_router.message(lambda m: m.document)
-async def handle_payment_check_document_any(message: types.Message, state: FSMContext):
-    telegram_id = str(message.from_user.id)
-    logger.info(f"[PAYMENT] Получен документ от пользователя {telegram_id} (file_name={message.document.file_name}). MAIN_TELEGRAM_ID={MAIN_TELEGRAM_ID}")
-    try:
-        await message.forward(MAIN_TELEGRAM_ID)
-        logger.info(f"[PAYMENT] Документ успешно отправлен админу (MAIN_TELEGRAM_ID={MAIN_TELEGRAM_ID})")
-        await message.answer("Документ отправлен на проверку. Ожидайте подтверждения оплаты.")
-    except Exception as e:
-        logger.error(f"[PAYMENT] Ошибка при пересылке документа админу: {e}")
-        await message.answer("Ошибка при отправке документа админу. Попробуйте позже или свяжитесь с поддержкой.")
-
-@settings_router.message(lambda m: m.photo)
-async def handle_payment_check_photo_any(message: types.Message, state: FSMContext):
-    telegram_id = str(message.from_user.id)
-    logger.info(f"[PAYMENT] Получено фото от пользователя {telegram_id}. MAIN_TELEGRAM_ID={MAIN_TELEGRAM_ID}")
-    try:
-        await message.forward(MAIN_TELEGRAM_ID)
-        logger.info(f"[PAYMENT] Фото успешно отправлено админу (MAIN_TELEGRAM_ID={MAIN_TELEGRAM_ID})")
-        await message.answer("Фото отправлено на проверку. Ожидайте подтверждения оплаты.")
-    except Exception as e:
-        logger.error(f"[PAYMENT] Ошибка при пересылке фото админу: {e}")
-        await message.answer("Ошибка при отправке фото админу. Попробуйте позже или свяжитесь с поддержкой.")
-
-async def handle_settings_start(message: types.Message, state: FSMContext):
-    logger.info(f"/start received from user {message.from_user.id}")
-    try:
-        # Сбрасываем состояние перед началом
-        await state.clear()
-        await create_user(str(message.from_user.id))
-        await message.answer("Добро пожаловать в настройки! Введите имя вашего проекта.", reply_markup=main_menu)
-        await state.set_state(SettingsStates.waiting_for_project_name)
-        logger.info(f"Sent welcome message to user {message.from_user.id}")
-    except Exception as e:
-        logger.error(f"Error in handle_settings_start: {e}")
-
-async def handle_help_command(message: types.Message, state: FSMContext):
-    """Показывает справку по командам"""
-    await state.clear()
-    help_text = """
-🤖 Доступные команды:
-
-/start - Создать новый проект
-/projects - Управление существующими проектами
-/help - Показать эту справку
-
-💳 Оплатить — перейти к оплате подписки
-
-📋 Функции управления проектами:
-• Переименование проекта
-• Добавление дополнительных данных
-• Изменение данных о бизнесе
-• Удаление проекта (с отключением webhook)
-
-💡 Для начала работы используйте /start
-💡 Для управления проектами используйте /projects
-💡 Для оплаты используйте кнопку 'Оплатить' или команду /pay
-    """
-    pay_kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="Оплатить", callback_data="pay")]
-        ]
-    )
-    await message.answer(help_text, reply_markup=pay_kb)
-
-async def handle_projects_command(message: types.Message, state: FSMContext, telegram_id: str = None):
-    logger.info(f"/projects received from user {message.from_user.id}")
-    try:
-        if telegram_id is None:
-            telegram_id = str(message.from_user.id)
-        await state.update_data(telegram_id=telegram_id)
-        await state.update_data(selected_project_id=None, selected_project=None)
-        projects = await get_projects_by_user(telegram_id)
-        if not projects:
-            await message.answer("У вас пока нет проектов. Создайте первый проект командой /start", reply_markup=main_menu)
-            return
-        buttons = []
-        for project in projects:
-            buttons.append([
-                types.InlineKeyboardButton(
-                    text=project["project_name"],
-                    callback_data=f"project_{project['id']}"
-                )
-            ])
-        if buttons:
-            keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
-            await message.answer("Выберите проект для управления:", reply_markup=main_menu)
-            await message.answer("Список проектов:", reply_markup=keyboard)
-        else:
-            await message.answer("Нет доступных проектов.", reply_markup=main_menu)
-    except Exception as e:
-        logger.error(f"Error in handle_projects_command: {e}")
-        await message.answer("Произошла ошибка при получении списка проектов", reply_markup=main_menu)
-
-async def send_pay_instructions(send_method):
-    await send_method(
-        f"Для оплаты переведите {PAYMENT_AMOUNT} рублей на карту: {PAYMENT_CARD_NUMBER}\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
-    )
-
 @settings_router.message(Command("pay"))
-async def handle_pay_command(message: types.Message, state: FSMContext):
-    await send_pay_instructions(message.answer)
+async def pay_command(message: types.Message, state: FSMContext):
+    await handle_pay_command(message, state)
 
 @settings_router.callback_query(lambda c: c.data == "pay")
-async def handle_pay_callback(callback_query: types.CallbackQuery, state: FSMContext):
-    await send_pay_instructions(callback_query.message.answer)
+async def pay_callback(callback_query: types.CallbackQuery, state: FSMContext):
+    await handle_pay_callback(callback_query, state)
     await callback_query.answer()
+
+@settings_router.message(lambda m: m.photo and m.caption and "чек" in m.caption.lower())
+async def payment_check(message: types.Message, state: FSMContext):
+    await handle_payment_check(message, state)
+
+@settings_router.message(lambda m: m.document and m.caption and "чек" in m.caption.lower())
+async def payment_check_document(message: types.Message, state: FSMContext):
+    await handle_payment_check_document(message, state)
+
+@settings_router.message(lambda m: m.document)
+async def payment_check_document_any(message: types.Message, state: FSMContext):
+    await handle_payment_check_document_any(message, state)
+
+@settings_router.message(lambda m: m.photo)
+async def payment_check_photo_any(message: types.Message, state: FSMContext):
+    await handle_payment_check_photo_any(message, state)
 
 @settings_router.message(Command("feedback"))
-async def handle_feedback_command(message: types.Message, state: FSMContext):
-    await message.answer(
-        "Пожалуйста, напишите ваш отзыв о сервисе. После отправки вы сможете отметить, положительный он или нет."
-    )
-    await state.set_state(SettingsStates.waiting_for_feedback_text)
+async def feedback_command(message: types.Message, state: FSMContext):
+    await handle_feedback_command(message, state)
 
 @settings_router.message(SettingsStates.waiting_for_feedback_text)
-async def handle_feedback_text(message: types.Message, state: FSMContext):
-    await state.update_data(feedback_text=message.text)
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="👍 Положительный", callback_data="feedback_positive")],
-            [InlineKeyboardButton(text="👎 Отрицательный", callback_data="feedback_negative")]
-        ]
-    )
-    await message.answer("Спасибо! Отметьте, как вы оцениваете сервис:", reply_markup=kb)
+async def feedback_text(message: types.Message, state: FSMContext):
+    await handle_feedback_text(message, state)
 
 @settings_router.callback_query(lambda c: c.data in ["feedback_positive", "feedback_negative"])
-async def handle_feedback_rating(callback_query: types.CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    feedback_text = data.get("feedback_text")
-    is_positive = callback_query.data == "feedback_positive"
-    username = callback_query.from_user.username
-    telegram_id = str(callback_query.from_user.id)
-    await add_feedback(telegram_id, username, feedback_text, is_positive)
-    await callback_query.message.answer("Спасибо за ваш отзыв! Он очень важен для нас.")
-    await state.clear()
-    await callback_query.answer()
+async def feedback_rating(callback_query: types.CallbackQuery, state: FSMContext):
+    await handle_feedback_rating(callback_query, state)
 
 @settings_router.callback_query(lambda c: c.data == "change_token")
 async def handle_change_token(callback_query: types.CallbackQuery, state: FSMContext):
@@ -1050,23 +692,6 @@ async def handle_any_message(message: types.Message, state: FSMContext):
     await log_fsm_state(message, state)
     logging.info(f"[BOT] handle_any_message: user={message.from_user.id}, text={message.text}")
     """Обрабатывает любые сообщения, которые не являются командами"""
-    # Проверяем, есть ли активное состояние
-    current_state = await state.get_state()
-    
-    if current_state:
-        # Если есть активное состояние, но это не ожидаемое сообщение, сбрасываем
-        await state.clear()
-        await message.answer(
-            "❌ Операция была прервана.\n\n"
-            "Доступные команды:\n"
-            "/start - Создать новый проект\n"
-            "/projects - Управление проектами\n"
-            "/help - Справка",
-            reply_markup=main_menu
-        )
-    # Если нет активного состояния, ничего не отвечаем (или можно логировать для отладки)
-    # (Раньше здесь была справка, теперь убрано)
-
     # --- Обработка подтверждения оплаты админом ---
     if message.text and message.text.lower().startswith("оплатил ") and str(message.from_user.id) == str(MAIN_TELEGRAM_ID):
         parts = message.text.strip().split()
@@ -1102,3 +727,13 @@ async def handle_any_message(message: types.Message, state: FSMContext):
         is_trial=is_trial,
         is_paid=is_paid
     )
+
+start_scheduler()
+
+main_menu = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="/start"), KeyboardButton(text="/projects"), KeyboardButton(text="/help")],
+        [KeyboardButton(text="/pay")]
+    ],
+    resize_keyboard=True
+)

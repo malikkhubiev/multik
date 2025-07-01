@@ -17,5 +17,5 @@ python-docx
 PyPDF2
 SpeechRecognition
 pydub
-apscheduler
 plotly
+apscheduler

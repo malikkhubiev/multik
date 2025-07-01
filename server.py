@@ -55,7 +55,7 @@ async def get_stats(request: Request):
     # Общее количество пользователей
     total_users = await database.fetch_val(func.count(User.telegram_id).select())
     # Новые пользователи за сегодня
-    today = datetime.utcnow().date()
+    today = datetime.now(datetime.timezone.utc).date()
     new_users_today = await database.fetch_val(
         func.count(User.telegram_id).select().where(func.date(User.start_date) == today)
     )
@@ -83,7 +83,7 @@ async def get_stats(request: Request):
     avg_response_time = await database.fetch_val(func.avg(MessageStat.response_time).select().where(MessageStat.response_time != None))
     # Конверсия из триала в оплату
     paid_users = await database.fetch_val(func.count(User.telegram_id).select().where(User.paid == True))
-    expired_trial_users = await database.fetch_val(func.count(User.telegram_id).select().where(User.paid == False, User.start_date < datetime.utcnow() - timedelta(days=14)))
+    expired_trial_users = await database.fetch_val(func.count(User.telegram_id).select().where(User.paid == False, User.start_date < datetime.now(datetime.timezone.utc) - timedelta(days=14)))
     conversion = (paid_users / (paid_users + expired_trial_users) * 100) if (paid_users + expired_trial_users) else 0
     # Среднее количество ботов на пользователя
     all_projects = await database.fetch_all(func.count().select().select_from(User).join(MessageStat, User.telegram_id == MessageStat.telegram_id))
@@ -135,7 +135,7 @@ async def get_stats(request: Request):
         # --- Plotly графики ---
         # 1. DAU по дням (за последние 14 дней)
         from sqlalchemy import desc
-        days = [(datetime.utcnow().date() - timedelta(days=i)) for i in range(13, -1, -1)]
+        days = [(datetime.now(datetime.timezone.utc).date() - timedelta(days=i)) for i in range(13, -1, -1)]
         dau_per_day = []
         for d in days:
             cnt = await database.fetch_val(
