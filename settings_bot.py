@@ -70,21 +70,39 @@ async def check_expired_trials():
                 await delete_webhook(project['token'])
             except Exception as e:
                 logger.error(f"[TRIAL] Ошибка при удалении вебхука: {e}")
-        # Можно добавить флаг в user FSM или просто полагаться на paid/start_date
-        # Отправить пользователю уведомление (если нужно)
-        # (В реальном боте — отправка через Telegram API)
-        logger.info(f"[TRIAL] Пользователь {telegram_id} — trial истёк, вебхуки удалены")
+        # Отправляем уведомление пользователю
+        try:
+            pay_kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Оплатить", callback_data="pay")],
+                    [InlineKeyboardButton(text="Удалить проекты", callback_data="delete_trial_projects")]
+                ]
+            )
+            await settings_bot.send_message(
+                telegram_id,
+                f"Пробный период завершён!\n\nДля продолжения работы оплатите {PAYMENT_AMOUNT} рублей за первый месяц или удалите проекты.",
+                reply_markup=pay_kb
+            )
+            logger.info(f"[TRIAL] Пользователь {telegram_id} — trial истёк, уведомление отправлено")
+        except Exception as e:
+            logger.error(f"[TRIAL] Ошибка при отправке уведомления: {e}")
 
 async def check_expired_paid_month():
     users = await get_users_with_expired_paid_month()
     for user in users:
         telegram_id = user['telegram_id']
         try:
+            pay_kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Оплатить", callback_data="pay")]
+                ]
+            )
             await settings_bot.send_message(
                 telegram_id,
-                "Первый оплаченный месяц завершён!\n\nДля продолжения работы оплатите полную стоимость подписки."
+                "Первый оплаченный месяц завершён!\n\nДля продолжения работы оплатите полную стоимость подписки.",
+                reply_markup=pay_kb
             )
-            logger.info(f"[PAID_MONTH] Пользователь {telegram_id} — первый оплаченный месяц истёк, отправлено уведомление")
+            logger.info(f"[PAID_MONTH] Пользователь {telegram_id} — первый оплаченный месяц истёк, уведомление отправлено")
         except Exception as e:
             logger.error(f"[PAID_MONTH] Ошибка при отправке уведомления: {e}")
 
