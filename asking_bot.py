@@ -68,7 +68,7 @@ async def get_or_create_dispatcher(token: str, business_info: str):
         is_trial = user and not user['paid']
         is_paid = user and user['paid']
         t0 = time.monotonic()
-        processing_msg = await message.answer("Изучаем базу данных...")
+        processing_msg = await message.answer("Изучаю базу данных...")
         if not business_info:
             await message.answer("Информация о бизнесе не найдена. Обратитесь к администратору.")
             logging.warning(f"[ASKING_BOT] handle_question: business_info not found for project")
