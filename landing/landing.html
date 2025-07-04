@@ -4,155 +4,42 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Telegram Bots | Автоматизируйте продажи 24/7</title>
+    <meta name="description" content="AI Telegram Bots — автоматизация продаж, мгновенные ответы клиентам, запуск бота за 1 минуту. Попробуйте бесплатно!">
+    <meta name="keywords" content="AI, Telegram, Бот, Автоматизация, Продажи, Чат-бот, Бизнес, Искусственный интеллект, Скидка, SaaS">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://yourdomain.com/">
+    <link rel="icon" type="image/png" href="/favicon.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.11.4/gsap.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.11.4/ScrollTrigger.min.js"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap');
-        
-        :root {
-            --dark-space: #0a0a14;
-            --neon-purple: #6e44ff;
-            --cyan-gradient: #00f0ff;
-            --pink-accent: #ff2d95;
-        }
-        
-        body {
-            font-family: 'Montserrat', sans-serif;
-            background-color: var(--dark-space);
-            color: white;
-            overflow-x: hidden;
-        }
-        
-        .glassmorphism {
-            background: rgba(10, 10, 20, 0.5);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.2);
-        }
-        
-        .neon-purple-gradient {
-            background: linear-gradient(135deg, var(--neon-purple), var(--cyan-gradient));
-        }
-        
-        .neon-pink-gradient {
-            background: linear-gradient(135deg, var(--pink-accent), var(--neon-purple));
-        }
-        
-        .radial-gradient {
-            background: radial-gradient(circle, var(--neon-purple), var(--cyan-gradient));
-        }
-        
-        .pulse-animation {
-            animation: pulse 2s infinite;
-        }
-        
-        @keyframes pulse {
-            0% {
-                box-shadow: 0 0 0 0 rgba(110, 68, 255, 0.7);
-            }
-            70% {
-                box-shadow: 0 0 0 15px rgba(110, 68, 255, 0);
-            }
-            100% {
-                box-shadow: 0 0 0 0 rgba(110, 68, 255, 0);
-            }
-        }
-        
-        .glow-text {
-            text-shadow: 0 0 10px rgba(110, 68, 255, 0.7);
-        }
-        
-        .floating {
-            animation: floating 3s ease-in-out infinite;
-        }
-        
-        @keyframes floating {
-            0% { transform: translateY(0px); }
-            50% { transform: translateY(-15px); }
-            100% { transform: translateY(0px); }
-        }
-        
-        .counter {
-            font-variant-numeric: tabular-nums;
-        }
-        
-        .progress-bar {
-            height: 6px;
-            background: linear-gradient(90deg, var(--pink-accent), var(--neon-purple));
-            border-radius: 3px;
-            transition: width 0.5s ease;
-        }
-        
-        .notification {
-            animation: slideIn 0.5s forwards, fadeOut 0.5s 3s forwards;
-        }
-        
-        @keyframes slideIn {
-            from { transform: translateX(100%); }
-            to { transform: translateX(0); }
-        }
-        
-        @keyframes fadeOut {
-            from { opacity: 1; }
-            to { opacity: 0; }
-        }
-        
-        .typing-demo {
-            width: 22ch;
-            animation: typing 2s steps(22), blink .5s step-end infinite alternate;
-            white-space: nowrap;
-            overflow: hidden;
-            border-right: 3px solid;
-        }
-        
-        @keyframes typing {
-            from { width: 0 }
-        }
-        
-        @keyframes blink {
-            50% { border-color: transparent }
-        }
-        
-        .matrix-rain {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: -1;
-            opacity: 0.3;
-        }
-        
-        .sticky-cta {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            z-index: 100;
-            animation: pulse 1.5s infinite;
-        }
-        
-        .rotate-3d {
-            transform-style: preserve-3d;
-            transition: transform 1s;
-        }
-        
-        .rotate-3d:hover {
-            transform: rotateY(20deg) rotateX(10deg);
-        }
-        
-        .blink {
-            animation: blink-animation 1s infinite;
-        }
-        
-        @keyframes blink-animation {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
-        }
-    </style>
+    <link rel="preload" href="style.css" as="style">
+    <link rel="stylesheet" href="style.css">
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "AI Telegram Bots",
+      "url": "https://yourdomain.com/",
+      "logo": "https://yourdomain.com/favicon.png",
+      "description": "AI Telegram Bots — автоматизация продаж, мгновенные ответы клиентам, запуск бота за 1 минуту. Попробуйте бесплатно!"
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org/",
+      "@type": "Product",
+      "name": "AI Telegram Bots",
+      "image": [
+        "https://yourdomain.com/favicon.png"
+      ],
+      "description": "AI Telegram Bots — автоматизация продаж, мгновенные ответы клиентам, запуск бота за 1 минуту. Попробуйте бесплатно!",
+      "brand": {
+        "@type": "Brand",
+        "name": "AI Telegram Bots"
+      }
+    }
+    </script>
 </head>
 <body>
     <!-- Notification Popup -->
@@ -177,6 +64,7 @@
         </button>
     </div>
 
+    <main>
     <!-- Hero Section -->
     <section class="relative overflow-hidden min-h-screen flex items-center">
         <div class="matrix-rain" id="matrixCanvas"></div>
@@ -216,17 +104,6 @@
                     <button class="neon-purple-gradient text-white font-bold py-4 px-8 rounded-full text-lg pulse-animation transform hover:scale-105 transition-all">
                         🚀 Попробовать 10 дней бесплатно →
                     </button>
-                    
-                    <div class="mt-6 flex items-center">
-                        <div class="flex -space-x-2">
-                            <img src="https://randomuser.me/api/portraits/women/44.jpg" class="w-10 h-10 rounded-full border-2 border-purple-500">
-                            <img src="https://randomuser.me/api/portraits/men/32.jpg" class="w-10 h-10 rounded-full border-2 border-purple-500">
-                            <img src="https://randomuser.me/api/portraits/women/68.jpg" class="w-10 h-10 rounded-full border-2 border-purple-500">
-                        </div>
-                        <div class="ml-3">
-                            <p class="text-sm text-gray-300">Уже <span class="font-bold text-white">12,850+</span> бизнесов автоматизировали продажи</p>
-                        </div>
-                    </div>
                 </div>
                 
                 <div class="lg:w-1/2 relative">
@@ -499,5 +376,49 @@
                         <li class="flex items-center">
                             <i class="fas fa-check text-green-400 mr-2"></i>
                             <span>Расширенная аналитика</span>
-                       
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+    </main>
+
+    <footer class="py-8 bg-gray-900 text-center text-gray-400 text-sm">
+        &copy; 2025 Ai Telegram-Assistants. Все права защищены.
+    </footer>
+
+    <script>
+        (function() {
+          // 72 часа в миллисекундах
+          const DURATION = 72 * 60 * 60 * 1000;
+          const END_KEY = 'promoCountdownEnd';
+          let endTime = localStorage.getItem(END_KEY);
+          if (!endTime || isNaN(Number(endTime)) || Number(endTime) < Date.now()) {
+            endTime = Date.now() + DURATION;
+            localStorage.setItem(END_KEY, endTime);
+          } else {
+            endTime = Number(endTime);
+          }
+          function pad(n) { return n < 10 ? '0' + n : n; }
+          function updateCountdown() {
+            const now = Date.now();
+            let diff = endTime - now;
+            if (diff < 0) diff = 0;
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+            document.getElementById('countdown-hours').textContent = pad(hours);
+            document.getElementById('countdown-minutes').textContent = pad(minutes);
+            document.getElementById('countdown-seconds').textContent = pad(seconds);
+            if (diff > 0) {
+              setTimeout(updateCountdown, 1000);
+            } else {
+              // Можно добавить обработку окончания акции
+            }
+          }
+          updateCountdown();
+        })();
+        </script> 
+</body>
 </html>
