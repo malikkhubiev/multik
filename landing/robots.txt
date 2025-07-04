@@ -1,3 +1,10 @@
+# robots.txt for https://yourdomain.com/
+# Разрешаем индексацию всем поисковым системам
 User-agent: *
 Allow: /
-Sitemap: https://yourdomain.com/sitemap.xml 
+
+# Указываем актуальный путь к карте сайта
+Sitemap: https://yourdomain.com/landing/sitemap.xml
+
+# Указываем основной домен (важно для Яндекса)
+Host: yourdomain.com 
