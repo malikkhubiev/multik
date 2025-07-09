@@ -2,7 +2,6 @@ from fastapi import HTTPException
 from dotenv import load_dotenv
 from functools import wraps
 from fastapi.responses import JSONResponse
-from fastapi.exceptions import HTTPException
 import httpx
 import logging
 from config import API_URL, SERVER_URL

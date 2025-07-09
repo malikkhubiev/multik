@@ -14,7 +14,7 @@ from settings_utils import handle_command_in_state, log_fsm_state
 from settings_feedback import handle_feedback_command, handle_feedback_text, handle_feedback_rating_callback, handle_feedback_change_rating
 from settings_payment import handle_pay_command, handle_pay_callback, handle_payment_check, handle_payment_check_document, handle_payment_check_document_any, handle_payment_check_photo_any
 from settings_middleware import trial_middleware, clear_asking_bot_cache
-from settings_logging import log_message_stat
+from database import log_message_stat
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler

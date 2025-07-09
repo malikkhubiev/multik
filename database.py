@@ -71,7 +71,7 @@ class Feedback(Base):
 # Новая таблица Payment
 class Payment(Base):
     __tablename__ = 'payment'
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(Integer, primary_key=True, autoincrement=True)
     telegram_id = Column(String, nullable=False)
     amount = Column(Float, nullable=False)
     paid_at = Column(DateTime, default=datetime.now(timezone.utc))
