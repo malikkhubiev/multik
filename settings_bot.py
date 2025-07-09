@@ -4,7 +4,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram import Router, Dispatcher
 from aiogram.filters import Command
 import os
-from config import API_URL, SERVER_URL, DEEPSEEK_API_KEY, TRIAL_DAYS, TRIAL_PROJECTS, PAID_PROJECTS, PAYMENT_AMOUNT, PAYMENT_CARD_NUMBER, MAIN_TELEGRAM_ID
+from config import API_URL, SERVER_URL, DEEPSEEK_API_KEY, TRIAL_DAYS, TRIAL_PROJECTS, PAID_PROJECTS, PAYMENT_AMOUNT, PAYMENT_CARD_NUMBER, MAIN_TELEGRAM_ID, DISCOUNT_PAYMENT_AMOUNT
 from database import create_project, get_project_by_id, create_user, get_projects_by_user, update_project_name, update_project_business_info, append_project_business_info, delete_project, get_project_by_token, check_project_name_exists, get_user_by_id, get_users_with_expired_trial, delete_all_projects_for_user, set_user_paid, get_user_projects, log_message_stat, add_feedback, update_project_token, get_users_with_expired_paid_month, set_trial_expired_notified, log_payment
 from utils import set_webhook, delete_webhook
 from aiogram.fsm.context import FSMContext
@@ -63,7 +63,7 @@ async def check_expired_trials():
                 )
                 await settings_bot.send_message(
                     telegram_id,
-                    f"Пробный период завершён!\n\nДля продолжения работы оплатите {PAYMENT_AMOUNT} рублей за первый месяц или удалите проекты.",
+                    f"Пробный период завершён!\n\nДля продолжения работы оплатите {DISCOUNT_PAYMENT_AMOUNT} рублей за первый месяц или удалите проекты.",
                     reply_markup=pay_kb
                 )
                 logging.info(f"[TRIAL] Пользователь {telegram_id} — trial истёк, уведомление отправлено")
@@ -129,7 +129,7 @@ async def trial_middleware(message: types.Message, state: FSMContext, handler):
                 ]
             )
             await message.answer(
-                f"Пробный период завершён!\n\nДля продолжения работы оплатите {PAYMENT_AMOUNT} рублей за первый месяц или удалите проекты.\n\nВыберите действие:",
+                f"Пробный период завершён!\n\nДля продолжения работы оплатите {DISCOUNT_PAYMENT_AMOUNT} рублей за первый месяц или удалите проекты.\n\nВыберите действие:",
                 reply_markup=kb
             )
             return  # Не передаём управление дальше
@@ -659,7 +659,7 @@ async def handle_show_data(callback_query: types.CallbackQuery, state: FSMContex
 @settings_router.callback_query(lambda c: c.data == "pay_trial")
 async def handle_pay_trial(callback_query: types.CallbackQuery, state: FSMContext):
     await callback_query.message.answer(
-        f"Для оплаты переведите {PAYMENT_AMOUNT} рублей на карту: {PAYMENT_CARD_NUMBER}\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
+        f"Для оплаты переведите {DISCOUNT_PAYMENT_AMOUNT} рублей на карту: {PAYMENT_CARD_NUMBER}\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
     )
     await callback_query.answer()
 
