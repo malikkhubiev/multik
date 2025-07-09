@@ -1,5 +1,5 @@
 from config import PAYMENT_AMOUNT, PAYMENT_CARD_NUMBER, MAIN_TELEGRAM_ID, PAID_PROJECTS
-from database import set_user_paid, get_user_projects
+from database import set_user_paid, get_user_projects, get_payments
 from utils import set_webhook
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import logging
@@ -22,6 +22,16 @@ async def forward_check_with_notice(message, notice_text=None):
     if notice_text is None:
         notice_text = f"Оплатил {telegram_id}"
     await message.bot.send_message(MAIN_TELEGRAM_ID, notice_text)
+    # Отправляем стоимость текущей и предпоследней оплаты
+    payments = await get_payments()
+    user_payments = [p for p in payments if str(p['telegram_id']) == telegram_id]
+    user_payments_sorted = sorted(user_payments, key=lambda p: p['paid_at'])
+    if user_payments_sorted:
+        last_amount = user_payments_sorted[-1]['amount']
+        await message.bot.send_message(MAIN_TELEGRAM_ID, f"Текущая сумма оплаты: {last_amount}")
+        if len(user_payments_sorted) > 1:
+            prev_amount = user_payments_sorted[-2]['amount']
+            await message.bot.send_message(MAIN_TELEGRAM_ID, f"Предыдущая сумма оплаты: {prev_amount}")
 
 async def handle_payment_check(message, state):
     try:
