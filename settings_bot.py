@@ -661,6 +661,7 @@ async def handle_pay_trial(callback_query: types.CallbackQuery, state: FSMContex
     await callback_query.message.answer(
         f"Для оплаты переведите {DISCOUNT_PAYMENT_AMOUNT} рублей на карту: {PAYMENT_CARD_NUMBER}\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
     )
+    await state.set_state(SettingsStates.waiting_for_payment_check)
     await callback_query.answer()
 
 @settings_router.callback_query(lambda c: c.data == "projects_menu")
@@ -899,13 +900,21 @@ async def handle_pay_subscription(callback_query: types.CallbackQuery, state: FS
     payments = await get_payments()
     user_payments = [p for p in payments if str(p['telegram_id']) == telegram_id]
     if len(user_payments) <= 1:
-        # Первый платный месяц (скидка)
         await callback_query.message.answer(
             f"Для оплаты переведите {DISCOUNT_PAYMENT_AMOUNT} рублей на карту: {PAYMENT_CARD_NUMBER}\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
         )
     else:
-        # Продление подписки (полная стоимость)
         await callback_query.message.answer(
             f"Для продления подписки переведите {PAYMENT_AMOUNT} рублей на карту: {PAYMENT_CARD_NUMBER}\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
         )
+    await state.set_state(SettingsStates.waiting_for_payment_check)
     await callback_query.answer()
+
+@settings_router.message(SettingsStates.waiting_for_payment_check)
+async def handle_payment_check_fsm(message: types.Message, state: FSMContext):
+    # Любой файл или фото в этом состоянии — это чек
+    if message.document or message.photo:
+        await handle_payment_check(message, state)
+        await state.clear()
+    else:
+        await message.answer("Пожалуйста, отправьте файл или фото чека об оплате.")

@@ -12,3 +12,4 @@ class SettingsStates(StatesGroup):
     waiting_for_feedback_rating = State()
     waiting_for_feedback_text = State()
     waiting_for_new_token = State()  # <--- новое состояние для смены токена 
+    waiting_for_payment_check = State() 
