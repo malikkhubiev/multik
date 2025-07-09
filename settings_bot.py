@@ -890,3 +890,22 @@ async def handle_projects_command(message: types.Message, state: FSMContext, tel
     except Exception as e:
         logger.error(f"Error in handle_projects_command: {e}")
         await message.answer("Произошла ошибка при получении списка проектов", reply_markup=main_menu)
+
+@settings_router.callback_query(lambda c: c.data == "pay_subscription")
+async def handle_pay_subscription(callback_query: types.CallbackQuery, state: FSMContext):
+    from database import get_payments
+    from config import DISCOUNT_PAYMENT_AMOUNT, PAYMENT_AMOUNT, PAYMENT_CARD_NUMBER
+    telegram_id = str(callback_query.from_user.id)
+    payments = await get_payments()
+    user_payments = [p for p in payments if str(p['telegram_id']) == telegram_id]
+    if len(user_payments) <= 1:
+        # Первый платный месяц (скидка)
+        await callback_query.message.answer(
+            f"Для оплаты переведите {DISCOUNT_PAYMENT_AMOUNT} рублей на карту: {PAYMENT_CARD_NUMBER}\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
+        )
+    else:
+        # Продление подписки (полная стоимость)
+        await callback_query.message.answer(
+            f"Для продления подписки переведите {PAYMENT_AMOUNT} рублей на карту: {PAYMENT_CARD_NUMBER}\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
+        )
+    await callback_query.answer()
