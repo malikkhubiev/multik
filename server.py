@@ -95,9 +95,25 @@ async def get_stats(request: Request):
     total_revenue = sum(p['amount'] for p in payments)
     # ARPU
     arpu = (total_revenue / paid_count) if paid_count else 0
-    # LTV (ARPU * средний срок жизни клиента)
-    # Для MVP: средний срок жизни = 1 месяц
-    ltv = arpu * 1
+    # LTV (реальный средний срок жизни клиента в месяцах)
+    from collections import defaultdict
+    user_payments = defaultdict(list)
+    for p in payments:
+        user_payments[p['telegram_id']].append(p['paid_at'])
+    lifetimes = []
+    for telegram_id, dates in user_payments.items():
+        if len(dates) > 1:
+            # Сортируем даты
+            dates_sorted = sorted([d if not isinstance(d, str) else datetime.fromisoformat(d) for d in dates])
+            lifetime_days = (dates_sorted[-1] - dates_sorted[0]).days
+            lifetime_months = lifetime_days / 30
+            if lifetime_months < 1:
+                lifetime_months = 1  # Минимум 1 месяц, если пользователь платил более одного раза
+            lifetimes.append(lifetime_months)
+        else:
+            lifetimes.append(1)  # Если только один платёж, считаем 1 месяц
+    avg_lifetime_months = sum(lifetimes) / len(lifetimes) if lifetimes else 0
+    ltv = arpu * avg_lifetime_months
     # Activity Rate
     activity_rate = (dau / total_users * 100) if total_users else 0
     # Удержание (Retention)
