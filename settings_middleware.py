@@ -1,6 +1,6 @@
 import logging
 from database import get_user_by_id
-from config import TRIAL_DAYS, PAYMENT_AMOUNT
+from config import TRIAL_DAYS, PAYMENT_AMOUNT, DISCOUNT_PAYMENT_AMOUNT
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import datetime
 
@@ -37,7 +37,7 @@ async def trial_middleware(message, state, handler):
                     ]
                 )
                 await message.answer(
-                    f"Пробный период завершён!\n\nДля продолжения работы оплатите {PAYMENT_AMOUNT} рублей за первый месяц или удалите проекты.\n\nВыберите действие:",
+                    f"Пробный период завершён!\n\nДля продолжения работы оплатите {DISCOUNT_PAYMENT_AMOUNT} рублей за первый месяц или удалите проекты.\n\nВыберите действие:",
                     reply_markup=kb
                 )
                 return
@@ -59,7 +59,7 @@ async def trial_middleware(message, state, handler):
                         ]
                     )
                     await message.answer(
-                        "Срок вашей подписки истёк! Для продолжения работы оплатите следующий месяц.",
+                        f"Срок вашей подписки истёк! Для продолжения работы оплатите следующий месяц по стоимости {PAYMENT_AMOUNT} рублей.",
                         reply_markup=kb
                     )
                     return
