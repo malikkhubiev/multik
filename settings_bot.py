@@ -794,6 +794,8 @@ async def _handle_any_message_inner(message: types.Message, state: FSMContext):
             # Уведомить пользователя
             try:
                 await settings_bot.send_message(paid_telegram_id, f"Оплата подтверждена! Ваши проекты снова активны. Теперь вы можете создавать до {PAID_PROJECTS} проектов.")
+                # Если пользователь в состоянии ожидания подтверждения оплаты, сбросить его состояние
+                # (опционально, если FSM используется глобально)
             except Exception as e:
                 logger.error(f"[PAYMENT] Не удалось отправить сообщение пользователю: {e}")
             await message.answer(f"Пользователь {paid_telegram_id} отмечен как оплативший. Вебхуки восстановлены для {restored} проектов.")
@@ -915,6 +917,7 @@ async def handle_payment_check_fsm(message: types.Message, state: FSMContext):
     # Любой файл или фото в этом состоянии — это чек
     if message.document or message.photo:
         await handle_payment_check(message, state)
-        await state.clear()
+        await message.answer("Чек получен! Мы проверим оплату и сообщим, когда доступ будет расширен.")
+        await state.set_state(ExtendedSettingsStates.waiting_for_payment_confirmation)
     else:
         await message.answer("Пожалуйста, отправьте файл или фото чека об оплате.")
