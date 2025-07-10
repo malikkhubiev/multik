@@ -253,7 +253,7 @@ async def handle_business_file(message: types.Message, state: FSMContext):
     if len(text_content) > 1000:
         logger.info("[LOAD] Отправка данных в Deepseek...")
         t2 = time.monotonic()
-        await message.answer("Обрабатываю информацию о бизнесе (ориентировочно займёт минуту времени)...")
+        await message.answer("Обрабатываю информацию о бизнесе (ориентировочно займёт 1 минуту)...")
         processed_business_info = await process_business_file_with_deepseek(text_content)
         logger.info(f"[LOAD] Deepseek завершён за {time.monotonic() - t2:.2f} сек")
         processed_business_info = clean_markdown(processed_business_info)

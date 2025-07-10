@@ -12,6 +12,7 @@ import time
 from settings_bot import clean_markdown
 from database import MessageStat
 from sqlalchemy import func
+from database import fetch_val
 
 router = APIRouter()
 
@@ -105,7 +106,7 @@ async def get_or_create_dispatcher(token: str, business_info: str):
             await message.answer(content)
             response_time = time.monotonic() - t0
             # Логируем время ответа и общее количество ответов
-            total_answers = await database.fetch_val(func.count().select().select_from(MessageStat))
+            total_answers = await fetch_val(func.count().select().select_from(MessageStat))
             logging.info(f"[ASKING_BOT] Время ответа на этот вопрос: {response_time:.2f} сек. Всего ответов в БД: {total_answers}")
             await log_message_stat(
                 telegram_id=str(user_id),
