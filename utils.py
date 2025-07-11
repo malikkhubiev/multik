@@ -125,3 +125,19 @@ async def delete_webhook(token: str) -> dict:
         except Exception as e:
             logging.error(f"[WEBHOOK] Error deleting webhook: {e}\n{traceback.format_exc()}")
             return {"ok": False, "error": str(e), "trace": traceback.format_exc()}
+
+# --- Функция "печатает" ---
+async def send_typing_action(chat_id):
+    try:
+        url = f"https://api.telegram.org/bot{TOKEN}/sendChatAction"
+        payload = {
+            "chat_id": chat_id,
+            "action": "typing"
+        }
+        timeout = httpx.Timeout(5.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(url, json=payload)
+            if resp.status_code != 200:
+                logger.error(f"Failed to send typing action: {resp.status_code} - {resp.text}")
+    except Exception as e:
+        logger.error(f"Failed to send typing action: {e}")
