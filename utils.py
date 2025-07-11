@@ -7,6 +7,7 @@ import logging
 from config import SETTINGS_BOT_TOKEN, API_URL, SERVER_URL
 import traceback
 from database import get_user
+from pydub import AudioSegment
 
 load_dotenv()
 
@@ -141,3 +142,32 @@ async def send_typing_action(chat_id, token):
                 logger.error(f"Failed to send typing action: {resp.status_code} - {resp.text}")
     except Exception as e:
         logger.error(f"Failed to send typing action: {e}")
+
+# Универсальная функция для получения текста из текстового или голосового сообщения
+async def recognize_message_text(message, bot, language='ru-RU'):
+    if message.text:
+        return message.text
+    elif message.voice:
+        try:
+            file_info = await bot.get_file(message.voice.file_id)
+            file_path = file_info.file_path
+            file_content = await bot.download_file(file_path)
+            import speech_recognition as sr
+            import tempfile
+            recognizer = sr.Recognizer()
+            with tempfile.NamedTemporaryFile(suffix='.ogg') as temp_ogg, tempfile.NamedTemporaryFile(suffix='.wav') as temp_wav:
+                temp_ogg.write(file_content.read())
+                temp_ogg.flush()
+                audio = AudioSegment.from_file(temp_ogg.name)
+                audio.export(temp_wav.name, format='wav')
+                temp_wav.flush()
+                with sr.AudioFile(temp_wav.name) as source:
+                    audio_data = recognizer.record(source)
+                text_content = recognizer.recognize_google(audio_data, language=language)
+            logging.info(f"[VOICE] Распознанный текст из голосового сообщения: {text_content}")
+            return text_content
+        except Exception as e:
+            logging.error(f"Ошибка при распознавании голоса: {e}")
+            return None
+    else:
+        return None

@@ -67,7 +67,11 @@ async def get_or_create_dispatcher(token: str, business_info: str):
     @tg_router.message()
     async def handle_question(message: types.Message):
         user_id = message.from_user.id
-        text = message.text
+        from utils import recognize_message_text
+        text = await recognize_message_text(message, bot)
+        if not text:
+            await message.answer("Пожалуйста, отправьте текстовое или голосовое сообщение с вопросом.")
+            return
         logging.info(f"[ASKING_BOT] handle_question: user_id={user_id}, text={text}")
         user = await get_user_by_id(str(user_id))
         is_trial = user and not user['paid']
