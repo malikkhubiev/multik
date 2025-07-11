@@ -86,6 +86,7 @@ async def get_text_from_message(message, bot, max_length=4096) -> str:
                 with sr.AudioFile(temp_wav.name) as source:
                     audio_data = recognizer.record(source)
                 text_content = recognizer.recognize_google(audio_data, language='ru-RU')
+            logging.info(f"[VOICE] Распознанный текст из голосового сообщения: {text_content}")
         except Exception as e:
             raise RuntimeError(f"Ошибка при распознавании голоса: {e}")
     if not text_content:

@@ -73,7 +73,15 @@ async def get_or_create_dispatcher(token: str, business_info: str):
         is_trial = user and not user['paid']
         is_paid = user and user['paid']
         t0 = time.monotonic()
-        await send_typing_action(user_id)
+        # Получаем токен из Project по user_id
+        from database import get_projects_by_user
+        projects = await get_projects_by_user(str(user_id))
+        if projects and len(projects) > 0:
+            project_token = projects[0]['token']
+            await send_typing_action(user_id, project_token)
+        else:
+            await message.answer("...печатает")
+            logging.warning(f"[ASKING_BOT] Не найден проект для пользователя {user_id}, не отправляю typing action")
         if not business_info:
             await message.answer("Информация о бизнесе не найдена. Обратитесь к администратору.")
             logging.warning(f"[ASKING_BOT] handle_question: business_info not found for project")

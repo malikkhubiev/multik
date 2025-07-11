@@ -127,9 +127,9 @@ async def delete_webhook(token: str) -> dict:
             return {"ok": False, "error": str(e), "trace": traceback.format_exc()}
 
 # --- Функция "печатает" ---
-async def send_typing_action(chat_id):
+async def send_typing_action(chat_id, token):
     try:
-        url = f"https://api.telegram.org/bot{SETTINGS_BOT_TOKEN}/sendChatAction"
+        url = f"https://api.telegram.org/bot{token}/sendChatAction"
         payload = {
             "chat_id": chat_id,
             "action": "typing"
