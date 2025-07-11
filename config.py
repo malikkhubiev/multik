@@ -20,6 +20,7 @@ SERVER_URL = os.getenv("SERVER_URL")
 API_URL = "https://api.telegram.org/bot"
 BOT_URL = os.getenv("BOT_URL")
 
+SETTINGS_BOT_TOKEN = os.getenv("SETTINGS_BOT_TOKEN")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 
 # Логируем состояние критических переменных

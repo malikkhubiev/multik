@@ -4,7 +4,7 @@ from functools import wraps
 from fastapi.responses import JSONResponse
 import httpx
 import logging
-from config import API_URL, SERVER_URL
+from config import SETTINGS_BOT_TOKEN, API_URL, SERVER_URL
 import traceback
 from database import get_user
 
@@ -129,7 +129,7 @@ async def delete_webhook(token: str) -> dict:
 # --- Функция "печатает" ---
 async def send_typing_action(chat_id):
     try:
-        url = f"https://api.telegram.org/bot{TOKEN}/sendChatAction"
+        url = f"https://api.telegram.org/bot{SETTINGS_BOT_TOKEN}/sendChatAction"
         payload = {
             "chat_id": chat_id,
             "action": "typing"
