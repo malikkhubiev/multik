@@ -160,7 +160,10 @@ async def create_user(telegram_id: str, referrer_id: str = None) -> None:
     # Диагностика: выводим всех пользователей после создания
     all_users = await database.fetch_all(select(User))
     for u in all_users:
-        logging.info(f"[DB] DEBUG: после create_user: telegram_id={u['telegram_id']}, paid={u['paid']}, start_date={u['start_date']}, trial_expired_notified={u['trial_expired_notified']}, referrer_id={u.get('referrer_id')}, bonus_days={u.get('bonus_days')}")
+        # Безопасно получаем значения, которые могут отсутствовать
+        referrer_id = u.get('referrer_id') if hasattr(u, 'referrer_id') else None
+        bonus_days = u.get('bonus_days', 0) if hasattr(u, 'bonus_days') else 0
+        logging.info(f"[DB] DEBUG: после create_user: telegram_id={u['telegram_id']}, paid={u['paid']}, start_date={u['start_date']}, trial_expired_notified={u['trial_expired_notified']}, referrer_id={referrer_id}, bonus_days={bonus_days}")
 
 async def get_user(telegram_id: str) -> Optional[dict]:
     logging.info(f"[DB] get_user: telegram_id={telegram_id}")
@@ -342,7 +345,10 @@ async def get_users_with_expired_trial():
     logger.info(all_users)
     logger.info(f"[DB] get_users_with_expired_trial: все пользователи:")
     for u in all_users:
-        logger.info(f"[DB] USER: telegram_id={u['telegram_id']}, paid={u['paid']}, start_date={u['start_date']}, trial_expired_notified={u['trial_expired_notified']}, referrer_id={u.get('referrer_id')}, bonus_days={u.get('bonus_days', 0)}")
+        # Безопасно получаем значения, которые могут отсутствовать
+        referrer_id = u.get('referrer_id') if hasattr(u, 'referrer_id') else None
+        bonus_days = u.get('bonus_days', 0) if hasattr(u, 'bonus_days') else 0
+        logger.info(f"[DB] USER: telegram_id={u['telegram_id']}, paid={u['paid']}, start_date={u['start_date']}, trial_expired_notified={u['trial_expired_notified']}, referrer_id={referrer_id}, bonus_days={bonus_days}")
     query = select(User).where(
         and_(
             User.paid == False,
@@ -537,7 +543,7 @@ async def get_referrer_info(telegram_id: str):
     """Получает информацию о реферере пользователя"""
     logging.info(f"[REFERRAL] get_referrer_info: telegram_id={telegram_id}")
     user = await get_user_by_id(telegram_id)
-    if user and user.get('referrer_id'):
+    if user and hasattr(user, 'referrer_id') and user.get('referrer_id'):
         referrer = await get_user_by_id(user['referrer_id'])
         return referrer
     return None
@@ -554,7 +560,7 @@ async def process_referral_payment(paid_user_id: str, paid_user_username: str = 
     
     # Получаем информацию о пользователе, который оплатил
     user = await get_user_by_id(paid_user_id)
-    if not user or not user.get('referrer_id'):
+    if not user or not hasattr(user, 'referrer_id') or not user.get('referrer_id'):
         logging.info(f"[REFERRAL] process_referral_payment: у пользователя {paid_user_id} нет реферера")
         return None
     
@@ -572,12 +578,13 @@ async def process_referral_payment(paid_user_id: str, paid_user_username: str = 
     
     # Формируем сообщение для реферера
     username_display = paid_user_username if paid_user_username else f"пользователь {paid_user_id}"
-    message = f"🎉 Ваш реферал {username_display} оплатил подписку!\n\n💎 Вам начислено +10 дней к пользованию.\n\n📊 Теперь у вас {referrer.get('bonus_days', 0)} дополнительных дней."
+    bonus_days = referrer.get('bonus_days', 0) if hasattr(referrer, 'bonus_days') else 0
+    message = f"🎉 Ваш реферал {username_display} оплатил подписку!\n\n💎 Вам начислено +10 дней к пользованию.\n\n📊 Теперь у вас {bonus_days} дополнительных дней."
     
     return {
         'referrer_id': referrer_id,
         'message': message,
-        'bonus_days': referrer.get('bonus_days', 0)
+        'bonus_days': referrer.get('bonus_days', 0) if hasattr(referrer, 'bonus_days') else 0
     }
 
 # --- Формы ---
