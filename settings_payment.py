@@ -21,18 +21,37 @@ async def forward_check_with_notice(message, notice_text=None):
     logging.info(f"[PAYMENT] forward_check_with_notice: начало обработки для пользователя {telegram_id}")
     
     try:
-        await message.forward(MAIN_TELEGRAM_ID)
-        logging.info(f"[PAYMENT] forward_check_with_notice: сообщение переслано админу {MAIN_TELEGRAM_ID}")
+        # Логируем информацию о сообщении
+        logging.info(f"[PAYMENT] forward_check_with_notice: тип сообщения = {message.content_type}")
+        logging.info(f"[PAYMENT] forward_check_with_notice: MAIN_TELEGRAM_ID = {MAIN_TELEGRAM_ID}")
         
+        # Пересылаем сообщение админу
+        try:
+            await message.forward(MAIN_TELEGRAM_ID)
+            logging.info(f"[PAYMENT] forward_check_with_notice: ✅ сообщение успешно переслано админу {MAIN_TELEGRAM_ID}")
+        except Exception as forward_error:
+            logging.error(f"[PAYMENT] forward_check_with_notice: ❌ ОШИБКА при пересылке сообщения: {forward_error}")
+            raise forward_error
+        
+        # Отправляем уведомление
         if notice_text is None:
             notice_text = f"Оплатил {telegram_id}"
-        await message.bot.send_message(MAIN_TELEGRAM_ID, notice_text)
-        logging.info(f"[PAYMENT] forward_check_with_notice: отправлено уведомление админу: {notice_text}")
         
-        # Отправляем стоимость текущей и предпоследней оплаты
+        try:
+            await message.bot.send_message(MAIN_TELEGRAM_ID, notice_text)
+            logging.info(f"[PAYMENT] forward_check_with_notice: ✅ отправлено уведомление админу: {notice_text}")
+        except Exception as notice_error:
+            logging.error(f"[PAYMENT] forward_check_with_notice: ❌ ОШИБКА при отправке уведомления: {notice_error}")
+            raise notice_error
+        
+        # Отправляем стоимость текущей и предпоследней оплаты ОТДЕЛЬНЫМИ SMS-сообщениями
         logging.info(f"[PAYMENT] forward_check_with_notice: получаем список платежей...")
-        payments = await get_payments()
-        logging.info(f"[PAYMENT] forward_check_with_notice: получено {len(payments)} платежей из БД")
+        try:
+            payments = await get_payments()
+            logging.info(f"[PAYMENT] forward_check_with_notice: ✅ получено {len(payments)} платежей из БД")
+        except Exception as payments_error:
+            logging.error(f"[PAYMENT] forward_check_with_notice: ❌ ОШИБКА при получении платежей: {payments_error}")
+            raise payments_error
         
         user_payments = [p for p in payments if str(p['telegram_id']) == telegram_id]
         logging.info(f"[PAYMENT] forward_check_with_notice: найдено {len(user_payments)} платежей для пользователя {telegram_id}")
@@ -43,21 +62,35 @@ async def forward_check_with_notice(message, notice_text=None):
         if user_payments_sorted:
             last_amount = user_payments_sorted[-1]['amount']
             logging.info(f"[PAYMENT] forward_check_with_notice: последний платеж = {last_amount}")
-            await message.bot.send_message(MAIN_TELEGRAM_ID, f"Текущая сумма оплаты: {last_amount}")
-            logging.info(f"[PAYMENT] forward_check_with_notice: отправлена текущая сумма {last_amount} админу")
+            
+            # Отправляем сумму отдельным SMS-сообщением
+            try:
+                await message.bot.send_message(MAIN_TELEGRAM_ID, f"💰 Сумма: {last_amount} руб.")
+                logging.info(f"[PAYMENT] forward_check_with_notice: ✅ отправлена текущая сумма {last_amount} админу отдельным SMS")
+            except Exception as amount_error:
+                logging.error(f"[PAYMENT] forward_check_with_notice: ❌ ОШИБКА при отправке суммы {last_amount}: {amount_error}")
+                raise amount_error
             
             if len(user_payments_sorted) > 1:
                 prev_amount = user_payments_sorted[-2]['amount']
                 logging.info(f"[PAYMENT] forward_check_with_notice: предыдущий платеж = {prev_amount}")
-                await message.bot.send_message(MAIN_TELEGRAM_ID, f"Предыдущая сумма оплаты: {prev_amount}")
-                logging.info(f"[PAYMENT] forward_check_with_notice: отправлена предыдущая сумма {prev_amount} админу")
+                
+                # Отправляем предыдущую сумму отдельным SMS-сообщением
+                try:
+                    await message.bot.send_message(MAIN_TELEGRAM_ID, f"📊 Предыдущая сумма: {prev_amount} руб.")
+                    logging.info(f"[PAYMENT] forward_check_with_notice: ✅ отправлена предыдущая сумма {prev_amount} админу отдельным SMS")
+                except Exception as prev_amount_error:
+                    logging.error(f"[PAYMENT] forward_check_with_notice: ❌ ОШИБКА при отправке предыдущей суммы {prev_amount}: {prev_amount_error}")
+                    raise prev_amount_error
             else:
                 logging.info(f"[PAYMENT] forward_check_with_notice: это первый платеж пользователя")
         else:
-            logging.warning(f"[PAYMENT] forward_check_with_notice: НЕ НАЙДЕНО платежей для пользователя {telegram_id}")
+            logging.warning(f"[PAYMENT] forward_check_with_notice: ⚠️ НЕ НАЙДЕНО платежей для пользователя {telegram_id}")
+            
+        logging.info(f"[PAYMENT] forward_check_with_notice: ✅ обработка завершена успешно для пользователя {telegram_id}")
             
     except Exception as e:
-        logging.error(f"[PAYMENT] forward_check_with_notice: ОШИБКА при обработке: {e}")
+        logging.error(f"[PAYMENT] forward_check_with_notice: ❌ ОШИБКА при обработке: {e}")
         import traceback
         logging.error(f"[PAYMENT] forward_check_with_notice: полный traceback: {traceback.format_exc()}")
         raise

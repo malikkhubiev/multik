@@ -147,44 +147,121 @@ def _get_trial_and_paid_limits(user):
 
 async def _start_inner(message: types.Message, state: FSMContext):
     telegram_id = str(message.from_user.id)
-    from database import get_projects_by_user, get_user_by_id, create_user
+    logging.info(f"[START] _start_inner: начало обработки для пользователя {telegram_id}")
     
-    # Проверяем, есть ли реферальный параметр в команде /start
-    referrer_id = None
-    if message.text and message.text.startswith('/start'):
-        parts = message.text.split()
-        if len(parts) > 1 and parts[1].startswith('ref'):
-            referrer_id = parts[1][3:]  # Убираем 'ref' из начала
-            logging.info(f"[REFERRAL] _start_inner: пользователь {telegram_id} пришел по реферальной ссылке от {referrer_id}")
-    
-    user = await get_user_by_id(telegram_id)
-    if not user:
-        await create_user(str(message.from_user.id), referrer_id)
-        user = await get_user_by_id(telegram_id)
-        if referrer_id:
-            logging.info(f"[REFERRAL] _start_inner: пользователь {telegram_id} создан с реферером {referrer_id}")
-    elif referrer_id and not user.get('referrer_id'):
-        # Если пользователь уже существует, но пришел по реферальной ссылке и у него нет реферера
-        from database import update_user_referrer
-        await update_user_referrer(telegram_id, referrer_id)
-        logging.info(f"[REFERRAL] _start_inner: пользователю {telegram_id} добавлен реферер {referrer_id}")
-    
-    # Показываем приветствие и главное меню
-    welcome_text = """
+    try:
+        from database import get_projects_by_user, get_user_by_id, create_user
+        
+        # Проверяем, есть ли реферальный параметр в команде /start
+        referrer_id = None
+        if message.text and message.text.startswith('/start'):
+            parts = message.text.split()
+            if len(parts) > 1 and parts[1].startswith('ref'):
+                referrer_id = parts[1][3:]  # Убираем 'ref' из начала
+                logging.info(f"[REFERRAL] _start_inner: пользователь {telegram_id} пришел по реферальной ссылке от {referrer_id}")
+        
+        try:
+            user = await get_user_by_id(telegram_id)
+            logging.info(f"[START] _start_inner: получен пользователь: {user is not None}")
+        except Exception as user_error:
+            logging.error(f"[START] _start_inner: ❌ ОШИБКА при получении пользователя: {user_error}")
+            raise user_error
+        
+        if not user:
+            try:
+                await create_user(str(message.from_user.id), referrer_id)
+                user = await get_user_by_id(telegram_id)
+                logging.info(f"[START] _start_inner: ✅ пользователь {telegram_id} создан")
+                if referrer_id:
+                    logging.info(f"[REFERRAL] _start_inner: пользователь {telegram_id} создан с реферером {referrer_id}")
+            except Exception as create_error:
+                logging.error(f"[START] _start_inner: ❌ ОШИБКА при создании пользователя: {create_error}")
+                raise create_error
+        elif referrer_id and not user.get('referrer_id'):
+            # Если пользователь уже существует, но пришел по реферальной ссылке и у него нет реферера
+            try:
+                from database import update_user_referrer
+                await update_user_referrer(telegram_id, referrer_id)
+                logging.info(f"[REFERRAL] _start_inner: пользователю {telegram_id} добавлен реферер {referrer_id}")
+            except Exception as referrer_error:
+                logging.error(f"[START] _start_inner: ❌ ОШИБКА при добавлении реферера: {referrer_error}")
+                raise referrer_error
+        
+        # Показываем приветствие и главное меню
+        welcome_text = """
 🤖 **Добро пожаловать в AI-бот для бизнеса!**
 
 Здесь вы можете:
-• Создавать умных ботов для вашего бизнеса
-• Настраивать ответы на основе ваших данных
-• Собирать заявки от клиентов
-• Анализировать статистику
+• 📋 Управлять проектами и создавать новые
+• 💰 Оплачивать подписку и продлевать доступ
+• 📊 Просматривать статистику и аналитику
+• 💬 Оставлять отзывы о сервисе
+• 🔗 Участвовать в реферальной программе
+• ❓ Получать помощь и справку
+
+**Доступные функции:**
+• Создание умных ботов для вашего бизнеса
+• Настройка ответов на основе ваших данных
+• Сбор заявок от клиентов через формы
+• Анализ статистики и эффективности
 
 Выберите действие из меню ниже:
-    """
-    
-    await message.bot.send_chat_action(message.chat.id, "typing")
-    await message.answer(welcome_text, reply_markup=main_menu)
-    await state.clear()
+        """
+        
+        try:
+            await message.bot.send_chat_action(message.chat.id, "typing")
+            logging.info(f"[START] _start_inner: ✅ отправлен typing action для пользователя {telegram_id}")
+        except Exception as typing_error:
+            logging.error(f"[START] _start_inner: ❌ ОШИБКА при отправке typing action: {typing_error}")
+        
+        try:
+            # Создаем inline-клавиатуру для главного меню
+            start_menu_keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text="📋 Проекты", callback_data="start_projects"),
+                        InlineKeyboardButton(text="➕ Создать проект", callback_data="start_new_project")
+                    ],
+                    [
+                        InlineKeyboardButton(text="💰 Оплата", callback_data="start_payment"),
+                        InlineKeyboardButton(text="📊 Статистика", callback_data="start_stats")
+                    ],
+                    [
+                        InlineKeyboardButton(text="❓ Помощь", callback_data="start_help"),
+                        InlineKeyboardButton(text="🔗 Реферальная программа", callback_data="start_referral")
+                    ],
+                    [
+                        InlineKeyboardButton(text="💬 Оставить отзыв", callback_data="start_feedback"),
+                        InlineKeyboardButton(text="🆕 Новый проект", callback_data="start_new_project_alt")
+                    ]
+                ]
+            )
+            
+            # Отправляем сообщение с inline-кнопками
+            await message.answer(welcome_text, reply_markup=start_menu_keyboard)
+            logging.info(f"[START] _start_inner: ✅ отправлено приветственное сообщение с inline-меню для пользователя {telegram_id}")
+            
+            # Отправляем обычную клавиатуру отдельным сообщением
+            await message.answer("Используйте кнопки ниже для быстрого доступа:", reply_markup=main_menu)
+            logging.info(f"[START] _start_inner: ✅ отправлена обычная клавиатура для пользователя {telegram_id}")
+            
+        except Exception as message_error:
+            logging.error(f"[START] _start_inner: ❌ ОШИБКА при отправке приветственного сообщения: {message_error}")
+            raise message_error
+        
+        try:
+            await state.clear()
+            logging.info(f"[START] _start_inner: ✅ состояние очищено для пользователя {telegram_id}")
+        except Exception as state_error:
+            logging.error(f"[START] _start_inner: ❌ ОШИБКА при очистке состояния: {state_error}")
+        
+        logging.info(f"[START] _start_inner: ✅ обработка завершена успешно для пользователя {telegram_id}")
+        
+    except Exception as e:
+        logging.error(f"[START] _start_inner: ❌ ОШИБКА при обработке: {e}")
+        import traceback
+        logging.error(f"[START] _start_inner: полный traceback: {traceback.format_exc()}")
+        raise
 
 @settings_router.message(Command("help"))
 async def help_with_trial_middleware(message: types.Message, state: FSMContext):
@@ -236,32 +313,218 @@ async def projects_with_trial_middleware(message: types.Message, state: FSMConte
 @settings_router.message(lambda message: message.text == "📋 Проекты")
 async def handle_projects_button(message: types.Message, state: FSMContext):
     """Обработчик кнопки 'Проекты'"""
-    await handle_projects_command(message, state)
+    telegram_id = str(message.from_user.id)
+    logging.info(f"[BUTTON] handle_projects_button: пользователь {telegram_id} нажал кнопку '📋 Проекты'")
+    try:
+        await handle_projects_command(message, state)
+        logging.info(f"[BUTTON] handle_projects_button: ✅ обработка завершена для пользователя {telegram_id}")
+    except Exception as e:
+        logging.error(f"[BUTTON] handle_projects_button: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
+        raise
 
 @settings_router.message(lambda message: message.text == "➕ Создать проект")
 async def handle_new_project_button(message: types.Message, state: FSMContext):
     """Обработчик кнопки 'Создать проект'"""
-    await handle_new_project(message, state)
+    telegram_id = str(message.from_user.id)
+    logging.info(f"[BUTTON] handle_new_project_button: пользователь {telegram_id} нажал кнопку '➕ Создать проект'")
+    try:
+        await handle_new_project(message, state)
+        logging.info(f"[BUTTON] handle_new_project_button: ✅ обработка завершена для пользователя {telegram_id}")
+    except Exception as e:
+        logging.error(f"[BUTTON] handle_new_project_button: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
+        raise
 
 @settings_router.message(lambda message: message.text == "💰 Оплата")
 async def handle_payment_button(message: types.Message, state: FSMContext):
     """Обработчик кнопки 'Оплата'"""
-    await handle_pay_command(message, state)
+    telegram_id = str(message.from_user.id)
+    logging.info(f"[BUTTON] handle_payment_button: пользователь {telegram_id} нажал кнопку '💰 Оплата'")
+    try:
+        await handle_pay_command(message, state)
+        logging.info(f"[BUTTON] handle_payment_button: ✅ обработка завершена для пользователя {telegram_id}")
+    except Exception as e:
+        logging.error(f"[BUTTON] handle_payment_button: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
+        raise
 
-@settings_router.message(lambda message: message.text == "📊 Статистика")
-async def handle_stats_button(message: types.Message, state: FSMContext):
-    """Обработчик кнопки 'Статистика'"""
-    await message.answer("📊 Статистика доступна по адресу:\nhttps://multik.onrender.com/stats")
+# @settings_router.message(lambda message: message.text == "📊 Статистика")
+# async def handle_stats_button(message: types.Message, state: FSMContext):
+#     """Обработчик кнопки 'Статистика'"""
+#     await message.answer("📊 Статистика доступна по адресу:\nhttps://multik.onrender.com/stats")
 
 @settings_router.message(lambda message: message.text == "❓ Помощь")
 async def handle_help_button(message: types.Message, state: FSMContext):
     """Обработчик кнопки 'Помощь'"""
-    await handle_help_command(message, state)
+    telegram_id = str(message.from_user.id)
+    logging.info(f"[BUTTON] handle_help_button: пользователь {telegram_id} нажал кнопку '❓ Помощь'")
+    try:
+        await handle_help_command(message, state)
+        logging.info(f"[BUTTON] handle_help_button: ✅ обработка завершена для пользователя {telegram_id}")
+    except Exception as e:
+        logging.error(f"[BUTTON] handle_help_button: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
+        raise
 
 @settings_router.message(lambda message: message.text == "🔗 Реферальная программа")
 async def handle_referral_button(message: types.Message, state: FSMContext):
     """Обработчик кнопки 'Реферальная программа'"""
-    await handle_referral_command(message, state)
+    telegram_id = str(message.from_user.id)
+    logging.info(f"[BUTTON] handle_referral_button: пользователь {telegram_id} нажал кнопку '🔗 Реферальная программа'")
+    try:
+        await handle_referral_command(message, state)
+        logging.info(f"[BUTTON] handle_referral_button: ✅ обработка завершена для пользователя {telegram_id}")
+    except Exception as e:
+        logging.error(f"[BUTTON] handle_referral_button: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
+        raise
+
+@settings_router.message(lambda message: message.text == "📊 Статистика")
+async def handle_stats_button(message: types.Message, state: FSMContext):
+    """Обработчик кнопки 'Статистика'"""
+    telegram_id = str(message.from_user.id)
+    logging.info(f"[BUTTON] handle_stats_button: пользователь {telegram_id} нажал кнопку '📊 Статистика'")
+    try:
+        await message.answer("📊 Статистика доступна по адресу:\nhttps://multik.onrender.com/stats", reply_markup=main_menu)
+        logging.info(f"[BUTTON] handle_stats_button: ✅ обработка завершена для пользователя {telegram_id}")
+    except Exception as e:
+        logging.error(f"[BUTTON] handle_stats_button: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
+        raise
+
+@settings_router.message(lambda message: message.text == "💬 Оставить отзыв")
+async def handle_feedback_button(message: types.Message, state: FSMContext):
+    """Обработчик кнопки 'Оставить отзыв'"""
+    telegram_id = str(message.from_user.id)
+    logging.info(f"[BUTTON] handle_feedback_button: пользователь {telegram_id} нажал кнопку '💬 Оставить отзыв'")
+    try:
+        from settings_feedback import handle_feedback_command
+        await handle_feedback_command(message, state)
+        logging.info(f"[BUTTON] handle_feedback_button: ✅ обработка завершена для пользователя {telegram_id}")
+    except Exception as e:
+        logging.error(f"[BUTTON] handle_feedback_button: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
+        raise
+
+@settings_router.message(lambda message: message.text == "🆕 Новый проект")
+async def handle_new_project_button_alt(message: types.Message, state: FSMContext):
+    """Обработчик кнопки 'Новый проект' (альтернативная)"""
+    telegram_id = str(message.from_user.id)
+    logging.info(f"[BUTTON] handle_new_project_button_alt: пользователь {telegram_id} нажал кнопку '🆕 Новый проект'")
+    try:
+        await handle_new_project(message, state)
+        logging.info(f"[BUTTON] handle_new_project_button_alt: ✅ обработка завершена для пользователя {telegram_id}")
+    except Exception as e:
+        logging.error(f"[BUTTON] handle_new_project_button_alt: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
+        raise
+
+# Обработчики inline-кнопок для команды /start
+@settings_router.callback_query(lambda c: c.data == "start_projects")
+async def handle_start_projects(callback_query: types.CallbackQuery, state: FSMContext):
+    """Обработчик inline-кнопки 'Проекты' из стартового меню"""
+    telegram_id = str(callback_query.from_user.id)
+    logging.info(f"[INLINE] handle_start_projects: пользователь {telegram_id} нажал inline-кнопку '📋 Проекты'")
+    try:
+        await handle_projects_command(callback_query.message, state)
+        await callback_query.answer()
+        logging.info(f"[INLINE] handle_start_projects: ✅ обработка завершена для пользователя {telegram_id}")
+    except Exception as e:
+        logging.error(f"[INLINE] handle_start_projects: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
+        await callback_query.answer("Произошла ошибка при получении проектов")
+        raise
+
+@settings_router.callback_query(lambda c: c.data == "start_new_project")
+async def handle_start_new_project(callback_query: types.CallbackQuery, state: FSMContext):
+    """Обработчик inline-кнопки 'Создать проект' из стартового меню"""
+    telegram_id = str(callback_query.from_user.id)
+    logging.info(f"[INLINE] handle_start_new_project: пользователь {telegram_id} нажал inline-кнопку '➕ Создать проект'")
+    try:
+        await handle_new_project(callback_query.message, state)
+        await callback_query.answer()
+        logging.info(f"[INLINE] handle_start_new_project: ✅ обработка завершена для пользователя {telegram_id}")
+    except Exception as e:
+        logging.error(f"[INLINE] handle_start_new_project: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
+        await callback_query.answer("Произошла ошибка при создании проекта")
+        raise
+
+@settings_router.callback_query(lambda c: c.data == "start_payment")
+async def handle_start_payment(callback_query: types.CallbackQuery, state: FSMContext):
+    """Обработчик inline-кнопки 'Оплата' из стартового меню"""
+    telegram_id = str(callback_query.from_user.id)
+    logging.info(f"[INLINE] handle_start_payment: пользователь {telegram_id} нажал inline-кнопку '💰 Оплата'")
+    try:
+        await handle_pay_command(callback_query.message, state)
+        await callback_query.answer()
+        logging.info(f"[INLINE] handle_start_payment: ✅ обработка завершена для пользователя {telegram_id}")
+    except Exception as e:
+        logging.error(f"[INLINE] handle_start_payment: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
+        await callback_query.answer("Произошла ошибка при обработке оплаты")
+        raise
+
+@settings_router.callback_query(lambda c: c.data == "start_stats")
+async def handle_start_stats(callback_query: types.CallbackQuery, state: FSMContext):
+    """Обработчик inline-кнопки 'Статистика' из стартового меню"""
+    telegram_id = str(callback_query.from_user.id)
+    logging.info(f"[INLINE] handle_start_stats: пользователь {telegram_id} нажал inline-кнопку '📊 Статистика'")
+    try:
+        await callback_query.message.answer("📊 Статистика доступна по адресу:\nhttps://multik.onrender.com/stats", reply_markup=main_menu)
+        await callback_query.answer()
+        logging.info(f"[INLINE] handle_start_stats: ✅ обработка завершена для пользователя {telegram_id}")
+    except Exception as e:
+        logging.error(f"[INLINE] handle_start_stats: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
+        await callback_query.answer("Произошла ошибка при получении статистики")
+        raise
+
+@settings_router.callback_query(lambda c: c.data == "start_help")
+async def handle_start_help(callback_query: types.CallbackQuery, state: FSMContext):
+    """Обработчик inline-кнопки 'Помощь' из стартового меню"""
+    telegram_id = str(callback_query.from_user.id)
+    logging.info(f"[INLINE] handle_start_help: пользователь {telegram_id} нажал inline-кнопку '❓ Помощь'")
+    try:
+        await handle_help_command(callback_query.message, state)
+        await callback_query.answer()
+        logging.info(f"[INLINE] handle_start_help: ✅ обработка завершена для пользователя {telegram_id}")
+    except Exception as e:
+        logging.error(f"[INLINE] handle_start_help: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
+        await callback_query.answer("Произошла ошибка при получении справки")
+        raise
+
+@settings_router.callback_query(lambda c: c.data == "start_referral")
+async def handle_start_referral(callback_query: types.CallbackQuery, state: FSMContext):
+    """Обработчик inline-кнопки 'Реферальная программа' из стартового меню"""
+    telegram_id = str(callback_query.from_user.id)
+    logging.info(f"[INLINE] handle_start_referral: пользователь {telegram_id} нажал inline-кнопку '🔗 Реферальная программа'")
+    try:
+        await handle_referral_command(callback_query.message, state)
+        await callback_query.answer()
+        logging.info(f"[INLINE] handle_start_referral: ✅ обработка завершена для пользователя {telegram_id}")
+    except Exception as e:
+        logging.error(f"[INLINE] handle_start_referral: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
+        await callback_query.answer("Произошла ошибка при получении реферальной ссылки")
+        raise
+
+@settings_router.callback_query(lambda c: c.data == "start_feedback")
+async def handle_start_feedback(callback_query: types.CallbackQuery, state: FSMContext):
+    """Обработчик inline-кнопки 'Оставить отзыв' из стартового меню"""
+    telegram_id = str(callback_query.from_user.id)
+    logging.info(f"[INLINE] handle_start_feedback: пользователь {telegram_id} нажал inline-кнопку '💬 Оставить отзыв'")
+    try:
+        from settings_feedback import handle_feedback_command
+        await handle_feedback_command(callback_query.message, state)
+        await callback_query.answer()
+        logging.info(f"[INLINE] handle_start_feedback: ✅ обработка завершена для пользователя {telegram_id}")
+    except Exception as e:
+        logging.error(f"[INLINE] handle_start_feedback: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
+        await callback_query.answer("Произошла ошибка при отправке отзыва")
+        raise
+
+@settings_router.callback_query(lambda c: c.data == "start_new_project_alt")
+async def handle_start_new_project_alt(callback_query: types.CallbackQuery, state: FSMContext):
+    """Обработчик inline-кнопки 'Новый проект' (альтернативная) из стартового меню"""
+    telegram_id = str(callback_query.from_user.id)
+    logging.info(f"[INLINE] handle_start_new_project_alt: пользователь {telegram_id} нажал inline-кнопку '🆕 Новый проект'")
+    try:
+        await handle_new_project(callback_query.message, state)
+        await callback_query.answer()
+        logging.info(f"[INLINE] handle_start_new_project_alt: ✅ обработка завершена для пользователя {telegram_id}")
+    except Exception as e:
+        logging.error(f"[INLINE] handle_start_new_project_alt: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
+        await callback_query.answer("Произошла ошибка при создании проекта")
+        raise
 
 async def handle_pay_command(message: types.Message, state: FSMContext):
     """Обработчик команды оплаты"""
@@ -990,7 +1253,8 @@ main_menu = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="📋 Проекты"), KeyboardButton(text="➕ Создать проект")],
         [KeyboardButton(text="💰 Оплата"), KeyboardButton(text="📊 Статистика")],
-        [KeyboardButton(text="❓ Помощь"), KeyboardButton(text="🔗 Реферальная программа")]
+        [KeyboardButton(text="❓ Помощь"), KeyboardButton(text="🔗 Реферальная программа")],
+        [KeyboardButton(text="💬 Оставить отзыв"), KeyboardButton(text="🆕 Новый проект")]
     ],
     resize_keyboard=True,
     one_time_keyboard=False
