@@ -148,10 +148,26 @@ def _get_trial_and_paid_limits(user):
 async def _start_inner(message: types.Message, state: FSMContext):
     telegram_id = str(message.from_user.id)
     from database import get_projects_by_user, get_user_by_id, create_user
+    
+    # Проверяем, есть ли реферальный параметр в команде /start
+    referrer_id = None
+    if message.text and message.text.startswith('/start'):
+        parts = message.text.split()
+        if len(parts) > 1 and parts[1].startswith('ref'):
+            referrer_id = parts[1][3:]  # Убираем 'ref' из начала
+            logging.info(f"[REFERRAL] _start_inner: пользователь {telegram_id} пришел по реферальной ссылке от {referrer_id}")
+    
     user = await get_user_by_id(telegram_id)
     if not user:
-        await create_user(str(message.from_user.id))
+        await create_user(str(message.from_user.id), referrer_id)
         user = await get_user_by_id(telegram_id)
+        if referrer_id:
+            logging.info(f"[REFERRAL] _start_inner: пользователь {telegram_id} создан с реферером {referrer_id}")
+    elif referrer_id and not user.get('referrer_id'):
+        # Если пользователь уже существует, но пришел по реферальной ссылке и у него нет реферера
+        from database import update_user_referrer
+        await update_user_referrer(telegram_id, referrer_id)
+        logging.info(f"[REFERRAL] _start_inner: пользователю {telegram_id} добавлен реферер {referrer_id}")
     projects = await get_projects_by_user(telegram_id)
     trial_limit, paid_limit, is_paid = _get_trial_and_paid_limits(user)
     if not is_paid and len(projects) >= trial_limit:
@@ -767,6 +783,60 @@ async def handle_new_token(message: types.Message, state: FSMContext):
         await message.answer("Ошибка при изменении токена проекта")
     await state.clear() 
 
+@settings_router.message(Command("referral"))
+async def referral_command(message: types.Message, state: FSMContext):
+    await handle_referral_command(message, state)
+
+@settings_router.callback_query(lambda c: c.data == "referral")
+async def referral_callback(callback_query: types.CallbackQuery, state: FSMContext):
+    await handle_referral_command(callback_query.message, state)
+    await callback_query.answer()
+
+async def handle_referral_command(message, state):
+    """Обработчик команды /referral"""
+    telegram_id = str(message.from_user.id)
+    logging.info(f"[REFERRAL] handle_referral_command: пользователь {telegram_id} запросил реферальную ссылку")
+    
+    from database import get_referral_link, get_user_by_id
+    user = await get_user_by_id(telegram_id)
+    
+    if not user:
+        await message.answer("Сначала создайте аккаунт командой /start")
+        return
+    
+    referral_link = await get_referral_link(telegram_id)
+    
+    referral_text = f"""
+🎁 Ваша реферальная ссылка:
+
+{referral_link}
+
+📊 Как это работает:
+• Отправьте эту ссылку друзьям
+• Когда они зарегистрируются и оплатят подписку
+• Вы получите +10 дней к пользованию за каждого реферала
+
+💡 Просто скопируйте ссылку и поделитесь с друзьями!
+    """
+    
+    await message.answer(referral_text)
+
+@settings_router.message(Command("feedback"))
+async def feedback_command(message: types.Message, state: FSMContext):
+    await handle_feedback_command(message, state)
+
+@settings_router.callback_query(lambda c: c.data.startswith("feedback_rate:"))
+async def feedback_rating_callback(callback_query: types.CallbackQuery, state: FSMContext):
+    await handle_feedback_rating_callback(callback_query, state)
+
+@settings_router.callback_query(lambda c: c.data == "feedback_change_rating")
+async def feedback_change_rating(callback_query: types.CallbackQuery, state: FSMContext):
+    await handle_feedback_change_rating(callback_query, state)
+
+@settings_router.message(SettingsStates.waiting_for_feedback_text)
+async def feedback_text(message: types.Message, state: FSMContext):
+    await handle_feedback_text(message, state)
+
 @settings_router.message()
 async def handle_any_message(message: types.Message, state: FSMContext):
     await trial_middleware(message, state, _handle_any_message_inner)
@@ -791,6 +861,22 @@ async def _handle_any_message_inner(message: types.Message, state: FSMContext):
             
             await set_user_paid(paid_telegram_id, True)
             await log_payment(paid_telegram_id, payment_amount)
+            
+            # Обработка реферальной системы
+            from database import process_referral_payment
+            # Получаем username пользователя, который оплатил
+            try:
+                from aiogram import Bot
+                temp_bot = Bot(token=SETTINGS_BOT_TOKEN)
+                user_info = await temp_bot.get_chat(paid_telegram_id)
+                username = user_info.username if user_info else None
+                await temp_bot.session.close()
+            except Exception as e:
+                logging.error(f"[REFERRAL] Не удалось получить username пользователя {paid_telegram_id}: {e}")
+                username = None
+            
+            referral_result = await process_referral_payment(paid_telegram_id, username)
+            
             # Восстановить вебхуки на все проекты пользователя
             projects = await get_user_projects(paid_telegram_id)
             restored = 0
@@ -800,13 +886,21 @@ async def _handle_any_message_inner(message: types.Message, state: FSMContext):
                     restored += 1
                 except Exception as e:
                     logger.error(f"[PAYMENT] Ошибка при восстановлении вебхука: {e}")
+            
             # Уведомить пользователя
             try:
                 await settings_bot.send_message(paid_telegram_id, f"Оплата подтверждена! Ваши проекты снова активны. Теперь вы можете создавать до {PAID_PROJECTS} проектов.")
-                # Если пользователь в состоянии ожидания подтверждения оплаты, сбросить его состояние
-                # (опционально, если FSM используется глобально)
             except Exception as e:
                 logger.error(f"[PAYMENT] Не удалось отправить сообщение пользователю: {e}")
+            
+            # Уведомить реферера, если есть
+            if referral_result:
+                try:
+                    await settings_bot.send_message(referral_result['referrer_id'], referral_result['message'])
+                    logging.info(f"[REFERRAL] Отправлено уведомление рефереру {referral_result['referrer_id']}")
+                except Exception as e:
+                    logging.error(f"[REFERRAL] Не удалось отправить уведомление рефереру: {e}")
+            
             await message.answer(f"Пользователь {paid_telegram_id} отмечен как оплативший. Вебхуки восстановлены для {restored} проектов.")
             return
 
@@ -826,7 +920,7 @@ async def _handle_any_message_inner(message: types.Message, state: FSMContext):
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="/start"), KeyboardButton(text="/projects"), KeyboardButton(text="/help")],
-        [KeyboardButton(text="/pay"), KeyboardButton(text="/feedback")]
+        [KeyboardButton(text="/pay"), KeyboardButton(text="/feedback"), KeyboardButton(text="/referral")]
     ],
     resize_keyboard=True
 )
@@ -852,6 +946,7 @@ async def handle_help_command(message: types.Message, state: FSMContext):
 /projects - Управление существующими проектами
 /help - Показать эту справку
 /feedback - Оставить отзыв о сервисе
+/referral - Получить реферальную ссылку
 
 💳 Оплатить — перейти к оплате подписки
 
@@ -861,14 +956,20 @@ async def handle_help_command(message: types.Message, state: FSMContext):
 • Изменение данных о бизнесе
 • Удаление проекта (с отключением webhook)
 
+🎁 Реферальная программа:
+• Приглашайте друзей по реферальной ссылке
+• За каждую оплату реферала получайте +10 дней к пользованию
+
 💡 Для начала работы используйте /start
 💡 Для управления проектами используйте /projects
 💡 Для оплаты используйте кнопку 'Оплатить' или команду /pay
 💡 Для отзыва используйте /feedback или кнопку в меню
+💡 Для реферальной ссылки используйте /referral
     """
     pay_kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Оплатить", callback_data="pay")]
+            [InlineKeyboardButton(text="Оплатить", callback_data="pay")],
+            [InlineKeyboardButton(text="Реферальная ссылка", callback_data="referral")]
         ]
     )
     await message.answer(help_text, reply_markup=pay_kb)

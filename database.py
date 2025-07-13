@@ -27,6 +27,8 @@ class User(Base):
     paid = Column(Boolean, default=False)
     start_date = Column(DateTime, default=datetime.now(timezone.utc))
     trial_expired_notified = Column(Boolean, default=False)
+    referrer_id = Column(String, nullable=True)  # ID пользователя, который пригласил
+    bonus_days = Column(Integer, default=0)  # Дополнительные дни за рефералов
     projects = relationship("Project", back_populates="user")
 
 # Новая таблица project
@@ -82,20 +84,28 @@ Base.metadata.create_all(bind=engine)
 # Это безопасно, так как используется только при старте для миграции схемы.
 
 # CRUD для user
-async def create_user(telegram_id: str) -> None:
-    logging.info(f"[METRIC] create_user: telegram_id={telegram_id}")
+async def create_user(telegram_id: str, referrer_id: str = None) -> None:
+    logging.info(f"[METRIC] create_user: telegram_id={telegram_id}, referrer_id={referrer_id}")
     query = select(User).where(User.telegram_id == telegram_id)
     user = await database.fetch_one(query)
     if not user:
-        logging.info(f"[DB] create_user: creating new user {telegram_id}")
-        query = insert(User).values(telegram_id=telegram_id, paid=False, start_date=datetime.now(timezone.utc), trial_expired_notified=False)
+        logging.info(f"[DB] create_user: creating new user {telegram_id} with referrer {referrer_id}")
+        query = insert(User).values(
+            telegram_id=telegram_id, 
+            paid=False, 
+            start_date=datetime.now(timezone.utc), 
+            trial_expired_notified=False,
+            referrer_id=referrer_id,
+            bonus_days=0
+        )
         await database.execute(query)
+        logging.info(f"[DB] create_user: user {telegram_id} created with referrer {referrer_id}")
     else:
         logging.info(f"[DB] create_user: user {telegram_id} already exists, не обновляем paid/start_date")
     # Диагностика: выводим всех пользователей после создания
     all_users = await database.fetch_all(select(User))
     for u in all_users:
-        logging.info(f"[DB] DEBUG: после create_user: telegram_id={u['telegram_id']}, paid={u['paid']}, start_date={u['start_date']}, trial_expired_notified={u['trial_expired_notified']}")
+        logging.info(f"[DB] DEBUG: после create_user: telegram_id={u['telegram_id']}, paid={u['paid']}, start_date={u['start_date']}, trial_expired_notified={u['trial_expired_notified']}, referrer_id={u.get('referrer_id')}, bonus_days={u.get('bonus_days')}")
 
 async def get_user(telegram_id: str) -> Optional[dict]:
     logging.info(f"[DB] get_user: telegram_id={telegram_id}")
@@ -251,7 +261,16 @@ async def set_user_paid(telegram_id: str, paid: bool = True):
 async def get_user_by_id(telegram_id: str):
     query = select(User).where(User.telegram_id == telegram_id)
     row = await database.fetch_one(query)
-    return dict(row) if row else None
+    if row:
+        return {
+            "telegram_id": row["telegram_id"],
+            "paid": row["paid"],
+            "start_date": row["start_date"],
+            "trial_expired_notified": row["trial_expired_notified"],
+            "referrer_id": row.get("referrer_id"),
+            "bonus_days": row.get("bonus_days", 0)
+        }
+    return None
 
 async def get_users_with_expired_trial():
     from datetime import datetime, timedelta
@@ -419,3 +438,88 @@ async def get_users_with_expired_paid_month():
         result.append(user_dict)
     logger.info(f"[DB] get_users_with_expired_paid_month: итоговый результат (уникальных пользователей) = {len(result)}")
     return result
+
+async def update_user_referrer(telegram_id: str, referrer_id: str) -> bool:
+    """Обновляет реферера пользователя"""
+    logging.info(f"[REFERRAL] update_user_referrer: telegram_id={telegram_id}, referrer_id={referrer_id}")
+    try:
+        from sqlalchemy import update
+        query = update(User).where(User.telegram_id == telegram_id).values(referrer_id=referrer_id)
+        await database.execute(query)
+        logging.info(f"[REFERRAL] update_user_referrer: успешно обновлен реферер для пользователя {telegram_id}")
+        return True
+    except Exception as e:
+        logging.error(f"[REFERRAL] update_user_referrer: ОШИБКА: {e}")
+        import traceback
+        logging.error(f"[REFERRAL] update_user_referrer: полный traceback: {traceback.format_exc()}")
+        return False
+
+# --- Referral System ---
+async def add_bonus_days_to_referrer(referrer_id: str, bonus_days: int = 10):
+    """Добавляет бонусные дни рефереру"""
+    logging.info(f"[REFERRAL] add_bonus_days_to_referrer: referrer_id={referrer_id}, bonus_days={bonus_days}")
+    try:
+        from sqlalchemy import update
+        query = update(User).where(User.telegram_id == referrer_id).values(
+            bonus_days=User.bonus_days + bonus_days
+        )
+        await database.execute(query)
+        logging.info(f"[REFERRAL] add_bonus_days_to_referrer: успешно добавлено {bonus_days} дней рефереру {referrer_id}")
+    except Exception as e:
+        logging.error(f"[REFERRAL] add_bonus_days_to_referrer: ОШИБКА: {e}")
+        import traceback
+        logging.error(f"[REFERRAL] add_bonus_days_to_referrer: полный traceback: {traceback.format_exc()}")
+
+async def get_referrer_info(telegram_id: str):
+    """Получает информацию о реферере пользователя"""
+    logging.info(f"[REFERRAL] get_referrer_info: telegram_id={telegram_id}")
+    user = await get_user_by_id(telegram_id)
+    if user and user.get('referrer_id'):
+        referrer = await get_user_by_id(user['referrer_id'])
+        return referrer
+    return None
+
+async def get_referral_link(telegram_id: str) -> str:
+    """Генерирует реферальную ссылку для пользователя"""
+    from config import SETTINGS_BOT_TOKEN
+    # Извлекаем username бота из токена (обычно токен имеет формат 123456789:ABCdefGHIjklMNOpqrsTUVwxyz)
+    if SETTINGS_BOT_TOKEN:
+        try:
+            bot_info = SETTINGS_BOT_TOKEN.split(':')[0]  # Берем первую часть токена
+            return f"https://t.me/{bot_info}?start=ref{telegram_id}"
+        except:
+            pass
+    # Fallback если не удалось получить username
+    return f"https://t.me/your_bot_username?start=ref{telegram_id}"
+
+async def process_referral_payment(paid_user_id: str, paid_user_username: str = None):
+    """Обрабатывает оплату реферала и начисляет бонус рефереру"""
+    logging.info(f"[REFERRAL] process_referral_payment: paid_user_id={paid_user_id}, username={paid_user_username}")
+    
+    # Получаем информацию о пользователе, который оплатил
+    user = await get_user_by_id(paid_user_id)
+    if not user or not user.get('referrer_id'):
+        logging.info(f"[REFERRAL] process_referral_payment: у пользователя {paid_user_id} нет реферера")
+        return None
+    
+    referrer_id = user['referrer_id']
+    logging.info(f"[REFERRAL] process_referral_payment: реферер пользователя {paid_user_id} = {referrer_id}")
+    
+    # Добавляем бонусные дни рефереру
+    await add_bonus_days_to_referrer(referrer_id, 10)
+    
+    # Получаем обновленную информацию о реферере
+    referrer = await get_user_by_id(referrer_id)
+    if not referrer:
+        logging.error(f"[REFERRAL] process_referral_payment: не удалось получить информацию о реферере {referrer_id}")
+        return None
+    
+    # Формируем сообщение для реферера
+    username_display = paid_user_username if paid_user_username else f"пользователь {paid_user_id}"
+    message = f"🎉 Ваш реферал {username_display} оплатил подписку!\n\n💎 Вам начислено +10 дней к пользованию.\n\n📊 Теперь у вас {referrer.get('bonus_days', 0)} дополнительных дней."
+    
+    return {
+        'referrer_id': referrer_id,
+        'message': message,
+        'bonus_days': referrer.get('bonus_days', 0)
+    }
