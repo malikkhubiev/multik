@@ -18,20 +18,49 @@ async def handle_pay_callback(callback_query, state):
 
 async def forward_check_with_notice(message, notice_text=None):
     telegram_id = str(message.from_user.id)
-    await message.forward(MAIN_TELEGRAM_ID)
-    if notice_text is None:
-        notice_text = f"Оплатил {telegram_id}"
-    await message.bot.send_message(MAIN_TELEGRAM_ID, notice_text)
-    # Отправляем стоимость текущей и предпоследней оплаты
-    payments = await get_payments()
-    user_payments = [p for p in payments if str(p['telegram_id']) == telegram_id]
-    user_payments_sorted = sorted(user_payments, key=lambda p: p['paid_at'])
-    if user_payments_sorted:
-        last_amount = user_payments_sorted[-1]['amount']
-        await message.bot.send_message(MAIN_TELEGRAM_ID, f"Текущая сумма оплаты: {last_amount}")
-        if len(user_payments_sorted) > 1:
-            prev_amount = user_payments_sorted[-2]['amount']
-            await message.bot.send_message(MAIN_TELEGRAM_ID, f"Предыдущая сумма оплаты: {prev_amount}")
+    logging.info(f"[PAYMENT] forward_check_with_notice: начало обработки для пользователя {telegram_id}")
+    
+    try:
+        await message.forward(MAIN_TELEGRAM_ID)
+        logging.info(f"[PAYMENT] forward_check_with_notice: сообщение переслано админу {MAIN_TELEGRAM_ID}")
+        
+        if notice_text is None:
+            notice_text = f"Оплатил {telegram_id}"
+        await message.bot.send_message(MAIN_TELEGRAM_ID, notice_text)
+        logging.info(f"[PAYMENT] forward_check_with_notice: отправлено уведомление админу: {notice_text}")
+        
+        # Отправляем стоимость текущей и предпоследней оплаты
+        logging.info(f"[PAYMENT] forward_check_with_notice: получаем список платежей...")
+        payments = await get_payments()
+        logging.info(f"[PAYMENT] forward_check_with_notice: получено {len(payments)} платежей из БД")
+        
+        user_payments = [p for p in payments if str(p['telegram_id']) == telegram_id]
+        logging.info(f"[PAYMENT] forward_check_with_notice: найдено {len(user_payments)} платежей для пользователя {telegram_id}")
+        
+        user_payments_sorted = sorted(user_payments, key=lambda p: p['paid_at'])
+        logging.info(f"[PAYMENT] forward_check_with_notice: отсортировано {len(user_payments_sorted)} платежей")
+        
+        if user_payments_sorted:
+            last_amount = user_payments_sorted[-1]['amount']
+            logging.info(f"[PAYMENT] forward_check_with_notice: последний платеж = {last_amount}")
+            await message.bot.send_message(MAIN_TELEGRAM_ID, f"Текущая сумма оплаты: {last_amount}")
+            logging.info(f"[PAYMENT] forward_check_with_notice: отправлена текущая сумма {last_amount} админу")
+            
+            if len(user_payments_sorted) > 1:
+                prev_amount = user_payments_sorted[-2]['amount']
+                logging.info(f"[PAYMENT] forward_check_with_notice: предыдущий платеж = {prev_amount}")
+                await message.bot.send_message(MAIN_TELEGRAM_ID, f"Предыдущая сумма оплаты: {prev_amount}")
+                logging.info(f"[PAYMENT] forward_check_with_notice: отправлена предыдущая сумма {prev_amount} админу")
+            else:
+                logging.info(f"[PAYMENT] forward_check_with_notice: это первый платеж пользователя")
+        else:
+            logging.warning(f"[PAYMENT] forward_check_with_notice: НЕ НАЙДЕНО платежей для пользователя {telegram_id}")
+            
+    except Exception as e:
+        logging.error(f"[PAYMENT] forward_check_with_notice: ОШИБКА при обработке: {e}")
+        import traceback
+        logging.error(f"[PAYMENT] forward_check_with_notice: полный traceback: {traceback.format_exc()}")
+        raise
 
 async def handle_payment_check(message, state):
     try:

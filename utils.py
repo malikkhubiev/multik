@@ -129,19 +129,30 @@ async def delete_webhook(token: str) -> dict:
 
 # --- Функция "печатает" ---
 async def send_typing_action(chat_id, token):
+    logging.info(f"[TYPING] send_typing_action: начало отправки для chat_id={chat_id}, token={token[:10]}...")
     try:
         url = f"https://api.telegram.org/bot{token}/sendChatAction"
         payload = {
             "chat_id": chat_id,
             "action": "typing"
         }
+        logging.info(f"[TYPING] send_typing_action: URL={url}")
+        logging.info(f"[TYPING] send_typing_action: payload={payload}")
+        
         timeout = httpx.Timeout(5.0)
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(url, json=payload)
+            logging.info(f"[TYPING] send_typing_action: получен ответ status_code={resp.status_code}")
+            logging.info(f"[TYPING] send_typing_action: ответ text={resp.text}")
+            
             if resp.status_code != 200:
                 logger.error(f"Failed to send typing action: {resp.status_code} - {resp.text}")
+            else:
+                logging.info(f"[TYPING] send_typing_action: успешно отправлен typing action")
     except Exception as e:
         logger.error(f"Failed to send typing action: {e}")
+        import traceback
+        logger.error(f"[TYPING] send_typing_action: полный traceback: {traceback.format_exc()}")
 
 # Универсальная функция для получения текста из текстового или голосового сообщения
 async def recognize_message_text(message, bot, language='ru-RU'):

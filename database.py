@@ -130,11 +130,18 @@ async def get_project_by_id(project_id: str) -> Optional[dict]:
     return None
 
 async def get_projects_by_user(telegram_id: str) -> list:
-    logging.info(f"[DB] get_projects_by_user: telegram_id={telegram_id}")
+    logging.info(f"[DB] get_projects_by_user: ищем проекты для пользователя {telegram_id}")
     query = select(Project).where(Project.telegram_id == telegram_id)
+    logging.info(f"[DB] get_projects_by_user: SQL запрос = {query}")
     rows = await database.fetch_all(query)
-    logging.info(f"[DB] get_projects_by_user: found {len(rows)} projects")
-    return [{"id": r["id"], "project_name": r["project_name"], "business_info": r["business_info"], "token": r["token"], "telegram_id": r["telegram_id"]} for r in rows]
+    logging.info(f"[DB] get_projects_by_user: найдено {len(rows)} проектов для пользователя {telegram_id}")
+    
+    result = [{"id": r["id"], "project_name": r["project_name"], "business_info": r["business_info"], "token": r["token"], "telegram_id": r["telegram_id"]} for r in rows]
+    
+    for i, project in enumerate(result):
+        logging.info(f"[DB] get_projects_by_user: проект {i+1}: id={project['id']}, name={project['project_name']}, token={project['token'][:10]}...")
+    
+    return result
 
 async def get_user_business_info(telegram_id: str) -> Optional[str]:
     logging.info(f"[DB] get_user_business_info: telegram_id={telegram_id}")
@@ -337,18 +344,34 @@ async def get_feedbacks():
 
 # --- Payment ---
 async def log_payment(telegram_id, amount):
-    logging.info(f"[METRIC] log_payment: telegram_id={telegram_id}, amount={amount}")
-    query = insert(Payment).values(
-        telegram_id=telegram_id,
-        amount=amount,
-        paid_at=datetime.now(timezone.utc)
-    )
-    await database.execute(query)
+    logging.info(f"[METRIC] log_payment: начало записи платежа telegram_id={telegram_id}, amount={amount}")
+    try:
+        query = insert(Payment).values(
+            telegram_id=telegram_id,
+            amount=amount,
+            paid_at=datetime.now(timezone.utc)
+        )
+        logging.info(f"[METRIC] log_payment: SQL запрос = {query}")
+        await database.execute(query)
+        logging.info(f"[METRIC] log_payment: платеж успешно записан в БД для пользователя {telegram_id}, сумма {amount}")
+    except Exception as e:
+        logging.error(f"[METRIC] log_payment: ОШИБКА при записи платежа: {e}")
+        import traceback
+        logging.error(f"[METRIC] log_payment: полный traceback: {traceback.format_exc()}")
+        raise
 
 async def get_payments():
+    logging.info(f"[DB] get_payments: получаем все платежи из БД")
     query = select(Payment)
+    logging.info(f"[DB] get_payments: SQL запрос = {query}")
     rows = await database.fetch_all(query)
-    return [dict(r) for r in rows]
+    logging.info(f"[DB] get_payments: найдено {len(rows)} платежей")
+    
+    result = [dict(r) for r in rows]
+    for i, payment in enumerate(result):
+        logging.info(f"[DB] get_payments: платеж {i+1}: telegram_id={payment['telegram_id']}, amount={payment['amount']}, paid_at={payment['paid_at']}")
+    
+    return result
 
 async def update_project_token(project_id: str, new_token: str) -> bool:
     """Обновляет токен проекта, если он уникален"""

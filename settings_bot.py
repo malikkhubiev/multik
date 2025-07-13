@@ -252,7 +252,7 @@ async def handle_business_file(message: types.Message, state: FSMContext):
     if len(text_content) > 1000:
         logger.info("[LOAD] Отправка данных в Deepseek...")
         t2 = time.monotonic()
-        await message.answer("Обрабатываю информацию о бизнесе (ориентировочно займёт 1 минуту)...")
+        await message.answer("Обрабатываю информацию о Вашем бизнесе с помощью Ai (ориентировочно займёт 1 минуту)...")
         processed_business_info = await process_business_file_with_deepseek(text_content)
         logger.info(f"[LOAD] Deepseek завершён за {time.monotonic() - t2:.2f} сек")
         processed_business_info = clean_markdown(processed_business_info)
@@ -779,8 +779,18 @@ async def _handle_any_message_inner(message: types.Message, state: FSMContext):
         parts = message.text.strip().split()
         if len(parts) == 2 and parts[1].isdigit():
             paid_telegram_id = parts[1]
+            logging.info(f"[PAYMENT] Обработка подтверждения оплаты для пользователя {paid_telegram_id}")
+            
+            # Определяем сумму платежа в зависимости от количества предыдущих платежей
+            from database import get_payments
+            from config import DISCOUNT_PAYMENT_AMOUNT, PAYMENT_AMOUNT
+            payments = await get_payments()
+            user_payments = [p for p in payments if str(p['telegram_id']) == paid_telegram_id]
+            payment_amount = DISCOUNT_PAYMENT_AMOUNT if len(user_payments) <= 1 else PAYMENT_AMOUNT
+            logging.info(f"[PAYMENT] Для пользователя {paid_telegram_id}: найдено {len(user_payments)} платежей, сумма = {payment_amount}")
+            
             await set_user_paid(paid_telegram_id, True)
-            await log_payment(paid_telegram_id, PAYMENT_AMOUNT)
+            await log_payment(paid_telegram_id, payment_amount)
             # Восстановить вебхуки на все проекты пользователя
             projects = await get_user_projects(paid_telegram_id)
             restored = 0
