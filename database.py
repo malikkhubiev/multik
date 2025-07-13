@@ -90,14 +90,27 @@ async def create_user(telegram_id: str, referrer_id: str = None) -> None:
     user = await database.fetch_one(query)
     if not user:
         logging.info(f"[DB] create_user: creating new user {telegram_id} with referrer {referrer_id}")
-        query = insert(User).values(
-            telegram_id=telegram_id, 
-            paid=False, 
-            start_date=datetime.now(timezone.utc), 
-            trial_expired_notified=False,
-            referrer_id=referrer_id,
-            bonus_days=0
-        )
+        # Создаем базовые значения
+        values = {
+            "telegram_id": telegram_id,
+            "paid": False,
+            "start_date": datetime.now(timezone.utc),
+            "trial_expired_notified": False
+        }
+        
+        # Добавляем новые поля только если они существуют в схеме
+        try:
+            # Проверяем, есть ли новые поля в таблице
+            test_query = select(User).limit(1)
+            test_row = await database.fetch_one(test_query)
+            if test_row and hasattr(test_row, "referrer_id"):
+                values["referrer_id"] = referrer_id
+                values["bonus_days"] = 0
+        except (KeyError, AttributeError):
+            # Если новых полей нет, создаем пользователя без них
+            pass
+        
+        query = insert(User).values(**values)
         await database.execute(query)
         logging.info(f"[DB] create_user: user {telegram_id} created with referrer {referrer_id}")
     else:
@@ -262,13 +275,14 @@ async def get_user_by_id(telegram_id: str):
     query = select(User).where(User.telegram_id == telegram_id)
     row = await database.fetch_one(query)
     if row:
+        mapping = row._mapping if hasattr(row, '_mapping') else row
         return {
             "telegram_id": row["telegram_id"],
             "paid": row["paid"],
             "start_date": row["start_date"],
             "trial_expired_notified": row["trial_expired_notified"],
-            "referrer_id": row.get("referrer_id"),
-            "bonus_days": row.get("bonus_days", 0)
+            "referrer_id": mapping["referrer_id"] if "referrer_id" in mapping else None,
+            "bonus_days": mapping["bonus_days"] if "bonus_days" in mapping else 0
         }
     return None
 
@@ -443,6 +457,13 @@ async def update_user_referrer(telegram_id: str, referrer_id: str) -> bool:
     """Обновляет реферера пользователя"""
     logging.info(f"[REFERRAL] update_user_referrer: telegram_id={telegram_id}, referrer_id={referrer_id}")
     try:
+        # Проверяем, есть ли поле referrer_id в таблице
+        test_query = select(User).limit(1)
+        test_row = await database.fetch_one(test_query)
+        if not test_row or not hasattr(test_row, "referrer_id"):
+            logging.warning(f"[REFERRAL] update_user_referrer: поле referrer_id не существует в таблице")
+            return False
+            
         from sqlalchemy import update
         query = update(User).where(User.telegram_id == telegram_id).values(referrer_id=referrer_id)
         await database.execute(query)
