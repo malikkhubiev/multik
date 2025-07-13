@@ -182,6 +182,7 @@ async def _start_inner(message: types.Message, state: FSMContext):
 Выберите действие из меню ниже:
     """
     
+    await message.bot.send_chat_action(message.chat.id, "typing")
     await message.answer(welcome_text, reply_markup=main_menu)
     await state.clear()
 
@@ -250,7 +251,7 @@ async def handle_payment_button(message: types.Message, state: FSMContext):
 @settings_router.message(lambda message: message.text == "📊 Статистика")
 async def handle_stats_button(message: types.Message, state: FSMContext):
     """Обработчик кнопки 'Статистика'"""
-    await message.answer("📊 Статистика доступна по адресу:\nhttps://your-domain.com/stats")
+    await message.answer("📊 Статистика доступна по адресу:\nhttps://multik.onrender.com/stats")
 
 @settings_router.message(lambda message: message.text == "❓ Помощь")
 async def handle_help_button(message: types.Message, state: FSMContext):
@@ -346,6 +347,7 @@ async def handle_business_file(message: types.Message, state: FSMContext):
     if len(text_content) > 1000:
         logger.info("[LOAD] Отправка данных в Deepseek...")
         t2 = time.monotonic()
+        await message.bot.send_chat_action(message.chat.id, "typing")
         await message.answer("Обрабатываю информацию о Вашем бизнесе с помощью Ai (ориентировочно займёт 1 минуту)...")
         processed_business_info = await process_business_file_with_deepseek(text_content)
         logger.info(f"[LOAD] Deepseek завершён за {time.monotonic() - t2:.2f} сек")
@@ -544,6 +546,7 @@ async def handle_additional_data_file(message: types.Message, state: FSMContext)
     if len(text_content) > 1000:
         logger.info("[ADD] Отправка данных в Deepseek...")
         t2 = time.monotonic()
+        await message.bot.send_chat_action(message.chat.id, "typing")
         await message.answer("Обрабатываю дополнительные данные...")
         processed_additional_info = await process_business_file_with_deepseek(text_content)
         logger.info(f"[ADD] Deepseek завершён за {time.monotonic() - t2:.2f} сек")
@@ -607,6 +610,7 @@ async def handle_new_data_file(message: types.Message, state: FSMContext):
     if len(text_content) > 1000:
         logger.info("[REPLACE] Отправка данных в Deepseek...")
         t2 = time.monotonic()
+        await message.bot.send_chat_action(message.chat.id, "typing")
         await message.answer("Обрабатываю новые данные...")
         processed_new_info = await process_business_file_with_deepseek(text_content)
         logger.info(f"[REPLACE] Deepseek завершён за {time.monotonic() - t2:.2f} сек")
@@ -1048,6 +1052,7 @@ async def handle_help_command(message: types.Message, state: FSMContext):
             [InlineKeyboardButton(text="Реферальная ссылка", callback_data="referral")]
         ]
     )
+    await message.bot.send_chat_action(message.chat.id, "typing")
     await message.answer(help_text, reply_markup=pay_kb)
 
 async def handle_projects_command(message: types.Message, state: FSMContext, telegram_id: str = None):

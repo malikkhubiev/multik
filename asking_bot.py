@@ -74,7 +74,7 @@ async def start_form_collection(message: types.Message, form, bot):
     
     # Сохраняем данные формы в состоянии пользователя
     storage = bot_dispatchers.get(project["token"])[0].storage
-    state = FSMContext(storage=storage, key=types.Chat(chat_id=message.chat.id, type="private"))
+    state = FSMContext(storage=storage, key=types.Chat(id=message.chat.id, type="private"))
     
     await state.update_data(
         current_form=form,
@@ -123,7 +123,7 @@ async def finish_form_collection(message: types.Message, form, bot):
         return
     
     storage = bot_dispatchers.get(project["token"])[0].storage
-    state = FSMContext(storage=storage, key=types.Chat(chat_id=message.chat.id, type="private"))
+    state = FSMContext(storage=storage, key=types.Chat(id=message.chat.id, type="private"))
     form_data = (await state.get_data()).get("form_data", {})
     
     # Сохраняем заявку
@@ -256,7 +256,7 @@ async def check_and_start_form(message: types.Message, text: str, token: str, bo
     
     # Проверяем, не находится ли пользователь уже в процессе заполнения формы
     storage = bot_dispatchers[token][0].storage
-    state = FSMContext(storage=storage, key=types.Chat(chat_id=message.chat.id, type="private"))
+    state = FSMContext(storage=storage, key=types.Chat(id=message.chat.id, type="private"))
     current_state = await state.get_state()
     
     if current_state == FormStates.collecting_form_data.state:
@@ -310,7 +310,7 @@ async def get_or_create_dispatcher(token: str, business_info: str):
         
         # Проверяем, находится ли пользователь в процессе заполнения формы
         storage = bot_dispatchers[token][0].storage
-        state = FSMContext(storage=storage, key=types.Chat(chat_id=message.chat.id, type="private"))
+        state = FSMContext(storage=storage, key=types.Chat(id=message.chat.id, type="private"))
         current_state = await state.get_state()
         
         if current_state == FormStates.collecting_form_data.state:
@@ -341,8 +341,9 @@ async def get_or_create_dispatcher(token: str, business_info: str):
             logging.info(f"[ASKING_BOT] handle_question: typing action отправлен для пользователя {user_id}")
         else:
             logging.warning(f"[ASKING_BOT] Не найден проект для пользователя {user_id}, не отправляю typing action")
-            await message.answer("...печатает")
-            logging.info(f"[ASKING_BOT] handle_question: отправлено сообщение '...печатает' пользователю {user_id}")
+                    # Отправляем индикатор печати
+        await message.bot.send_chat_action(message.chat.id, "typing")
+        logging.info(f"[ASKING_BOT] handle_question: отправлен индикатор печати пользователю {user_id}")
         if not business_info:
             await message.answer("Информация о бизнесе не найдена. Обратитесь к администратору.")
             logging.warning(f"[ASKING_BOT] handle_question: business_info not found for project")
