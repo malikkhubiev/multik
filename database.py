@@ -40,6 +40,7 @@ class Project(Base):
     token = Column(String, nullable=False)
     telegram_id = Column(String, ForeignKey('user.telegram_id'))
     user = relationship("User", back_populates="projects")
+    forms = relationship("Form", back_populates="project")
     
     # Добавляем уникальный индекс для project_name внутри пользователя
     __table_args__ = (
@@ -77,6 +78,47 @@ class Payment(Base):
     telegram_id = Column(String, nullable=False)
     amount = Column(Float, nullable=False)
     paid_at = Column(DateTime, default=datetime.now(timezone.utc))
+
+# --- Формы ---
+class Form(Base):
+    __tablename__ = 'form'
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    project_id = Column(String, ForeignKey('project.id'), nullable=False)
+    name = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    project = relationship("Project", back_populates="forms")
+    fields = relationship("FormField", back_populates="form", order_by="FormField.order_index")
+    submissions = relationship("FormSubmission", back_populates="form")
+
+class FormField(Base):
+    __tablename__ = 'form_field'
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    form_id = Column(String, ForeignKey('form.id'), nullable=False)
+    name = Column(String, nullable=False)
+    field_type = Column(String, nullable=False)  # text, number, phone, date, email
+    required = Column(Boolean, default=False)
+    order_index = Column(Integer, default=0)
+    form = relationship("Form", back_populates="fields")
+
+class FormSubmission(Base):
+    __tablename__ = 'form_submission'
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    form_id = Column(String, ForeignKey('form.id'), nullable=False)
+    telegram_id = Column(String, nullable=False)
+    data_json = Column(String, nullable=False)  # JSON с данными формы
+    submitted_at = Column(DateTime, default=datetime.now(timezone.utc))
+    form = relationship("Form", back_populates="submissions")
+
+# Таблица для рейтинга ответов
+class ResponseRating(Base):
+    __tablename__ = 'response_rating'
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    telegram_id = Column(String, nullable=False)
+    project_id = Column(String, ForeignKey('project.id'), nullable=True)
+    message_id = Column(String, nullable=False)  # ID сообщения с ответом
+    rating = Column(Boolean, nullable=False)  # True = лайк, False = дизлайк
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    project = relationship("Project")
 
 # ВАЖНО: ниже используется синхронный движок только для создания таблиц!
 engine = create_engine(DATABASE_URL.replace("sqlite+aiosqlite", "sqlite"))
@@ -537,3 +579,203 @@ async def process_referral_payment(paid_user_id: str, paid_user_username: str = 
         'message': message,
         'bonus_days': referrer.get('bonus_days', 0)
     }
+
+# --- Формы ---
+async def create_form(project_id: str, name: str) -> str:
+    """Создает новую форму для проекта"""
+    logging.info(f"[FORM] create_form: project_id={project_id}, name={name}")
+    try:
+        form_id = str(uuid.uuid4())
+        query = insert(Form).values(
+            id=form_id,
+            project_id=project_id,
+            name=name,
+            created_at=datetime.now(timezone.utc)
+        )
+        await database.execute(query)
+        logging.info(f"[FORM] create_form: форма {form_id} создана для проекта {project_id}")
+        return form_id
+    except Exception as e:
+        logging.error(f"[FORM] create_form: ОШИБКА: {e}")
+        import traceback
+        logging.error(f"[FORM] create_form: полный traceback: {traceback.format_exc()}")
+        raise
+
+async def add_form_field(form_id: str, name: str, field_type: str, required: bool = False) -> str:
+    """Добавляет поле в форму"""
+    logging.info(f"[FORM] add_form_field: form_id={form_id}, name={name}, type={field_type}, required={required}")
+    try:
+        # Получаем максимальный order_index для этой формы
+        query = select(func.max(FormField.order_index)).where(FormField.form_id == form_id)
+        result = await database.fetch_one(query)
+        next_order = (result[0] or 0) + 1 if result and result[0] is not None else 1
+        
+        field_id = str(uuid.uuid4())
+        query = insert(FormField).values(
+            id=field_id,
+            form_id=form_id,
+            name=name,
+            field_type=field_type,
+            required=required,
+            order_index=next_order
+        )
+        await database.execute(query)
+        logging.info(f"[FORM] add_form_field: поле {field_id} добавлено в форму {form_id}")
+        return field_id
+    except Exception as e:
+        logging.error(f"[FORM] add_form_field: ОШИБКА: {e}")
+        import traceback
+        logging.error(f"[FORM] add_form_field: полный traceback: {traceback.format_exc()}")
+        raise
+
+async def get_project_form(project_id: str):
+    """Получает форму проекта"""
+    logging.info(f"[FORM] get_project_form: project_id={project_id}")
+    try:
+        query = select(Form).where(Form.project_id == project_id)
+        form = await database.fetch_one(query)
+        if form:
+            # Получаем поля формы
+            fields_query = select(FormField).where(FormField.form_id == form["id"]).order_by(FormField.order_index)
+            fields = await database.fetch_all(fields_query)
+            
+            return {
+                "id": form["id"],
+                "name": form["name"],
+                "created_at": form["created_at"],
+                "fields": [{
+                    "id": field["id"],
+                    "name": field["name"],
+                    "field_type": field["field_type"],
+                    "required": field["required"],
+                    "order_index": field["order_index"]
+                } for field in fields]
+            }
+        return None
+    except Exception as e:
+        logging.error(f"[FORM] get_project_form: ОШИБКА: {e}")
+        return None
+
+async def save_form_submission(form_id: str, telegram_id: str, data: dict) -> bool:
+    """Сохраняет заявку формы"""
+    logging.info(f"[FORM] save_form_submission: form_id={form_id}, telegram_id={telegram_id}")
+    try:
+        import json
+        data_json = json.dumps(data, ensure_ascii=False)
+        
+        # Проверяем, есть ли уже заявка от этого пользователя
+        existing_query = select(FormSubmission).where(
+            and_(FormSubmission.form_id == form_id, FormSubmission.telegram_id == telegram_id)
+        )
+        existing = await database.fetch_one(existing_query)
+        
+        if existing:
+            logging.info(f"[FORM] save_form_submission: заявка от {telegram_id} уже существует")
+            return False
+        
+        query = insert(FormSubmission).values(
+            id=str(uuid.uuid4()),
+            form_id=form_id,
+            telegram_id=telegram_id,
+            data_json=data_json,
+            submitted_at=datetime.now(timezone.utc)
+        )
+        await database.execute(query)
+        logging.info(f"[FORM] save_form_submission: заявка сохранена")
+        return True
+    except Exception as e:
+        logging.error(f"[FORM] save_form_submission: ОШИБКА: {e}")
+        import traceback
+        logging.error(f"[FORM] save_form_submission: полный traceback: {traceback.format_exc()}")
+        return False
+
+async def get_form_submissions(form_id: str):
+    """Получает все заявки формы"""
+    logging.info(f"[FORM] get_form_submissions: form_id={form_id}")
+    try:
+        query = select(FormSubmission).where(FormSubmission.form_id == form_id).order_by(FormSubmission.submitted_at.desc())
+        submissions = await database.fetch_all(query)
+        
+        result = []
+        for submission in submissions:
+            import json
+            data = json.loads(submission["data_json"])
+            result.append({
+                "id": submission["id"],
+                "telegram_id": submission["telegram_id"],
+                "data": data,
+                "submitted_at": submission["submitted_at"]
+            })
+        
+        return result
+    except Exception as e:
+        logging.error(f"[FORM] get_form_submissions: ОШИБКА: {e}")
+        return []
+
+async def delete_form(form_id: str) -> bool:
+    """Удаляет форму и все связанные данные"""
+    logging.info(f"[FORM] delete_form: form_id={form_id}")
+    try:
+        from sqlalchemy import delete
+        # Удаляем заявки
+        await database.execute(delete(FormSubmission).where(FormSubmission.form_id == form_id))
+        # Удаляем поля
+        await database.execute(delete(FormField).where(FormField.form_id == form_id))
+        # Удаляем форму
+        await database.execute(delete(Form).where(Form.id == form_id))
+        logging.info(f"[FORM] delete_form: форма {form_id} удалена")
+        return True
+    except Exception as e:
+        logging.error(f"[FORM] delete_form: ОШИБКА: {e}")
+        return False
+
+# --- Рейтинг ответов ---
+async def save_response_rating(telegram_id: str, message_id: str, rating: bool, project_id: str = None) -> bool:
+    """Сохраняет рейтинг ответа"""
+    logging.info(f"[RATING] save_response_rating: telegram_id={telegram_id}, message_id={message_id}, rating={rating}")
+    try:
+        query = insert(ResponseRating).values(
+            id=str(uuid.uuid4()),
+            telegram_id=telegram_id,
+            message_id=message_id,
+            rating=rating,
+            project_id=project_id,
+            created_at=datetime.now(timezone.utc)
+        )
+        await database.execute(query)
+        logging.info(f"[RATING] save_response_rating: рейтинг сохранен")
+        return True
+    except Exception as e:
+        logging.error(f"[RATING] save_response_rating: ОШИБКА: {e}")
+        return False
+
+async def get_response_ratings_stats():
+    """Получает статистику рейтингов ответов"""
+    logging.info(f"[RATING] get_response_ratings_stats")
+    try:
+        # Общее количество рейтингов
+        total_ratings = await database.fetch_val(func.count(ResponseRating.id).select())
+        
+        # Количество лайков
+        likes = await database.fetch_val(func.count(ResponseRating.id).select().where(ResponseRating.rating == True))
+        
+        # Количество дизлайков
+        dislikes = await database.fetch_val(func.count(ResponseRating.id).select().where(ResponseRating.rating == False))
+        
+        # Процент лайков
+        like_percentage = (likes / total_ratings * 100) if total_ratings > 0 else 0
+        
+        return {
+            "total_ratings": total_ratings or 0,
+            "likes": likes or 0,
+            "dislikes": dislikes or 0,
+            "like_percentage": round(like_percentage, 1)
+        }
+    except Exception as e:
+        logging.error(f"[RATING] get_response_ratings_stats: ОШИБКА: {e}")
+        return {
+            "total_ratings": 0,
+            "likes": 0,
+            "dislikes": 0,
+            "like_percentage": 0
+        }

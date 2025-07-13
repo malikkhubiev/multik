@@ -2,7 +2,7 @@ from base import app
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi import Request, APIRouter
 from config import PORT, SERVER_URL, API_URL
-from database import database, get_feedbacks, get_payments, get_user_by_id, get_users_with_expired_trial, get_projects_by_user, get_user_projects, log_message_stat, add_feedback, MessageStat, User, Payment
+from database import database, get_feedbacks, get_payments, get_user_by_id, get_users_with_expired_trial, get_projects_by_user, get_user_projects, log_message_stat, add_feedback, MessageStat, User, Payment, get_response_ratings_stats
 from sqlalchemy.sql import func
 from datetime import datetime, timedelta, timezone
 import uvicorn
@@ -119,6 +119,10 @@ async def get_stats(request: Request):
     # Удержание (Retention)
     # Для MVP: считаем как (платящих сейчас / плативших когда-либо)
     retention = (paid_count / paid_count * 100) if paid_count else 100
+    
+    # Статистика рейтингов ответов
+    rating_stats = await get_response_ratings_stats()
+    
     stats = {
         "total_users": total_users,
         "new_users_today": new_users_today,
@@ -133,7 +137,8 @@ async def get_stats(request: Request):
         "arpu": arpu,
         "ltv": ltv,
         "activity_rate": activity_rate,
-        "retention": retention
+        "retention": retention,
+        "response_ratings": rating_stats
     }
     logging.info(f"[API] /stats: total_users={total_users}, dau={dau}, total_messages={total_messages}")
     # Форматируем значения для HTML (None -> '—')
@@ -146,6 +151,14 @@ async def get_stats(request: Request):
     activity_rate_str = f"{activity_rate:.1f}%" if activity_rate is not None else "—"
     retention_str = f"{retention:.1f}%" if retention is not None else "—"
     conversion_str = f"{conversion:.1f}%" if conversion is not None else "—"
+    
+    # Статистика рейтингов
+    rating_stats = stats.get("response_ratings", {})
+    total_ratings_str = str(rating_stats.get("total_ratings", 0))
+    likes_str = str(rating_stats.get("likes", 0))
+    dislikes_str = str(rating_stats.get("dislikes", 0))
+    like_percentage_str = f"{rating_stats.get('like_percentage', 0):.1f}%" if rating_stats.get('like_percentage') else "—"
+    
     if "text/html" in request.headers.get("accept", ""):
         logging.info("[API] /stats: returning HTML page")
         # --- Plotly графики ---
@@ -251,6 +264,10 @@ async def get_stats(request: Request):
                 <tr><td>📈 LTV (пожизненная ценность клиента)</td><td>{ltv_str}</td></tr>
                 <tr><td>🔥 Activity Rate</td><td>{activity_rate_str}</td></tr>
                 <tr><td>🔁 Retention (удержание)</td><td>{retention_str}</td></tr>
+                <tr><td>👍 Всего оценок ответов</td><td>{total_ratings_str}</td></tr>
+                <tr><td>👍 Лайки</td><td>{likes_str}</td></tr>
+                <tr><td>👎 Дизлайки</td><td>{dislikes_str}</td></tr>
+                <tr><td>📊 Процент лайков</td><td>{like_percentage_str}</td></tr>
             </table>
             <div class='desc' style='margin-top:24px;'>
                 <b>Пояснения:</b><br>

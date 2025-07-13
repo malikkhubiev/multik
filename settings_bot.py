@@ -168,8 +168,41 @@ async def _start_inner(message: types.Message, state: FSMContext):
         from database import update_user_referrer
         await update_user_referrer(telegram_id, referrer_id)
         logging.info(f"[REFERRAL] _start_inner: пользователю {telegram_id} добавлен реферер {referrer_id}")
+    
+    # Показываем приветствие и главное меню
+    welcome_text = """
+🤖 **Добро пожаловать в AI-бот для бизнеса!**
+
+Здесь вы можете:
+• Создавать умных ботов для вашего бизнеса
+• Настраивать ответы на основе ваших данных
+• Собирать заявки от клиентов
+• Анализировать статистику
+
+Выберите действие из меню ниже:
+    """
+    
+    await message.answer(welcome_text, reply_markup=main_menu)
+    await state.clear()
+
+@settings_router.message(Command("help"))
+async def help_with_trial_middleware(message: types.Message, state: FSMContext):
+    await trial_middleware(message, state, handle_help_command)
+
+@settings_router.message(Command("new"))
+async def new_project_command(message: types.Message, state: FSMContext):
+    """Команда для создания нового проекта"""
+    await trial_middleware(message, state, handle_new_project)
+
+async def handle_new_project(message: types.Message, state: FSMContext):
+    """Обработчик создания нового проекта"""
+    telegram_id = str(message.from_user.id)
+    from database import get_projects_by_user, get_user_by_id
+    
+    user = await get_user_by_id(telegram_id)
     projects = await get_projects_by_user(telegram_id)
     trial_limit, paid_limit, is_paid = _get_trial_and_paid_limits(user)
+    
     if not is_paid and len(projects) >= trial_limit:
         # Trial limit reached
         keyboard = InlineKeyboardMarkup(
@@ -185,21 +218,66 @@ async def _start_inner(message: types.Message, state: FSMContext):
             reply_markup=keyboard
         )
         return
-    # Если лимит не превышен — стандартное приветствие
-    await state.clear()  # Сброс перед началом нового сценария
+    
+    # Если лимит не превышен — начинаем создание проекта
+    await state.clear()
     await message.answer(
-        "Добро пожаловать!\n\nВведите имя вашего проекта:",
+        "Создание нового проекта\n\nВведите имя вашего проекта:",
         reply_markup=main_menu
     )
     await state.set_state(SettingsStates.waiting_for_project_name)
 
-@settings_router.message(Command("help"))
-async def help_with_trial_middleware(message: types.Message, state: FSMContext):
-    await trial_middleware(message, state, handle_help_command)
-
 @settings_router.message(Command("projects"))
 async def projects_with_trial_middleware(message: types.Message, state: FSMContext):
     await trial_middleware(message, state, handle_projects_command)
+
+# Обработчики кнопок главного меню
+@settings_router.message(lambda message: message.text == "📋 Проекты")
+async def handle_projects_button(message: types.Message, state: FSMContext):
+    """Обработчик кнопки 'Проекты'"""
+    await handle_projects_command(message, state)
+
+@settings_router.message(lambda message: message.text == "➕ Создать проект")
+async def handle_new_project_button(message: types.Message, state: FSMContext):
+    """Обработчик кнопки 'Создать проект'"""
+    await handle_new_project(message, state)
+
+@settings_router.message(lambda message: message.text == "💰 Оплата")
+async def handle_payment_button(message: types.Message, state: FSMContext):
+    """Обработчик кнопки 'Оплата'"""
+    await handle_pay_command(message, state)
+
+@settings_router.message(lambda message: message.text == "📊 Статистика")
+async def handle_stats_button(message: types.Message, state: FSMContext):
+    """Обработчик кнопки 'Статистика'"""
+    await message.answer("📊 Статистика доступна по адресу:\nhttps://your-domain.com/stats")
+
+@settings_router.message(lambda message: message.text == "❓ Помощь")
+async def handle_help_button(message: types.Message, state: FSMContext):
+    """Обработчик кнопки 'Помощь'"""
+    await handle_help_command(message, state)
+
+@settings_router.message(lambda message: message.text == "🔗 Реферальная программа")
+async def handle_referral_button(message: types.Message, state: FSMContext):
+    """Обработчик кнопки 'Реферальная программа'"""
+    await handle_referral_command(message, state)
+
+async def handle_pay_command(message: types.Message, state: FSMContext):
+    """Обработчик команды оплаты"""
+    from database import get_payments
+    from config import DISCOUNT_PAYMENT_AMOUNT, PAYMENT_AMOUNT, PAYMENT_CARD_NUMBER
+    
+    telegram_id = str(message.from_user.id)
+    payments = await get_payments()
+    user_payments = [p for p in payments if str(p['telegram_id']) == telegram_id]
+    
+    if len(user_payments) <= 1:
+        payment_text = f"💳 **Оплата подписки**\n\nДля оплаты переведите {DISCOUNT_PAYMENT_AMOUNT} рублей на карту:\n`{PAYMENT_CARD_NUMBER}`\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
+    else:
+        payment_text = f"💳 **Продление подписки**\n\nДля продления переведите {PAYMENT_AMOUNT} рублей на карту:\n`{PAYMENT_CARD_NUMBER}`\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
+    
+    await message.answer(payment_text, reply_markup=main_menu)
+    await state.set_state(SettingsStates.waiting_for_payment_check)
 
 @settings_router.message(SettingsStates.waiting_for_project_name)
 async def handle_project_name(message: types.Message, state: FSMContext):
@@ -346,16 +424,28 @@ async def handle_project_selection(callback_query: types.CallbackQuery, state: F
             return
         # Сохраняем выбранный проект в состоянии
         await state.update_data(selected_project_id=project_id, selected_project=project)
+        
+        # Проверяем, есть ли форма у проекта
+        from database import get_project_form
+        form = await get_project_form(project_id)
+        
         # Создаем меню управления проектом
         buttons = [
             [types.InlineKeyboardButton(text="Показать данные", callback_data="show_data")],
             [types.InlineKeyboardButton(text="Переименовать", callback_data="rename_project")],
             [types.InlineKeyboardButton(text="Изменить токен", callback_data="change_token")],
             [types.InlineKeyboardButton(text="Добавить данные", callback_data="add_data")],
-            [types.InlineKeyboardButton(text="Изменить данные", callback_data="change_data")],
-            [types.InlineKeyboardButton(text="Удалить проект", callback_data="delete_project")],
-            [types.InlineKeyboardButton(text="Назад к списку", callback_data="back_to_projects")]
+            [types.InlineKeyboardButton(text="Изменить данные", callback_data="change_data")]
         ]
+        
+        # Добавляем кнопку формы в зависимости от наличия формы
+        if form:
+            buttons.append([types.InlineKeyboardButton(text="Форма", callback_data="manage_form")])
+        else:
+            buttons.append([types.InlineKeyboardButton(text="Создать форму", callback_data="create_form")])
+        
+        buttons.append([types.InlineKeyboardButton(text="Удалить проект", callback_data="delete_project")])
+        buttons.append([types.InlineKeyboardButton(text="Назад к списку", callback_data="back_to_projects")])
         keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
         await callback_query.message.edit_text(
             f"Проект: {project['project_name']}\n\nВыберите действие:",
@@ -891,12 +981,16 @@ async def _handle_any_message_inner(message: types.Message, state: FSMContext):
         is_paid=is_paid
     )
 
+# Главное меню с кнопками
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="/start"), KeyboardButton(text="/projects"), KeyboardButton(text="/help")],
-        [KeyboardButton(text="/pay"), KeyboardButton(text="/feedback"), KeyboardButton(text="/referral")]
+        [KeyboardButton(text="📋 Проекты"), KeyboardButton(text="➕ Создать проект")],
+        [KeyboardButton(text="💰 Оплата"), KeyboardButton(text="📊 Статистика")],
+        [KeyboardButton(text="❓ Помощь"), KeyboardButton(text="🔗 Реферальная программа")]
     ],
-    resize_keyboard=True
+    resize_keyboard=True,
+    one_time_keyboard=False
+)
 )
 
 async def handle_settings_start(message: types.Message, state: FSMContext):
@@ -922,31 +1016,32 @@ async def handle_settings_start(message: types.Message, state: FSMContext):
 async def handle_help_command(message: types.Message, state: FSMContext):
     await state.clear()
     help_text = """
-🤖 Доступные команды:
+🤖 **Доступные команды:**
 
-/start - Создать новый проект
+/start - Главное меню
+/new - Создать новый проект
 /projects - Управление существующими проектами
 /help - Показать эту справку
+/pay - Оплата подписки
 /feedback - Оставить отзыв о сервисе
 /referral - Получить реферальную ссылку
 
-💳 Оплатить — перейти к оплате подписки
-
-📋 Функции управления проектами:
+📋 **Функции управления проектами:**
 • Переименование проекта
 • Добавление дополнительных данных
 • Изменение данных о бизнесе
+• Создание форм для сбора заявок
 • Удаление проекта (с отключением webhook)
 
-🎁 Реферальная программа:
+🎁 **Реферальная программа:**
 • Приглашайте друзей по реферальной ссылке
 • За каждую оплату реферала получайте +10 дней к пользованию
 
-💡 Для начала работы используйте /start
-💡 Для управления проектами используйте /projects
-💡 Для оплаты используйте кнопку 'Оплатить' или команду /pay
-💡 Для отзыва используйте /feedback или кнопку в меню
-💡 Для реферальной ссылки используйте /referral
+💡 **Для начала работы используйте /new**
+💡 **Для управления проектами используйте /projects**
+💡 **Для оплаты используйте команду /pay**
+💡 **Для отзыва используйте /feedback**
+💡 **Для реферальной ссылки используйте /referral**
     """
     pay_kb = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -1013,3 +1108,255 @@ async def handle_payment_check_fsm(message: types.Message, state: FSMContext):
         await state.set_state(ExtendedSettingsStates.waiting_for_payment_confirmation)
     else:
         await message.answer("Пожалуйста, отправьте файл или фото чека об оплате.")
+
+# --- Обработчики форм ---
+@settings_router.callback_query(lambda c: c.data == "create_form")
+async def handle_create_form(callback_query: types.CallbackQuery, state: FSMContext):
+    """Начинает создание формы"""
+    logging.info(f"[FORM] handle_create_form: user={callback_query.from_user.id}")
+    
+    form_text = """
+📋 **Создание формы для сбора заявок**
+
+Форма поможет собирать информацию от клиентов:
+• ФИО, телефон, удобное время
+• Специализированные данные (марка машины, возраст студента и т.д.)
+• Asking бот будет непринужденно собирать эту информацию
+
+Нажмите "Добавить поле" чтобы начать создание формы.
+    """
+    
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="Добавить поле", callback_data="add_form_field")],
+        [types.InlineKeyboardButton(text="Отмена", callback_data="back_to_projects")]
+    ])
+    
+    await callback_query.message.edit_text(form_text, reply_markup=keyboard)
+
+@settings_router.callback_query(lambda c: c.data == "manage_form")
+async def handle_manage_form(callback_query: types.CallbackQuery, state: FSMContext):
+    """Управление существующей формой"""
+    logging.info(f"[FORM] handle_manage_form: user={callback_query.from_user.id}")
+    
+    data = await state.get_data()
+    project_id = data.get("selected_project_id")
+    
+    if not project_id:
+        await callback_query.answer("Ошибка: проект не выбран")
+        return
+    
+    from database import get_project_form, get_form_submissions
+    form = await get_project_form(project_id)
+    
+    if not form:
+        await callback_query.answer("Форма не найдена")
+        return
+    
+    # Получаем количество заявок
+    submissions = await get_form_submissions(form["id"])
+    
+    form_text = f"""
+📋 **Управление формой: {form['name']}**
+
+Поля формы:
+"""
+    
+    for field in form["fields"]:
+        required_mark = "🔴" if field["required"] else "⚪"
+        form_text += f"• {required_mark} {field['name']} ({field['field_type']})\n"
+    
+    form_text += f"\n📊 Заявок: {len(submissions)}"
+    
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="Экспорт в Excel", callback_data="export_form")],
+        [types.InlineKeyboardButton(text="Создать новую форму", callback_data="create_form")],
+        [types.InlineKeyboardButton(text="Назад", callback_data="back_to_projects")]
+    ])
+    
+    await callback_query.message.edit_text(form_text, reply_markup=keyboard)
+
+@settings_router.callback_query(lambda c: c.data == "add_form_field")
+async def handle_add_form_field(callback_query: types.CallbackQuery, state: FSMContext):
+    """Начинает добавление поля в форму"""
+    logging.info(f"[FORM] handle_add_form_field: user={callback_query.from_user.id}")
+    
+    data = await state.get_data()
+    project_id = data.get("selected_project_id")
+    
+    if not project_id:
+        await callback_query.answer("Ошибка: проект не выбран")
+        return
+    
+    # Проверяем, есть ли уже форма
+    from database import get_project_form, create_form
+    form = await get_project_form(project_id)
+    
+    if not form:
+        # Создаем новую форму
+        form_name = f"Форма проекта {project_id}"
+        form_id = await create_form(project_id, form_name)
+        await state.update_data(current_form_id=form_id)
+    else:
+        await state.update_data(current_form_id=form["id"])
+    
+    await callback_query.message.edit_text(
+        "Введите название поля формы:\n\nНапример: ФИО, Телефон, Марка машины, Возраст студента и т.д.",
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+            [types.InlineKeyboardButton(text="Отмена", callback_data="back_to_projects")]
+        ])
+    )
+    await state.set_state(SettingsStates.waiting_for_field_name)
+
+@settings_router.message(SettingsStates.waiting_for_field_name)
+async def handle_field_name(message: types.Message, state: FSMContext):
+    """Обрабатывает название поля формы"""
+    await log_fsm_state(message, state)
+    logging.info(f"[FORM] handle_field_name: user={message.from_user.id}, text={message.text}")
+    
+    if await handle_command_in_state(message, state):
+        return
+    
+    await state.update_data(field_name=message.text)
+    
+    # Показываем типы полей
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="Текст", callback_data="field_type_text")],
+        [types.InlineKeyboardButton(text="Число", callback_data="field_type_number")],
+        [types.InlineKeyboardButton(text="Телефон", callback_data="field_type_phone")],
+        [types.InlineKeyboardButton(text="Дата", callback_data="field_type_date")],
+        [types.InlineKeyboardButton(text="Email", callback_data="field_type_email")],
+        [types.InlineKeyboardButton(text="Назад", callback_data="add_form_field")]
+    ])
+    
+    await message.answer(
+        f"Выберите тип поля для '{message.text}':",
+        reply_markup=keyboard
+    )
+
+@settings_router.callback_query(lambda c: c.data.startswith("field_type_"))
+async def handle_field_type(callback_query: types.CallbackQuery, state: FSMContext):
+    """Обрабатывает выбор типа поля"""
+    logging.info(f"[FORM] handle_field_type: user={callback_query.from_user.id}, data={callback_query.data}")
+    
+    field_type = callback_query.data.replace("field_type_", "")
+    data = await state.get_data()
+    field_name = data.get("field_name")
+    form_id = data.get("current_form_id")
+    
+    if not field_name or not form_id:
+        await callback_query.answer("Ошибка: данные не найдены")
+        return
+    
+    # Добавляем поле в форму
+    from database import add_form_field
+    await add_form_field(form_id, field_name, field_type, required=False)
+    
+    # Показываем текущую форму
+    await show_form_preview(callback_query.message, state, form_id)
+
+async def show_form_preview(message, state: FSMContext, form_id: str):
+    """Показывает предварительный просмотр формы"""
+    from database import get_project_form
+    
+    # Получаем форму с полями
+    project_id = (await state.get_data()).get("selected_project_id")
+    form = await get_project_form(project_id)
+    
+    if not form:
+        await message.edit_text("Ошибка: форма не найдена")
+        return
+    
+    preview_text = f"📋 **Форма: {form['name']}**\n\nПоля формы:\n"
+    
+    for i, field in enumerate(form["fields"], 1):
+        required_mark = "🔴" if field["required"] else "⚪"
+        preview_text += f"{i}. {required_mark} {field['name']} ({field['field_type']})\n"
+    
+    preview_text += "\nВыберите действие:"
+    
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="Использовать форму", callback_data="use_form")],
+        [types.InlineKeyboardButton(text="Добавить поле", callback_data="add_form_field")],
+        [types.InlineKeyboardButton(text="Назад к проекту", callback_data="back_to_projects")]
+    ])
+    
+    await message.edit_text(preview_text, reply_markup=keyboard)
+
+@settings_router.callback_query(lambda c: c.data == "use_form")
+async def handle_use_form(callback_query: types.CallbackQuery, state: FSMContext):
+    """Подтверждает использование формы"""
+    logging.info(f"[FORM] handle_use_form: user={callback_query.from_user.id}")
+    
+    await callback_query.message.edit_text(
+        "✅ Форма создана и готова к использованию!\n\n"
+        "Asking бот будет автоматически собирать информацию от клиентов по этой форме.",
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+            [types.InlineKeyboardButton(text="Назад к проекту", callback_data="back_to_projects")]
+        ])
+    )
+    await state.clear()
+
+@settings_router.callback_query(lambda c: c.data == "export_form")
+async def handle_export_form(callback_query: types.CallbackQuery, state: FSMContext):
+    """Экспортирует данные формы в Excel"""
+    logging.info(f"[FORM] handle_export_form: user={callback_query.from_user.id}")
+    
+    data = await state.get_data()
+    project_id = data.get("selected_project_id")
+    
+    if not project_id:
+        await callback_query.answer("Ошибка: проект не выбран")
+        return
+    
+    from database import get_project_form, get_form_submissions
+    
+    form = await get_project_form(project_id)
+    if not form:
+        await callback_query.answer("Форма не найдена")
+        return
+    
+    submissions = await get_form_submissions(form["id"])
+    
+    if not submissions:
+        await callback_query.answer("Нет данных для экспорта")
+        return
+    
+    # Создаем Excel файл
+    try:
+        import pandas as pd
+        import io
+        
+        # Подготавливаем данные для Excel
+        excel_data = []
+        for submission in submissions:
+            row = {
+                "ID заявки": submission["id"],
+                "Telegram ID": submission["telegram_id"],
+                "Дата подачи": submission["submitted_at"].strftime("%Y-%m-%d %H:%M:%S")
+            }
+            # Добавляем поля формы
+            for field_name, field_value in submission["data"].items():
+                row[field_name] = field_value
+            excel_data.append(row)
+        
+        df = pd.DataFrame(excel_data)
+        
+        # Создаем Excel файл в памяти
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Заявки', index=False)
+        
+        output.seek(0)
+        
+        # Отправляем файл
+        await callback_query.message.answer_document(
+            types.BufferedInputFile(
+                output.read(),
+                filename=f"form_submissions_{form['name']}.xlsx"
+            ),
+            caption=f"📊 Экспорт заявок формы '{form['name']}'\n\nВсего заявок: {len(submissions)}"
+        )
+        
+    except Exception as e:
+        logging.error(f"[FORM] handle_export_form: ОШИБКА: {e}")
+        await callback_query.answer("Ошибка при создании Excel файла")
