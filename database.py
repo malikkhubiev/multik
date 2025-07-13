@@ -286,7 +286,7 @@ async def get_users_with_expired_trial():
     logger.info(all_users)
     logger.info(f"[DB] get_users_with_expired_trial: все пользователи:")
     for u in all_users:
-        logger.info(f"[DB] USER: telegram_id={u['telegram_id']}, paid={u['paid']}, start_date={u['start_date']}, trial_expired_notified={u['trial_expired_notified']}")
+        logger.info(f"[DB] USER: telegram_id={u['telegram_id']}, paid={u['paid']}, start_date={u['start_date']}, trial_expired_notified={u['trial_expired_notified']}, referrer_id={u.get('referrer_id')}, bonus_days={u.get('bonus_days', 0)}")
     query = select(User).where(
         and_(
             User.paid == False,
@@ -481,16 +481,9 @@ async def get_referrer_info(telegram_id: str):
 
 async def get_referral_link(telegram_id: str) -> str:
     """Генерирует реферальную ссылку для пользователя"""
-    from config import SETTINGS_BOT_TOKEN
-    # Извлекаем username бота из токена (обычно токен имеет формат 123456789:ABCdefGHIjklMNOpqrsTUVwxyz)
-    if SETTINGS_BOT_TOKEN:
-        try:
-            bot_info = SETTINGS_BOT_TOKEN.split(':')[0]  # Берем первую часть токена
-            return f"https://t.me/{bot_info}?start=ref{telegram_id}"
-        except:
-            pass
-    # Fallback если не удалось получить username
-    return f"https://t.me/your_bot_username?start=ref{telegram_id}"
+    from config import BOT_USERNAME
+    username = BOT_USERNAME or "your_bot_username"
+    return f"https://t.me/{username}?start=ref{telegram_id}"
 
 async def process_referral_payment(paid_user_id: str, paid_user_username: str = None):
     """Обрабатывает оплату реферала и начисляет бонус рефереру"""

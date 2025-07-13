@@ -22,9 +22,11 @@ BOT_URL = os.getenv("BOT_URL")
 
 SETTINGS_BOT_TOKEN = os.getenv("SETTINGS_BOT_TOKEN")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+BOT_USERNAME = os.getenv("BOT_USERNAME")
 
 # Логируем состояние критических переменных
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger.info(f"SERVER_URL: {'Настроен' if SERVER_URL else 'НЕ НАСТРОЕН'}")
 logger.info(f"DEEPSEEK_API_KEY: {'Настроен' if DEEPSEEK_API_KEY else 'НЕ НАСТРОЕН'}")
+logger.info(f"BOT_USERNAME: {'Настроен' if BOT_USERNAME else 'НЕ НАСТРОЕН'}")

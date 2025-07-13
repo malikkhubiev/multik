@@ -821,22 +821,6 @@ async def handle_referral_command(message, state):
     
     await message.answer(referral_text)
 
-@settings_router.message(Command("feedback"))
-async def feedback_command(message: types.Message, state: FSMContext):
-    await handle_feedback_command(message, state)
-
-@settings_router.callback_query(lambda c: c.data.startswith("feedback_rate:"))
-async def feedback_rating_callback(callback_query: types.CallbackQuery, state: FSMContext):
-    await handle_feedback_rating_callback(callback_query, state)
-
-@settings_router.callback_query(lambda c: c.data == "feedback_change_rating")
-async def feedback_change_rating(callback_query: types.CallbackQuery, state: FSMContext):
-    await handle_feedback_change_rating(callback_query, state)
-
-@settings_router.message(SettingsStates.waiting_for_feedback_text)
-async def feedback_text(message: types.Message, state: FSMContext):
-    await handle_feedback_text(message, state)
-
 @settings_router.message()
 async def handle_any_message(message: types.Message, state: FSMContext):
     await trial_middleware(message, state, _handle_any_message_inner)
@@ -864,18 +848,8 @@ async def _handle_any_message_inner(message: types.Message, state: FSMContext):
             
             # Обработка реферальной системы
             from database import process_referral_payment
-            # Получаем username пользователя, который оплатил
-            try:
-                from aiogram import Bot
-                temp_bot = Bot(token=SETTINGS_BOT_TOKEN)
-                user_info = await temp_bot.get_chat(paid_telegram_id)
-                username = user_info.username if user_info else None
-                await temp_bot.session.close()
-            except Exception as e:
-                logging.error(f"[REFERRAL] Не удалось получить username пользователя {paid_telegram_id}: {e}")
-                username = None
-            
-            referral_result = await process_referral_payment(paid_telegram_id, username)
+            # Используем None для username - функция сама обработает это
+            referral_result = await process_referral_payment(paid_telegram_id, None)
             
             # Восстановить вебхуки на все проекты пользователя
             projects = await get_user_projects(paid_telegram_id)
@@ -930,7 +904,15 @@ async def handle_settings_start(message: types.Message, state: FSMContext):
     logger.info(f"/start received from user {message.from_user.id}")
     try:
         await state.clear()
-        await create_user(str(message.from_user.id))
+        # Проверяем, есть ли реферальный параметр в команде /start
+        referrer_id = None
+        if message.text and message.text.startswith('/start'):
+            parts = message.text.split()
+            if len(parts) > 1 and parts[1].startswith('ref'):
+                referrer_id = parts[1][3:]  # Убираем 'ref' из начала
+                logger.info(f"[REFERRAL] handle_settings_start: пользователь {message.from_user.id} пришел по реферальной ссылке от {referrer_id}")
+        
+        await create_user(str(message.from_user.id), referrer_id)
         await message.answer("Добро пожаловать в настройки! Введите имя вашего проекта.", reply_markup=main_menu)
         await state.set_state(SettingsStates.waiting_for_project_name)
         logger.info(f"Sent welcome message to user {message.from_user.id}")
