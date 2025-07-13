@@ -873,3 +873,18 @@ async def log_rating_stat(telegram_id: str, message_id: str, rating: bool, proje
     except Exception as e:
         logging.error(f"[RATING_STAT] Ошибка при сохранении статистики рейтинга: {e}")
         return False
+
+async def check_existing_rating(telegram_id: str, message_id: str) -> bool:
+    """Проверяет, есть ли уже рейтинг от пользователя для сообщения"""
+    try:
+        query = select(ResponseRating).where(
+            and_(
+                ResponseRating.telegram_id == telegram_id,
+                ResponseRating.message_id == message_id
+            )
+        )
+        existing = await database.fetch_one(query)
+        return existing is not None
+    except Exception as e:
+        logging.error(f"[RATING] check_existing_rating: ОШИБКА: {e}")
+        return False

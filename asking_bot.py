@@ -584,8 +584,17 @@ async def get_or_create_dispatcher(token: str, business_info: str):
             if projects:
                 project_id = projects[0]['id']
             
+            # Проверяем, не был ли уже сохранен рейтинг для этого сообщения
+            from database import save_response_rating, check_existing_rating
+            
+            # Проверяем, есть ли уже рейтинг от этого пользователя для этого сообщения
+            existing_rating = await check_existing_rating(str(callback_query.from_user.id), message_id)
+            
+            if existing_rating:
+                await callback_query.answer("Вы уже оценили этот ответ")
+                return
+            
             # Сохраняем рейтинг в базу данных
-            from database import save_response_rating
             success = await save_response_rating(
                 str(callback_query.from_user.id),
                 message_id,
@@ -606,6 +615,14 @@ async def get_or_create_dispatcher(token: str, business_info: str):
                     project_id=project_id
                 )
                 
+                # Убираем кнопки рейтинга из сообщения
+                try:
+                    await callback_query.message.edit_reply_markup(reply_markup=None)
+                    logging.info(f"[RATING] Кнопки рейтинга убраны для сообщения {message_id}")
+                except Exception as edit_error:
+                    logging.error(f"[RATING] Ошибка при удалении кнопок: {edit_error}")
+                
+                # Показываем подтверждение
                 await callback_query.answer("Спасибо за оценку! 👍" if rating else "Спасибо за оценку! 👎")
             else:
                 await callback_query.answer("Ошибка при сохранении оценки")
