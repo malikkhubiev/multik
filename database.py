@@ -538,17 +538,17 @@ async def update_project_token(project_id: str, new_token: str) -> bool:
         return False
 
 async def get_users_with_expired_paid_month():
-    """Возвращает пользователей, у которых прошёл первый платный месяц (тест: 30 секунд), и которые уже оплатили (paid=True)"""
+    """Возвращает пользователей, у которых прошёл первый платный месяц (30 дней), и которые уже оплатили (paid=True)"""
     from sqlalchemy import select, and_, func
     from datetime import datetime, timedelta, timezone
-    one_month_ago = datetime.now(timezone.utc) - timedelta(seconds=30)
+    one_month_ago = datetime.now(timezone.utc) - timedelta(days=30)
     logger.info(f"[DB] get_users_with_expired_paid_month: ищем пользователей с paid=True и последним paid_at < {one_month_ago}")
     # Подзапрос: для каждого пользователя выбрать последний платёж
     subq = select(
         Payment.telegram_id,
         func.max(Payment.paid_at).label('last_paid_at')
     ).group_by(Payment.telegram_id).subquery()
-    # Основной запрос: только если последний платёж старше 30 секунд
+    # Основной запрос: только если последний платёж старше 30 дней
     query = select(User, subq.c.last_paid_at).join(subq, User.telegram_id == subq.c.telegram_id).where(
         and_(
             User.paid == True,

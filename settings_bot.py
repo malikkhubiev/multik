@@ -80,22 +80,35 @@ async def check_expired_paid_month():
         telegram_id = user.get('telegram_id')
         logging.info(f"[PAID_MONTH] Проверяю пользователя: {user}")
         try:
+            # Определяем правильную сумму для следующего платежа
+            from config import PAYMENT_AMOUNT
+            from database import get_payments
+            
+            payments = await get_payments()
+            user_payments = [p for p in payments if str(p['telegram_id']) == telegram_id and p['status'] == 'confirmed']
+            
+            # Для продления подписки всегда используем полную сумму
+            payment_amount = PAYMENT_AMOUNT
+            
             pay_kb = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [InlineKeyboardButton(text="Оплатить", callback_data="pay")]
                 ]
             )
+            
+            message_text = f"Первый оплаченный месяц завершён!\n\nДля продолжения работы оплатите {payment_amount} рублей."
+            
             await settings_bot.send_message(
                 telegram_id,
-                "Первый оплаченный месяц завершён!\n\nДля продолжения работы оплатите полную стоимость подписки.",
+                message_text,
                 reply_markup=pay_kb
             )
-            logging.info(f"[PAID_MONTH] Пользователь {telegram_id} — первый оплаченный месяц истёк, уведомление отправлено")
+            logging.info(f"[PAID_MONTH] Пользователь {telegram_id} — первый оплаченный месяц истёк, уведомление отправлено с суммой {payment_amount}")
         except Exception as e:
             logging.error(f"[PAID_MONTH] Ошибка при отправке уведомления: {e}")
 
 scheduler.add_job(check_expired_trials, 'interval', minutes=1)
-scheduler.add_job(check_expired_paid_month, 'interval', minutes=1)
+scheduler.add_job(check_expired_paid_month, 'interval', hours=1)
 scheduler.start()
 
 # --- Middleware для перехвата команд, если trial истёк ---
