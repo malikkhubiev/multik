@@ -161,8 +161,8 @@ async def create_user(telegram_id: str, referrer_id: str = None) -> None:
     all_users = await database.fetch_all(select(User))
     for u in all_users:
         # Безопасно получаем значения, которые могут отсутствовать
-        referrer_id = u.get('referrer_id') if hasattr(u, 'referrer_id') else None
-        bonus_days = u.get('bonus_days', 0) if hasattr(u, 'bonus_days') else 0
+        referrer_id = getattr(u, 'referrer_id', None)
+        bonus_days = getattr(u, 'bonus_days', 0)
         logging.info(f"[DB] DEBUG: после create_user: telegram_id={u['telegram_id']}, paid={u['paid']}, start_date={u['start_date']}, trial_expired_notified={u['trial_expired_notified']}, referrer_id={referrer_id}, bonus_days={bonus_days}")
 
 async def get_user(telegram_id: str) -> Optional[dict]:
@@ -346,8 +346,8 @@ async def get_users_with_expired_trial():
     logger.info(f"[DB] get_users_with_expired_trial: все пользователи:")
     for u in all_users:
         # Безопасно получаем значения, которые могут отсутствовать
-        referrer_id = u.get('referrer_id') if hasattr(u, 'referrer_id') else None
-        bonus_days = u.get('bonus_days', 0) if hasattr(u, 'bonus_days') else 0
+        referrer_id = getattr(u, 'referrer_id', None)
+        bonus_days = getattr(u, 'bonus_days', 0)
         logger.info(f"[DB] USER: telegram_id={u['telegram_id']}, paid={u['paid']}, start_date={u['start_date']}, trial_expired_notified={u['trial_expired_notified']}, referrer_id={referrer_id}, bonus_days={bonus_days}")
     query = select(User).where(
         and_(
