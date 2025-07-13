@@ -77,6 +77,7 @@ class Payment(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     telegram_id = Column(String, nullable=False)
     amount = Column(Float, nullable=False)
+    status = Column(String, default='pending')  # pending, confirmed, rejected
     paid_at = Column(DateTime, default=datetime.now(timezone.utc))
 
 # --- Формы ---
@@ -424,17 +425,18 @@ async def get_feedbacks():
     return [dict(r) for r in rows]
 
 # --- Payment ---
-async def log_payment(telegram_id, amount):
-    logging.info(f"[METRIC] log_payment: начало записи платежа telegram_id={telegram_id}, amount={amount}")
+async def log_payment(telegram_id, amount, status='pending'):
+    logging.info(f"[METRIC] log_payment: начало записи платежа telegram_id={telegram_id}, amount={amount}, status={status}")
     try:
         query = insert(Payment).values(
             telegram_id=telegram_id,
             amount=amount,
+            status=status,
             paid_at=datetime.now(timezone.utc)
         )
         logging.info(f"[METRIC] log_payment: SQL запрос = {query}")
         await database.execute(query)
-        logging.info(f"[METRIC] log_payment: платеж успешно записан в БД для пользователя {telegram_id}, сумма {amount}")
+        logging.info(f"[METRIC] log_payment: платеж успешно записан в БД для пользователя {telegram_id}, сумма {amount}, статус {status}")
     except Exception as e:
         logging.error(f"[METRIC] log_payment: ОШИБКА при записи платежа: {e}")
         import traceback
@@ -450,9 +452,75 @@ async def get_payments():
     
     result = [dict(r) for r in rows]
     for i, payment in enumerate(result):
-        logging.info(f"[DB] get_payments: платеж {i+1}: telegram_id={payment['telegram_id']}, amount={payment['amount']}, paid_at={payment['paid_at']}")
+        logging.info(f"[DB] get_payments: платеж {i+1}: telegram_id={payment['telegram_id']}, amount={payment['amount']}, status={payment.get('status', 'unknown')}, paid_at={payment['paid_at']}")
     
     return result
+
+async def confirm_payment(telegram_id: str):
+    """Подтверждает pending платеж пользователя"""
+    logging.info(f"[DB] confirm_payment: подтверждение платежа для пользователя {telegram_id}")
+    try:
+        from sqlalchemy import update
+        # Находим последний pending платеж пользователя
+        query = select(Payment).where(
+            and_(Payment.telegram_id == telegram_id, Payment.status == 'pending')
+        ).order_by(Payment.paid_at.desc())
+        
+        pending_payment = await database.fetch_one(query)
+        if not pending_payment:
+            logging.warning(f"[DB] confirm_payment: не найден pending платеж для пользователя {telegram_id}")
+            return False
+        
+        # Обновляем статус на confirmed
+        update_query = update(Payment).where(Payment.id == pending_payment['id']).values(status='confirmed')
+        await database.execute(update_query)
+        logging.info(f"[DB] confirm_payment: платеж {pending_payment['id']} подтвержден для пользователя {telegram_id}")
+        return True
+    except Exception as e:
+        logging.error(f"[DB] confirm_payment: ОШИБКА: {e}")
+        import traceback
+        logging.error(f"[DB] confirm_payment: полный traceback: {traceback.format_exc()}")
+        return False
+
+async def get_pending_payments():
+    """Получает все pending платежи"""
+    logging.info(f"[DB] get_pending_payments: получаем pending платежи из БД")
+    query = select(Payment).where(Payment.status == 'pending')
+    logging.info(f"[DB] get_pending_payments: SQL запрос = {query}")
+    rows = await database.fetch_all(query)
+    logging.info(f"[DB] get_pending_payments: найдено {len(rows)} pending платежей")
+    
+    result = [dict(r) for r in rows]
+    for i, payment in enumerate(result):
+        logging.info(f"[DB] get_pending_payments: pending платеж {i+1}: telegram_id={payment['telegram_id']}, amount={payment['amount']}, paid_at={payment['paid_at']}")
+    
+    return result
+
+async def reject_payment(telegram_id: str):
+    """Отклоняет pending платеж пользователя"""
+    logging.info(f"[DB] reject_payment: отклонение платежа для пользователя {telegram_id}")
+    try:
+        from sqlalchemy import update
+        # Находим последний pending платеж пользователя
+        query = select(Payment).where(
+            and_(Payment.telegram_id == telegram_id, Payment.status == 'pending')
+        ).order_by(Payment.paid_at.desc())
+        
+        pending_payment = await database.fetch_one(query)
+        if not pending_payment:
+            logging.warning(f"[DB] reject_payment: не найден pending платеж для пользователя {telegram_id}")
+            return False
+        
+        # Обновляем статус на rejected
+        update_query = update(Payment).where(Payment.id == pending_payment['id']).values(status='rejected')
+        await database.execute(update_query)
+        logging.info(f"[DB] reject_payment: платеж {pending_payment['id']} отклонен для пользователя {telegram_id}")
+        return True
+    except Exception as e:
+        logging.error(f"[DB] reject_payment: ОШИБКА: {e}")
+        import traceback
+        logging.error(f"[DB] reject_payment: полный traceback: {traceback.format_exc()}")
+        return False
 
 async def update_project_token(project_id: str, new_token: str) -> bool:
     """Обновляет токен проекта, если он уникален"""

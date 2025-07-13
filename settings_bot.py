@@ -1185,23 +1185,25 @@ async def handle_any_message(message: types.Message, state: FSMContext):
 async def _handle_any_message_inner(message: types.Message, state: FSMContext):
     await log_fsm_state(message, state)
     logging.info(f"[BOT] handle_any_message: user={message.from_user.id}, text={message.text}")
-    # --- Обработка подтверждения оплаты админом ---
+    # --- Обработка подтверждения/отклонения оплаты админом ---
     if message.text and message.text.lower().startswith("оплатил ") and str(message.from_user.id) == str(MAIN_TELEGRAM_ID):
         parts = message.text.strip().split()
         if len(parts) == 2 and parts[1].isdigit():
             paid_telegram_id = parts[1]
             logging.info(f"[PAYMENT] Обработка подтверждения оплаты для пользователя {paid_telegram_id}")
             
-            # Определяем сумму платежа в зависимости от количества предыдущих платежей
-            from database import get_payments
-            from config import DISCOUNT_PAYMENT_AMOUNT, PAYMENT_AMOUNT
-            payments = await get_payments()
-            user_payments = [p for p in payments if str(p['telegram_id']) == paid_telegram_id]
-            payment_amount = DISCOUNT_PAYMENT_AMOUNT if len(user_payments) <= 1 else PAYMENT_AMOUNT
-            logging.info(f"[PAYMENT] Для пользователя {paid_telegram_id}: найдено {len(user_payments)} платежей, сумма = {payment_amount}")
+            # Подтверждаем pending платеж
+            from database import confirm_payment, get_pending_payments
+            success = await confirm_payment(paid_telegram_id)
+            
+            if not success:
+                logging.warning(f"[PAYMENT] Не найден pending платеж для пользователя {paid_telegram_id}")
+                await message.answer(f"⚠️ Не найден pending платеж для пользователя {paid_telegram_id}")
+                return
+            
+            logging.info(f"[PAYMENT] Платеж подтвержден для пользователя {paid_telegram_id}")
             
             await set_user_paid(paid_telegram_id, True)
-            await log_payment(paid_telegram_id, payment_amount)
             
             # Обработка реферальной системы
             from database import process_referral_payment
@@ -1234,6 +1236,53 @@ async def _handle_any_message_inner(message: types.Message, state: FSMContext):
             
             await message.answer(f"Пользователь {paid_telegram_id} отмечен как оплативший. Вебхуки восстановлены для {restored} проектов.")
             return
+    
+    # --- Обработка отклонения оплаты админом ---
+    if message.text and message.text.lower().startswith("отклонить ") and str(message.from_user.id) == str(MAIN_TELEGRAM_ID):
+        parts = message.text.strip().split()
+        if len(parts) == 2 and parts[1].isdigit():
+            rejected_telegram_id = parts[1]
+            logging.info(f"[PAYMENT] Обработка отклонения оплаты для пользователя {rejected_telegram_id}")
+            
+            # Отклоняем pending платеж
+            from database import reject_payment
+            success = await reject_payment(rejected_telegram_id)
+            
+            if not success:
+                logging.warning(f"[PAYMENT] Не найден pending платеж для отклонения пользователя {rejected_telegram_id}")
+                await message.answer(f"⚠️ Не найден pending платеж для отклонения пользователя {rejected_telegram_id}")
+                return
+            
+            logging.info(f"[PAYMENT] Платеж отклонен для пользователя {rejected_telegram_id}")
+            
+            # Уведомить пользователя об отклонении
+            try:
+                await settings_bot.send_message(rejected_telegram_id, "❌ Ваш платеж был отклонен. Пожалуйста, проверьте правильность чека и попробуйте снова.")
+            except Exception as e:
+                logger.error(f"[PAYMENT] Не удалось отправить сообщение об отклонении пользователю: {e}")
+            
+            await message.answer(f"Платеж пользователя {rejected_telegram_id} отклонен. Пользователь уведомлен.")
+            return
+    
+    # --- Просмотр pending платежей админом ---
+    if message.text and message.text.lower() == "pending" and str(message.from_user.id) == str(MAIN_TELEGRAM_ID):
+        logging.info(f"[PAYMENT] Запрос на просмотр pending платежей от админа")
+        
+        from database import get_pending_payments
+        pending_payments = await get_pending_payments()
+        
+        if not pending_payments:
+            await message.answer("📋 Нет pending платежей")
+            return
+        
+        response = "📋 Pending платежи:\n\n"
+        for i, payment in enumerate(pending_payments, 1):
+            response += f"{i}. Пользователь {payment['telegram_id']} - {payment['amount']} руб.\n"
+        
+        response += "\n💡 Для подтверждения: оплатил [ID]\n💡 Для отклонения: отклонить [ID]"
+        
+        await message.answer(response)
+        return
 
     user = await get_user_by_id(str(message.from_user.id))
     is_trial = user and not user['paid']
