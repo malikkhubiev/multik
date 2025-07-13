@@ -584,7 +584,7 @@ async def get_or_create_dispatcher(token: str, business_info: str):
             if projects:
                 project_id = projects[0]['id']
             
-            # Сохраняем рейтинг
+            # Сохраняем рейтинг в базу данных
             from database import save_response_rating
             success = await save_response_rating(
                 str(callback_query.from_user.id),
@@ -596,6 +596,15 @@ async def get_or_create_dispatcher(token: str, business_info: str):
             if success:
                 # Логируем оценку в аналитику
                 await log_response_rating(str(callback_query.from_user.id), project_id, rating)
+                
+                # Сохраняем статистику рейтинга
+                from database import log_rating_stat
+                await log_rating_stat(
+                    telegram_id=str(callback_query.from_user.id),
+                    message_id=message_id,
+                    rating=rating,
+                    project_id=project_id
+                )
                 
                 await callback_query.answer("Спасибо за оценку! 👍" if rating else "Спасибо за оценку! 👎")
             else:

@@ -242,10 +242,7 @@ async def _start_inner(message: types.Message, state: FSMContext):
             await message.answer(welcome_text, reply_markup=start_menu_keyboard)
             logging.info(f"[START] _start_inner: ✅ отправлено приветственное сообщение с inline-меню для пользователя {telegram_id}")
             
-            # Отправляем обычную клавиатуру отдельным сообщением
-            await message.answer("Используйте кнопки ниже для быстрого доступа:", reply_markup=main_menu)
-            logging.info(f"[START] _start_inner: ✅ отправлена обычная клавиатура для пользователя {telegram_id}")
-            
+
         except Exception as message_error:
             logging.error(f"[START] _start_inner: ❌ ОШИБКА при отправке приветственного сообщения: {message_error}")
             raise message_error

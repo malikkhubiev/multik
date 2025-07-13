@@ -854,3 +854,22 @@ async def get_response_ratings_stats():
             "dislikes": 0,
             "like_percentage": 0
         }
+
+async def log_rating_stat(telegram_id: str, message_id: str, rating: bool, project_id: str = None):
+    """Логирует статистику рейтинга для аналитики"""
+    try:
+        # Создаем запись в таблице ResponseRating
+        query = insert(ResponseRating).values(
+            telegram_id=telegram_id,
+            message_id=message_id,
+            rating=rating,
+            project_id=project_id,
+            created_at=datetime.now(timezone.utc)
+        )
+        await database.execute(query)
+        
+        logging.info(f"[RATING_STAT] Сохранена статистика рейтинга: user={telegram_id}, message={message_id}, rating={'positive' if rating else 'negative'}, project={project_id}")
+        return True
+    except Exception as e:
+        logging.error(f"[RATING_STAT] Ошибка при сохранении статистики рейтинга: {e}")
+        return False

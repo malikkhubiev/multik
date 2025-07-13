@@ -1,5 +1,5 @@
 from config import PAYMENT_AMOUNT, PAYMENT_CARD_NUMBER, MAIN_TELEGRAM_ID, PAID_PROJECTS
-from database import set_user_paid, get_user_projects, get_payments
+from database import set_user_paid, get_user_projects, get_payments, log_payment
 from utils import set_webhook
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import logging
@@ -100,7 +100,6 @@ async def forward_check_with_notice(message, notice_text=None):
             # Создаем pending платеж в базе данных
             try:
                 from config import DISCOUNT_PAYMENT_AMOUNT, PAYMENT_AMOUNT
-                from database import log_payment
                 
                 # Получаем все платежи пользователя для определения типа платежа
                 all_payments = await get_payments()
