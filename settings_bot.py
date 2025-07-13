@@ -991,7 +991,6 @@ main_menu = ReplyKeyboardMarkup(
     resize_keyboard=True,
     one_time_keyboard=False
 )
-)
 
 async def handle_settings_start(message: types.Message, state: FSMContext):
     logger = logging.getLogger(__name__)
