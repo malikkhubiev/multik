@@ -14,7 +14,7 @@ from database import MessageStat
 from sqlalchemy import func
 from database import database
 from sqlalchemy import select
-from utils import send_typing_action
+
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from analytics import log_question_asked, log_form_submission_confirmed, log_response_rating
@@ -425,11 +425,13 @@ async def get_or_create_dispatcher(token: str, business_info: str):
         else:
             return bot_dispatchers[token]
     
+    logging.info(f"[ASKING_BOT] get_or_create_dispatcher: создаем бота с токеном {token[:10]}...")
     bot = Bot(token=token)
     storage = MemoryStorage()
     tg_router = Router()
     dp = Dispatcher(storage=storage)
     dp.include_router(tg_router)
+    logging.info(f"[ASKING_BOT] get_or_create_dispatcher: бот создан успешно")
 
     @tg_router.message(Command("start"))
     async def handle_start(message: types.Message):
@@ -478,13 +480,23 @@ async def get_or_create_dispatcher(token: str, business_info: str):
                 return
             
             logging.info(f"[ASKING_BOT] handle_question: отправляем typing action для пользователя {user_id}")
-            await send_typing_action(user_id, project_token)
-            logging.info(f"[ASKING_BOT] handle_question: typing action отправлен для пользователя {user_id}")
+            # Используем тот же токен проекта для typing action
+            try:
+                await message.bot.send_chat_action(message.chat.id, "typing")
+                logging.info(f"[ASKING_BOT] handle_question: typing action отправлен для пользователя {user_id}")
+            except Exception as typing_error:
+                logging.error(f"[ASKING_BOT] handle_question: ОШИБКА при отправке typing action: {typing_error}")
+                # Пробуем альтернативный способ
+                try:
+                    from config import SETTINGS_BOT_TOKEN
+                    main_bot = Bot(token=SETTINGS_BOT_TOKEN)
+                    await main_bot.send_chat_action(message.chat.id, "typing")
+                    await main_bot.session.close()
+                    logging.info(f"[ASKING_BOT] handle_question: typing action отправлен через основной бот для пользователя {user_id}")
+                except Exception as fallback_error:
+                    logging.error(f"[ASKING_BOT] handle_question: ОШИБКА при отправке typing action через основной бот: {fallback_error}")
         else:
             logging.warning(f"[ASKING_BOT] Не найден проект для пользователя {user_id}, не отправляю typing action")
-                    # Отправляем индикатор печати
-        await message.bot.send_chat_action(message.chat.id, "typing")
-        logging.info(f"[ASKING_BOT] handle_question: отправлен индикатор печати пользователю {user_id}")
         if not business_info:
             await message.answer("Информация о бизнесе не найдена. Обратитесь к администратору.")
             logging.warning(f"[ASKING_BOT] handle_question: business_info not found for project")
@@ -725,12 +737,15 @@ async def telegram_webhook(project_id: str, request: Request):
         return {"status": "error", "message": "Проект не найден"}
     token = project["token"]
     business_info = project["business_info"]
+    logging.info(f"[ASKING_BOT] webhook: token={token[:10]}..., business_info length={len(business_info)}")
     dp, bot = await get_or_create_dispatcher(token, business_info)
     update_data = await request.json()
     logging.info(f"[ASKING_BOT] Update data: {update_data}")
     try:
         update = types.Update.model_validate(update_data)
+        logging.info(f"[ASKING_BOT] Processing update with bot token: {bot.token[:10] if hasattr(bot, 'token') else 'unknown'}...")
         await dp.feed_update(bot, update)
+        logging.info(f"[ASKING_BOT] Update processed successfully")
     except Exception as e:
         import traceback
         logging.error(f"[ASKING_BOT] Ошибка обработки апдейта: {e}\n{traceback.format_exc()}")

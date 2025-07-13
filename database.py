@@ -336,38 +336,40 @@ async def get_users_with_expired_trial():
     from datetime import datetime, timedelta
     from config import TRIAL_DAYS
     from sqlalchemy import and_, update
-    trial_period = timedelta(days=TRIAL_DAYS)
-    trial_expired_before = datetime.now(timezone.utc) - trial_period
-    logger.info(f"[DB] get_users_with_expired_trial: ищем пользователей с start_date < {trial_expired_before}")
-    logger.info(f"[DB] get_users_with_expired_trial: TRIAL_DAYS = {TRIAL_DAYS}")
     now = datetime.now(timezone.utc)
     logger.info(f"[DB] get_users_with_expired_trial: текущее время UTC = {now}")
+    logger.info(f"[DB] get_users_with_expired_trial: TRIAL_DAYS = {TRIAL_DAYS}")
+    
+    # Получаем всех пользователей и проверяем каждого индивидуально
     all_users = await database.fetch_all(select(User))
-    logger.info(all_users)
-    logger.info(f"[DB] get_users_with_expired_trial: все пользователи:")
-    for u in all_users:
+    logger.info(f"[DB] get_users_with_expired_trial: всего пользователей = {len(all_users)}")
+    
+    expired_users = []
+    for user in all_users:
         # Безопасно получаем значения, которые могут отсутствовать
-        referrer_id = getattr(u, 'referrer_id', None)
-        bonus_days = getattr(u, 'bonus_days', 0)
-        logger.info(f"[DB] USER: telegram_id={u['telegram_id']}, paid={u['paid']}, start_date={u['start_date']}, trial_expired_notified={u['trial_expired_notified']}, referrer_id={referrer_id}, bonus_days={bonus_days}")
-    query = select(User).where(
-        and_(
-            User.paid == False,
-            User.start_date < trial_expired_before,
-            User.trial_expired_notified == False
-        )
-    )
-    logger.info(f"[DB] get_users_with_expired_trial: SQL запрос = {query}")
-    rows = await database.fetch_all(query)
-    logger.info(f"[DB] get_users_with_expired_trial: найдено пользователей = {len(rows)}")
-    for i, row in enumerate(rows):
-        logger.info(f"[DB] get_users_with_expired_trial: пользователь {i+1}: {row}")
-        start_date = row.start_date
-        if start_date.tzinfo is None:
-            start_date = start_date.replace(tzinfo=timezone.utc)
-        time_diff = now - start_date
-        logger.info(f"[DB] get_users_with_expired_trial: пользователь {i+1} - разница времени: {time_diff}")
-    return [dict(r) for r in rows]
+        referrer_id = getattr(user, 'referrer_id', None)
+        bonus_days = getattr(user, 'bonus_days', 0)
+        effective_trial_days = TRIAL_DAYS + bonus_days
+        
+        logger.info(f"[DB] USER: telegram_id={user['telegram_id']}, paid={user['paid']}, start_date={user['start_date']}, trial_expired_notified={user['trial_expired_notified']}, referrer_id={referrer_id}, bonus_days={bonus_days}, effective_trial_days={effective_trial_days}")
+        
+        # Проверяем только неоплаченных пользователей, которые еще не были уведомлены
+        if user['paid'] == False and user['trial_expired_notified'] == False:
+            start_date = user['start_date']
+            if start_date.tzinfo is None:
+                start_date = start_date.replace(tzinfo=timezone.utc)
+            
+            time_diff = now - start_date
+            diff_days = time_diff.total_seconds() / 86400
+            
+            logger.info(f"[DB] get_users_with_expired_trial: пользователь {user['telegram_id']} - разница времени: {time_diff}, дней: {diff_days}, эффективный пробный период: {effective_trial_days}")
+            
+            if diff_days >= effective_trial_days:
+                logger.info(f"[DB] get_users_with_expired_trial: пользователь {user['telegram_id']} - пробный период истек")
+                expired_users.append(dict(user))
+    
+    logger.info(f"[DB] get_users_with_expired_trial: найдено пользователей с истекшим пробным периодом = {len(expired_users)}")
+    return expired_users
 
 async def set_trial_expired_notified(telegram_id: str, notified: bool = True):
     from sqlalchemy import update

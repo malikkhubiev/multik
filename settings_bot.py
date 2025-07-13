@@ -131,9 +131,14 @@ async def trial_middleware(message: types.Message, state: FSMContext, handler):
         diff = now - start_date
         diff_days = diff.total_seconds() / 86400
         logger.info(f"[TRIAL_MW] now - start_date: {diff}, days: {diff.days}, diff_days: {diff_days}")
-        logger.info(f"[TRIAL_MW] TRIAL_DAYS: {TRIAL_DAYS}, paid: {user['paid']}")
-        if diff_days >= TRIAL_DAYS:
-            logger.info(f"[TRIAL_MW] TRIAL EXPIRED: diff_days >= TRIAL_DAYS")
+        
+        # Учитываем бонусные дни
+        bonus_days = user.get('bonus_days', 0)
+        effective_trial_days = TRIAL_DAYS + bonus_days
+        logger.info(f"[TRIAL_MW] TRIAL_DAYS: {TRIAL_DAYS}, bonus_days: {bonus_days}, effective_trial_days: {effective_trial_days}, paid: {user['paid']}")
+        
+        if diff_days >= effective_trial_days:
+            logger.info(f"[TRIAL_MW] TRIAL EXPIRED: diff_days >= effective_trial_days")
             # Показываем меню оплаты/удаления
             kb = InlineKeyboardMarkup(
                 inline_keyboard=[
