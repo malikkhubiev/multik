@@ -24,6 +24,9 @@ SETTINGS_BOT_TOKEN = os.getenv("SETTINGS_BOT_TOKEN")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 BOT_USERNAME = os.getenv("BOT_USERNAME")
 
+# Google Sheets Analytics
+GOOGLE_SHEETS_WEBHOOK_URL = os.getenv("GOOGLE_SHEETS_WEBHOOK_URL")
+
 # Логируем состояние критических переменных
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')

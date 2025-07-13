@@ -17,6 +17,8 @@ from sqlalchemy import select
 from utils import send_typing_action
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from analytics import log_question_asked, log_form_submission_confirmed, log_response_rating
+from form_auto_fill import form_auto_filler, create_form_preview_keyboard, create_form_preview_message
 
 router = APIRouter()
 
@@ -35,6 +37,18 @@ role = """
 - Если не знаешь что-то о чём спросили, честно скажи и дай вспомогательную инфу из базы
 - Используй красивые смайлики
 - Не продавай, а искренне помогай купить
+
+ДОПОЛНИТЕЛЬНЫЕ ПРАВИЛА ДЛЯ РАБОТЫ С ФОРМАМИ:
+- Если клиент упоминает информацию, которая может быть полезна для формы (имя, телефон, email, дата), запоминай это
+- Если клиент говорит "хочу записаться", "оставить заявку", "зарегистрироваться" - предложи заполнить форму
+- При заполнении формы будь дружелюбным и помогай клиенту
+- Если клиент не хочет заполнять форму сейчас, не настаивай, но предложи позже
+- Используй контекст разговора для автозаполнения формы
+- Если нужно отформатировать ответы для заполнения формы, делай это аккуратно и понятно
+- При сборе данных формы задавай вопросы по одному полю за раз, не перегружай клиента
+- Если клиент дает информацию для нескольких полей сразу, используй её для автозаполнения
+- НЕ упоминай пользователю о том, что ты собираешь данные для формы в процессе разговора
+- Показывай форму только когда пользователь сам просит оставить заявку
 """
 
 def clear_dispatcher_cache(token: str):
@@ -131,6 +145,9 @@ async def finish_form_collection(message: types.Message, form, bot):
     success = await save_form_submission(form["id"], str(message.from_user.id), form_data)
     
     if success:
+        # Логируем подтверждение отправки формы
+        await log_form_submission_confirmed(str(message.from_user.id), form["project_id"], form_data)
+        
         await message.answer(
             "✅ Спасибо! Ваша заявка принята.\n\n"
             "Мы свяжемся с вами в ближайшее время! 🚀"
@@ -247,7 +264,7 @@ async def handle_form_field_input(message: types.Message, state: FSMContext, bot
         # Показываем следующее поле
         await show_next_form_field(message, form, next_field_index, bot)
 
-async def check_and_start_form(message: types.Message, text: str, token: str, bot):
+async def check_and_start_form(message: types.Message, text: str, token: str, bot, conversation_history: str = ""):
     """Проверяет, нужно ли запустить форму, и запускает её при необходимости"""
     # Проверяем, есть ли форма у проекта
     form = await get_project_form_by_token(token)
@@ -268,10 +285,131 @@ async def check_and_start_form(message: types.Message, text: str, token: str, bo
     
     for keyword in form_keywords:
         if keyword in text_lower:
-            await start_form_collection(message, form, bot)
+            # Пытаемся автозаполнить форму на основе истории разговора
+            full_conversation = conversation_history + " " + text if conversation_history else text
+            auto_filled_data = form_auto_filler.auto_fill_form_data(full_conversation, form["fields"])
+            
+            if auto_filled_data:
+                # Если удалось автозаполнить хотя бы одно поле, показываем предварительный просмотр
+                await show_form_preview_with_auto_fill(message, form, auto_filled_data, bot)
+            else:
+                # Если не удалось автозаполнить, запускаем обычный процесс
+                await start_form_collection(message, form, bot)
             return True
     
     return False
+
+async def gradually_collect_form_data(message: types.Message, text: str, token: str, bot, conversation_history: str = ""):
+    """Незаметно собирает данные формы в процессе разговора"""
+    # Проверяем, есть ли форма у проекта
+    form = await get_project_form_by_token(token)
+    if not form or not form["fields"]:
+        return False
+    
+    # Извлекаем данные из текущего сообщения
+    extracted_data = form_auto_filler.extract_data_from_text(text)
+    
+    if extracted_data:
+        # Сохраняем извлеченные данные в состоянии пользователя
+        storage = bot_dispatchers[token][0].storage
+        state = FSMContext(storage=storage, key=types.Chat(id=message.chat.id, type="private"))
+        
+        # Получаем текущие данные формы
+        current_data = (await state.get_data()).get("form_data", {})
+        
+        # Обновляем данные
+        for key, value in extracted_data.items():
+            mapped_field = form_auto_filler.map_field_to_form_field(key, "text")
+            if mapped_field:
+                # Находим соответствующее поле в форме
+                for field in form["fields"]:
+                    field_mapped = form_auto_filler.map_field_to_form_field(field["name"], field["field_type"])
+                    if field_mapped == mapped_field:
+                        current_data[field["name"]] = value
+                        logging.info(f"[FORM] Незаметно сохранено поле '{field['name']}': {value}")
+                        break
+        
+        # Сохраняем обновленные данные
+        await state.update_data(form_data=current_data)
+        
+        # Если собрали достаточно данных, НЕ показываем пользователю, просто сохраняем
+        if len(current_data) >= len(form["fields"]) * 0.8:  # Если собрали больше 80% полей
+            logging.info(f"[FORM] Собрано достаточно данных для формы: {len(current_data)} из {len(form['fields'])} полей")
+            # Сохраняем информацию о том, что форма готова
+            await state.update_data(form_ready=True)
+    
+    return False
+
+async def check_and_show_completed_form(message: types.Message, text: str, token: str, bot):
+    """Проверяет, можно ли показать заполненную форму"""
+    # Проверяем, есть ли форма у проекта
+    form = await get_project_form_by_token(token)
+    if not form or not form["fields"]:
+        return False
+    
+    # Проверяем состояние пользователя
+    storage = bot_dispatchers[token][0].storage
+    state = FSMContext(storage=storage, key=types.Chat(id=message.chat.id, type="private"))
+    data = await state.get_data()
+    
+    form_data = data.get("form_data", {})
+    form_ready = data.get("form_ready", False)
+    
+    # Проверяем ключевые слова для показа формы
+    form_keywords = ["заявка", "записаться", "оставить заявку", "хочу записаться", "запись", "регистрация", "отправить", "готов"]
+    text_lower = text.lower()
+    
+    for keyword in form_keywords:
+        if keyword in text_lower:
+            # Если форма готова или почти готова, показываем её
+            if form_ready or len(form_data) >= len(form["fields"]) * 0.8:
+                await show_form_preview_with_auto_fill(message, form, form_data, bot)
+                return True
+            else:
+                # Если данных недостаточно, запускаем обычный процесс заполнения
+                await start_form_collection(message, form, bot)
+                return True
+    
+    return False
+
+async def show_form_preview_with_auto_fill(message: types.Message, form: dict, auto_filled_data: dict, bot):
+    """Показывает предварительный просмотр формы с автозаполненными данными"""
+    logging.info(f"[FORM] show_form_preview_with_auto_fill: user={message.from_user.id}")
+    
+    # Получаем токен проекта
+    from database import get_project_by_id
+    project = await get_project_by_id(form["project_id"])
+    if not project:
+        await message.answer("Ошибка: проект не найден")
+        return
+    
+    # Сохраняем данные формы в состоянии пользователя
+    storage = bot_dispatchers.get(project["token"])[0].storage
+    state = FSMContext(storage=storage, key=types.Chat(id=message.chat.id, type="private"))
+    
+    await state.update_data(
+        current_form=form,
+        current_field_index=0,
+        form_data=auto_filled_data,
+        auto_filled=True
+    )
+    await state.set_state(FormStates.collecting_form_data)
+    
+    # Показываем сообщение о том, что форма была автоматически заполнена
+    filled_fields = len([v for v in auto_filled_data.values() if v])
+    total_fields = len(form["fields"])
+    
+    if filled_fields >= total_fields * 0.8:
+        intro_message = f"🎉 Отлично! Я подготовил заявку на основе нашего разговора.\n\n"
+        intro_message += f"📋 Заполнено {filled_fields} из {total_fields} полей:\n\n"
+    else:
+        intro_message = "📋 Давайте заполним заявку:\n\n"
+    
+    # Показываем предварительный просмотр
+    preview_message = create_form_preview_message(auto_filled_data, form["fields"])
+    keyboard = create_form_preview_keyboard(auto_filled_data, form["id"])
+    
+    await message.answer(intro_message + preview_message, reply_markup=keyboard, parse_mode="Markdown")
 
 async def get_or_create_dispatcher(token: str, business_info: str):
     logging.info(f"[ASKING_BOT] get_or_create_dispatcher: token={token}")
@@ -332,8 +470,11 @@ async def get_or_create_dispatcher(token: str, business_info: str):
             project_token = projects[0]['token']
             logging.info(f"[ASKING_BOT] handle_question: найден токен проекта {project_token[:10]}... для пользователя {user_id}")
             
-            # Проверяем, нужно ли запустить форму
-            if await check_and_start_form(message, text, project_token, bot):
+            # Незаметно собираем данные формы в процессе разговора
+            await gradually_collect_form_data(message, text, project_token, bot)
+            
+            # Проверяем, нужно ли показать заполненную форму
+            if await check_and_show_completed_form(message, text, project_token, bot):
                 return
             
             logging.info(f"[ASKING_BOT] handle_question: отправляем typing action для пользователя {user_id}")
@@ -408,6 +549,12 @@ async def get_or_create_dispatcher(token: str, business_info: str):
                 is_trial=is_trial,
                 is_paid=is_paid
             )
+            
+            # Логируем заданный вопрос в аналитику
+            project_id = None
+            if projects and len(projects) > 0:
+                project_id = projects[0]['id']
+            await log_question_asked(str(user_id), project_id, text)
             logging.info(f"[ASKING] Ответ пользователю отправлен за {response_time:.2f} сек")
             logging.info(f"[ASKING] ВСЕГО времени на ответ: {response_time:.2f} сек")
         except Exception as e:
@@ -447,6 +594,9 @@ async def get_or_create_dispatcher(token: str, business_info: str):
             )
             
             if success:
+                # Логируем оценку в аналитику
+                await log_response_rating(str(callback_query.from_user.id), project_id, rating)
+                
                 await callback_query.answer("Спасибо за оценку! 👍" if rating else "Спасибо за оценку! 👎")
             else:
                 await callback_query.answer("Ошибка при сохранении оценки")
@@ -454,6 +604,88 @@ async def get_or_create_dispatcher(token: str, business_info: str):
         except Exception as e:
             logging.error(f"[RATING] handle_rating: ОШИБКА: {e}")
             await callback_query.answer("Произошла ошибка")
+    
+    # Обработчики для кнопок формы
+    @tg_router.callback_query(lambda c: c.data.startswith("submit_form_"))
+    async def handle_submit_form(callback_query: types.CallbackQuery):
+        """Обрабатывает подтверждение отправки формы"""
+        logging.info(f"[FORM] handle_submit_form: user={callback_query.from_user.id}")
+        
+        try:
+            form_id = callback_query.data.split('_')[2]
+            
+            # Получаем данные формы из состояния
+            storage = bot_dispatchers[token][0].storage
+            state = FSMContext(storage=storage, key=types.Chat(id=callback_query.message.chat.id, type="private"))
+            data = await state.get_data()
+            
+            form = data.get("current_form")
+            form_data = data.get("form_data", {})
+            
+            if not form:
+                await callback_query.answer("Ошибка: форма не найдена")
+                return
+            
+            # Сохраняем заявку
+            from database import save_form_submission
+            success = await save_form_submission(form["id"], str(callback_query.from_user.id), form_data)
+            
+            if success:
+                # Логируем подтверждение отправки формы
+                await log_form_submission_confirmed(str(callback_query.from_user.id), form["project_id"], form_data)
+                
+                await callback_query.message.edit_text(
+                    "✅ Спасибо! Ваша заявка принята.\n\n"
+                    "Мы свяжемся с вами в ближайшее время! 🚀"
+                )
+            else:
+                await callback_query.message.edit_text(
+                    "❌ Заявка уже была отправлена ранее.\n\n"
+                    "Спасибо за интерес к нашему проекту! 🙏"
+                )
+            
+            await state.clear()
+            
+        except Exception as e:
+            logging.error(f"[FORM] handle_submit_form: ОШИБКА: {e}")
+            await callback_query.answer("Произошла ошибка при отправке формы")
+    
+    @tg_router.callback_query(lambda c: c.data.startswith("edit_form_"))
+    async def handle_edit_form(callback_query: types.CallbackQuery):
+        """Обрабатывает запрос на ручное заполнение формы"""
+        logging.info(f"[FORM] handle_edit_form: user={callback_query.from_user.id}")
+        
+        try:
+            # Получаем данные формы из состояния
+            storage = bot_dispatchers[token][0].storage
+            state = FSMContext(storage=storage, key=types.Chat(id=callback_query.message.chat.id, type="private"))
+            data = await state.get_data()
+            
+            form = data.get("current_form")
+            form_data = data.get("form_data", {})
+            
+            if not form:
+                await callback_query.answer("Ошибка: форма не найдена")
+                return
+            
+            # Сбрасываем состояние и начинаем ручное заполнение
+            await state.update_data(
+                current_form=form,
+                current_field_index=0,
+                form_data=form_data,
+                auto_filled=False
+            )
+            
+            # Показываем первое поле
+            await show_next_form_field(callback_query.message, form, 0, bot)
+            
+            await callback_query.answer("Начинаем ручное заполнение формы")
+            
+        except Exception as e:
+            logging.error(f"[FORM] handle_edit_form: ОШИБКА: {e}")
+            await callback_query.answer("Произошла ошибка")
+    
+
     
     bot_dispatchers[token] = (dp, bot)
     return dp, bot
