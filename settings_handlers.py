@@ -58,7 +58,7 @@ async def handle_projects_command(message: types.Message, state: FSMContext, tel
         await state.update_data(selected_project_id=None, selected_project=None)
         projects = await get_projects_by_user(telegram_id)
         if not projects:
-            await message.answer("У вас пока нет проектов. Создайте первый проект командой /start", reply_markup=main_menu)
+            await message.answer("У вас пока нет проектов. Создайте первый проект командой /new", reply_markup=main_menu)
             return
         buttons = []
         for project in projects:

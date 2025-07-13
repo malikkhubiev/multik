@@ -233,7 +233,6 @@ async def _start_inner(message: types.Message, state: FSMContext):
                     ],
                     [
                         InlineKeyboardButton(text="💬 Оставить отзыв", callback_data="start_feedback"),
-                        InlineKeyboardButton(text="🆕 Новый проект", callback_data="start_new_project_alt")
                     ]
                 ]
             )
@@ -398,18 +397,6 @@ async def handle_feedback_button(message: types.Message, state: FSMContext):
         logging.error(f"[BUTTON] handle_feedback_button: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
         raise
 
-@settings_router.message(lambda message: message.text == "🆕 Новый проект")
-async def handle_new_project_button_alt(message: types.Message, state: FSMContext):
-    """Обработчик кнопки 'Новый проект' (альтернативная)"""
-    telegram_id = str(message.from_user.id)
-    logging.info(f"[BUTTON] handle_new_project_button_alt: пользователь {telegram_id} нажал кнопку '🆕 Новый проект'")
-    try:
-        await handle_new_project(message, state)
-        logging.info(f"[BUTTON] handle_new_project_button_alt: ✅ обработка завершена для пользователя {telegram_id}")
-    except Exception as e:
-        logging.error(f"[BUTTON] handle_new_project_button_alt: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
-        raise
-
 # Обработчики inline-кнопок для команды /start
 @settings_router.callback_query(lambda c: c.data == "start_projects")
 async def handle_start_projects(callback_query: types.CallbackQuery, state: FSMContext):
@@ -508,20 +495,6 @@ async def handle_start_feedback(callback_query: types.CallbackQuery, state: FSMC
     except Exception as e:
         logging.error(f"[INLINE] handle_start_feedback: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
         await callback_query.answer("Произошла ошибка при отправке отзыва")
-        raise
-
-@settings_router.callback_query(lambda c: c.data == "start_new_project_alt")
-async def handle_start_new_project_alt(callback_query: types.CallbackQuery, state: FSMContext):
-    """Обработчик inline-кнопки 'Новый проект' (альтернативная) из стартового меню"""
-    telegram_id = str(callback_query.from_user.id)
-    logging.info(f"[INLINE] handle_start_new_project_alt: пользователь {telegram_id} нажал inline-кнопку '🆕 Новый проект'")
-    try:
-        await handle_new_project(callback_query.message, state)
-        await callback_query.answer()
-        logging.info(f"[INLINE] handle_start_new_project_alt: ✅ обработка завершена для пользователя {telegram_id}")
-    except Exception as e:
-        logging.error(f"[INLINE] handle_start_new_project_alt: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
-        await callback_query.answer("Произошла ошибка при создании проекта")
         raise
 
 async def handle_pay_command(message: types.Message, state: FSMContext):
@@ -657,7 +630,7 @@ async def handle_projects_command(message: types.Message, state: FSMContext, tel
         await state.update_data(selected_project_id=None, selected_project=None)
         projects = await get_projects_by_user(telegram_id)
         if not projects:
-            await message.answer("У вас пока нет проектов. Создайте первый проект командой /start", reply_markup=main_menu)
+            await message.answer("У вас пока нет проектов. Создайте первый проект командой /new", reply_markup=main_menu)
             return
         # 1. Сначала формируем список кнопок
         buttons = []
@@ -1305,7 +1278,7 @@ main_menu = ReplyKeyboardMarkup(
         [KeyboardButton(text="📋 Проекты"), KeyboardButton(text="➕ Создать проект")],
         [KeyboardButton(text="💰 Оплата"), KeyboardButton(text="📊 Статистика")],
         [KeyboardButton(text="❓ Помощь"), KeyboardButton(text="🔗 Реферальная программа")],
-        [KeyboardButton(text="💬 Оставить отзыв"), KeyboardButton(text="🆕 Новый проект")]
+        [KeyboardButton(text="💬 Оставить отзыв")]
     ],
     resize_keyboard=True,
     one_time_keyboard=False
@@ -1380,7 +1353,7 @@ async def handle_projects_command(message: types.Message, state: FSMContext, tel
         await state.update_data(selected_project_id=None, selected_project=None)
         projects = await get_projects_by_user(telegram_id)
         if not projects:
-            await message.answer("У вас пока нет проектов. Создайте первый проект командой /start", reply_markup=main_menu)
+            await message.answer("У вас пока нет проектов. Создайте первый проект командой /new", reply_markup=main_menu)
             return
         buttons = []
         for project in projects:

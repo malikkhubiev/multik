@@ -61,36 +61,50 @@ async def forward_check_with_notice(message, notice_text=None):
         logging.info(f"[PAYMENT] forward_check_with_notice: отсортировано {len(user_payments_sorted)} платежей")
         
         if user_payments_sorted:
-            # Создаем новый pending платеж на основе последнего подтвержденного
-            last_amount = user_payments_sorted[-1]['amount']
-            logging.info(f"[PAYMENT] forward_check_with_notice: последний платеж = {last_amount}")
+            # Определяем правильную сумму для следующего платежа
+            from config import DISCOUNT_PAYMENT_AMOUNT, PAYMENT_AMOUNT
             
-            # Создаем новый pending платеж
+            # Подсчитываем количество подтвержденных платежей
+            confirmed_payments = [p for p in user_payments_sorted if p['status'] == 'confirmed']
+            payment_count = len(confirmed_payments)
+            
+            if payment_count == 0:
+                # Первый платеж - используем скидочную сумму
+                next_payment_amount = DISCOUNT_PAYMENT_AMOUNT
+                logging.info(f"[PAYMENT] forward_check_with_notice: первый платеж пользователя, сумма = {next_payment_amount}")
+            else:
+                # Повторный платеж - используем полную сумму
+                next_payment_amount = PAYMENT_AMOUNT
+                logging.info(f"[PAYMENT] forward_check_with_notice: повторный платеж пользователя (№{payment_count + 1}), сумма = {next_payment_amount}")
+            
+            # Создаем новый pending платеж с правильной суммой
             try:
-                await log_payment(telegram_id, last_amount, status='pending')
-                logging.info(f"[PAYMENT] forward_check_with_notice: ✅ новый pending платеж создан: пользователь {telegram_id}, сумма {last_amount}")
+                await log_payment(telegram_id, next_payment_amount, status='pending')
+                logging.info(f"[PAYMENT] forward_check_with_notice: ✅ новый pending платеж создан: пользователь {telegram_id}, сумма {next_payment_amount}")
             except Exception as db_error:
                 logging.error(f"[PAYMENT] forward_check_with_notice: ❌ ОШИБКА при создании pending платежа: {db_error}")
                 raise db_error
             
-            # Отправляем сумму отдельным SMS-сообщением
+            # Отправляем правильную сумму отдельным SMS-сообщением
             try:
-                await message.bot.send_message(MAIN_TELEGRAM_ID, f"💰 Сумма: {last_amount} руб.")
-                logging.info(f"[PAYMENT] forward_check_with_notice: ✅ отправлена текущая сумма {last_amount} админу отдельным SMS")
+                await message.bot.send_message(MAIN_TELEGRAM_ID, f"💰 Сумма: {next_payment_amount} руб.")
+                logging.info(f"[PAYMENT] forward_check_with_notice: ✅ отправлена правильная сумма {next_payment_amount} админу отдельным SMS")
             except Exception as amount_error:
-                logging.error(f"[PAYMENT] forward_check_with_notice: ❌ ОШИБКА при отправке суммы {last_amount}: {amount_error}")
+                logging.error(f"[PAYMENT] forward_check_with_notice: ❌ ОШИБКА при отправке суммы {next_payment_amount}: {amount_error}")
                 raise amount_error
             
-            if len(user_payments_sorted) > 1:
-                prev_amount = user_payments_sorted[-2]['amount']
-                logging.info(f"[PAYMENT] forward_check_with_notice: предыдущий платеж = {prev_amount}")
+            # Показываем информацию о предыдущих платежах
+            if len(confirmed_payments) > 0:
+                last_confirmed = confirmed_payments[-1]
+                prev_amount = last_confirmed['amount']
+                logging.info(f"[PAYMENT] forward_check_with_notice: последний подтвержденный платеж = {prev_amount}")
                 
-                # Отправляем предыдущую сумму отдельным SMS-сообщением
+                # Отправляем информацию о предыдущем платеже
                 try:
-                    await message.bot.send_message(MAIN_TELEGRAM_ID, f"📊 Предыдущая сумма: {prev_amount} руб.")
-                    logging.info(f"[PAYMENT] forward_check_with_notice: ✅ отправлена предыдущая сумма {prev_amount} админу отдельным SMS")
+                    await message.bot.send_message(MAIN_TELEGRAM_ID, f"📊 Последний подтвержденный платеж: {prev_amount} руб.")
+                    logging.info(f"[PAYMENT] forward_check_with_notice: ✅ отправлена информация о предыдущем платеже {prev_amount} админу")
                 except Exception as prev_amount_error:
-                    logging.error(f"[PAYMENT] forward_check_with_notice: ❌ ОШИБКА при отправке предыдущей суммы {prev_amount}: {prev_amount_error}")
+                    logging.error(f"[PAYMENT] forward_check_with_notice: ❌ ОШИБКА при отправке информации о предыдущем платеже {prev_amount}: {prev_amount_error}")
                     raise prev_amount_error
             else:
                 logging.info(f"[PAYMENT] forward_check_with_notice: это первый платеж пользователя")
