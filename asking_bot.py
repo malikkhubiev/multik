@@ -438,7 +438,15 @@ async def get_or_create_dispatcher(token: str, business_info: str):
     @tg_router.message(Command("start"))
     async def handle_start(message: types.Message):
         logging.info(f"[ASKING_BOT] handle_start: from user {message.from_user.id}, text: {message.text}")
-        await message.answer("Привет! Я готов отвечать на ваши вопросы о нашем бизнесе. Задайте вопрос!")
+        try:
+            await message.answer("Привет! Я готов отвечать на ваши вопросы о нашем бизнесе. Задайте вопрос!")
+        except Exception as e:
+            import traceback
+            logging.error(f"[ASKING_BOT] handle_start: error: {e}\n{traceback.format_exc()}")
+            # aiogram.exceptions.TelegramBadRequest: chat not found
+            if 'chat not found' in str(e):
+                logging.warning(f"[ASKING_BOT] handle_start: chat not found for chat_id={message.chat.id}")
+            # Не падаем, просто логируем
 
     @tg_router.message()
     async def handle_question(message: types.Message):
@@ -446,7 +454,13 @@ async def get_or_create_dispatcher(token: str, business_info: str):
         from utils import recognize_message_text
         text = await recognize_message_text(message, bot)
         if not text:
-            await message.answer("Пожалуйста, отправьте текстовое или голосовое сообщение с вопросом.")
+            try:
+                await message.answer("Пожалуйста, отправьте текстовое или голосовое сообщение с вопросом.")
+            except Exception as e:
+                import traceback
+                logging.error(f"[ASKING_BOT] handle_question: error: {e}\n{traceback.format_exc()}")
+                if 'chat not found' in str(e):
+                    logging.warning(f"[ASKING_BOT] handle_question: chat not found for chat_id={message.chat.id}")
             return
         logging.info(f"[ASKING_BOT] handle_question: user_id={user_id}, text={text}")
         
@@ -535,8 +549,14 @@ async def get_or_create_dispatcher(token: str, business_info: str):
             # Обрабатываем ссылки в ответе
             content_without_links, links = extract_links_from_text(content)
             
-            # Отправляем ответ без ссылок
-            response_message = await message.answer(content_without_links)
+            try:
+                response_message = await message.answer(content_without_links)
+            except Exception as e:
+                import traceback
+                logging.error(f"[ASKING_BOT] handle_question: error: {e}\n{traceback.format_exc()}")
+                if 'chat not found' in str(e):
+                    logging.warning(f"[ASKING_BOT] handle_question: chat not found for chat_id={message.chat.id}")
+                    return
             
             # Создаем клавиатуру с кнопками лайк/дизлайк используя ID отправленного сообщения
             rating_keyboard = create_rating_keyboard(str(response_message.message_id))
@@ -583,33 +603,26 @@ async def get_or_create_dispatcher(token: str, business_info: str):
     async def handle_rating(callback_query: types.CallbackQuery):
         """Обрабатывает нажатие на кнопки лайк/дизлайк"""
         logging.info(f"[RATING] handle_rating: user={callback_query.from_user.id}, data={callback_query.data}")
-        
         try:
             # Парсим данные из callback_data
             parts = callback_query.data.split('_')
             rating_type = parts[1]  # like или dislike
             message_id = parts[2]
-            
-            # Определяем рейтинг
             rating = True if rating_type == "like" else False
-            
+            # Сразу отвечаем пользователю для ускорения UI
+            await callback_query.answer("Спасибо за оценку! 👍" if rating else "Спасибо за оценку! 👎")
             # Получаем project_id если есть
             project_id = None
             from database import get_projects_by_user
             projects = await get_projects_by_user(str(callback_query.from_user.id))
             if projects:
                 project_id = projects[0]['id']
-            
             # Проверяем, не был ли уже сохранен рейтинг для этого сообщения
             from database import save_response_rating, check_existing_rating
-            
-            # Проверяем, есть ли уже рейтинг от этого пользователя для этого сообщения
             existing_rating = await check_existing_rating(str(callback_query.from_user.id), message_id)
-            
             if existing_rating:
-                await callback_query.answer("Вы уже оценили этот ответ")
+                # Уже оценено, ничего не делаем (ответ уже отправлен)
                 return
-            
             # Сохраняем рейтинг в базу данных
             success = await save_response_rating(
                 str(callback_query.from_user.id),
@@ -617,11 +630,9 @@ async def get_or_create_dispatcher(token: str, business_info: str):
                 rating,
                 project_id
             )
-            
             if success:
                 # Логируем оценку в аналитику
                 await log_response_rating(str(callback_query.from_user.id), project_id, rating)
-                
                 # Сохраняем статистику рейтинга
                 from database import log_rating_stat
                 await log_rating_stat(
@@ -630,22 +641,21 @@ async def get_or_create_dispatcher(token: str, business_info: str):
                     rating=rating,
                     project_id=project_id
                 )
-                
                 # Убираем кнопки рейтинга из сообщения
                 try:
                     await callback_query.message.edit_reply_markup(reply_markup=None)
                     logging.info(f"[RATING] Кнопки рейтинга убраны для сообщения {message_id}")
                 except Exception as edit_error:
                     logging.error(f"[RATING] Ошибка при удалении кнопок: {edit_error}")
-                
-                # Показываем подтверждение
-                await callback_query.answer("Спасибо за оценку! 👍" if rating else "Спасибо за оценку! 👎")
             else:
-                await callback_query.answer("Ошибка при сохранении оценки")
-                
+                # Ошибка при сохранении оценки (редко)
+                logging.error(f"[RATING] Ошибка при сохранении оценки в БД")
         except Exception as e:
             logging.error(f"[RATING] handle_rating: ОШИБКА: {e}")
-            await callback_query.answer("Произошла ошибка")
+            try:
+                await callback_query.answer("Произошла ошибка")
+            except Exception:
+                pass
     
     # Обработчики для кнопок формы
     @tg_router.callback_query(lambda c: c.data.startswith("submit_form_"))

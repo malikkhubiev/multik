@@ -349,6 +349,8 @@ async def get_users_with_expired_trial():
         # Безопасно получаем значения, которые могут отсутствовать
         referrer_id = getattr(user, 'referrer_id', None)
         bonus_days = getattr(user, 'bonus_days', 0)
+        if bonus_days is None:
+            bonus_days = 0
         effective_trial_days = TRIAL_DAYS + bonus_days
         
         logger.info(f"[DB] USER: telegram_id={user['telegram_id']}, paid={user['paid']}, start_date={user['start_date']}, trial_expired_notified={user['trial_expired_notified']}, referrer_id={referrer_id}, bonus_days={bonus_days}, effective_trial_days={effective_trial_days}")

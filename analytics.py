@@ -41,7 +41,7 @@ class AnalyticsTracker:
             logging.info(f"[ANALYTICS] log_user_action: {action} for user {user_id}")
             
             if self.webhook_url:
-                async with httpx.AsyncClient(timeout=10.0) as client:
+                async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
                     response = await client.post(self.webhook_url, json=data)
                     response.raise_for_status()
                     logging.info(f"[ANALYTICS] Данные успешно отправлены в Google Sheets")
