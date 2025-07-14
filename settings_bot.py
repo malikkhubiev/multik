@@ -22,6 +22,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import traceback
 import time
 import datetime
+import asyncio
 
 router = APIRouter()
 
@@ -398,85 +399,86 @@ async def handle_feedback_button(message: types.Message, state: FSMContext):
 async def handle_start_projects(callback_query: types.CallbackQuery, state: FSMContext):
     telegram_id = str(callback_query.from_user.id)
     logging.info(f"[INLINE] handle_start_projects: пользователь {telegram_id} нажал inline-кнопку '📋 Проекты'")
-    try:
-        await handle_projects_command(callback_query.message, state, telegram_id=telegram_id)
-        await callback_query.answer()
-        logging.info(f"[INLINE] handle_start_projects: ✅ обработка завершена для пользователя {telegram_id}")
-    except Exception as e:
-        logging.error(f"[INLINE] handle_start_projects: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
-        await callback_query.answer("Произошла ошибка при получении проектов")
-        raise
+    await callback_query.answer()
+    async def process():
+        try:
+            await handle_projects_command(callback_query.message, state, telegram_id=telegram_id)
+            logging.info(f"[INLINE] handle_start_projects: ✅ обработка завершена для пользователя {telegram_id}")
+        except Exception as e:
+            logging.error(f"[INLINE] handle_start_projects: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
+            await callback_query.answer("Произошла ошибка при получении проектов")
+    asyncio.create_task(process())
 
 @settings_router.callback_query(lambda c: c.data == "start_new_project")
 async def handle_start_new_project(callback_query: types.CallbackQuery, state: FSMContext):
-    """Обработчик inline-кнопки 'Создать проект' из стартового меню"""
     telegram_id = str(callback_query.from_user.id)
     logging.info(f"[INLINE] handle_start_new_project: пользователь {telegram_id} нажал inline-кнопку '➕ Создать проект'")
-    try:
-        await handle_new_project(callback_query.message, state)
-        await callback_query.answer()
-        logging.info(f"[INLINE] handle_start_new_project: ✅ обработка завершена для пользователя {telegram_id}")
-    except Exception as e:
-        logging.error(f"[INLINE] handle_start_new_project: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
-        await callback_query.answer("Произошла ошибка при создании проекта")
-        raise
+    await callback_query.answer()
+    async def process():
+        try:
+            await handle_new_project(callback_query.message, state)
+            logging.info(f"[INLINE] handle_start_new_project: ✅ обработка завершена для пользователя {telegram_id}")
+        except Exception as e:
+            logging.error(f"[INLINE] handle_start_new_project: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
+            await callback_query.answer("Произошла ошибка при создании проекта")
+    asyncio.create_task(process())
 
 @settings_router.callback_query(lambda c: c.data == "start_payment")
 async def handle_start_payment(callback_query: types.CallbackQuery, state: FSMContext):
-    """Обработчик inline-кнопки 'Оплата' из стартового меню"""
     telegram_id = str(callback_query.from_user.id)
     logging.info(f"[INLINE] handle_start_payment: пользователь {telegram_id} нажал inline-кнопку '💰 Оплата'")
-    try:
-        await handle_pay_command(callback_query.message, state)
-        await callback_query.answer()
-        logging.info(f"[INLINE] handle_start_payment: ✅ обработка завершена для пользователя {telegram_id}")
-    except Exception as e:
-        logging.error(f"[INLINE] handle_start_payment: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
-        await callback_query.answer("Произошла ошибка при обработке оплаты")
-        raise
+    await callback_query.answer()
+    async def process():
+        try:
+            await handle_pay_command(callback_query.message, state)
+            logging.info(f"[INLINE] handle_start_payment: ✅ обработка завершена для пользователя {telegram_id}")
+        except Exception as e:
+            logging.error(f"[INLINE] handle_start_payment: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
+            await callback_query.answer("Произошла ошибка при обработке оплаты")
+    asyncio.create_task(process())
 
 @settings_router.callback_query(lambda c: c.data == "start_help")
 async def handle_start_help(callback_query: types.CallbackQuery, state: FSMContext):
-    """Обработчик inline-кнопки 'Помощь' из стартового меню"""
     telegram_id = str(callback_query.from_user.id)
     logging.info(f"[INLINE] handle_start_help: пользователь {telegram_id} нажал inline-кнопку '❓ Помощь'")
-    try:
-        await handle_help_command(callback_query.message, state)
-        await callback_query.answer()
-        logging.info(f"[INLINE] handle_start_help: ✅ обработка завершена для пользователя {telegram_id}")
-    except Exception as e:
-        logging.error(f"[INLINE] handle_start_help: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
-        await callback_query.answer("Произошла ошибка при получении справки")
-        raise
+    await callback_query.answer()
+    async def process():
+        try:
+            await handle_help_command(callback_query.message, state)
+            logging.info(f"[INLINE] handle_start_help: ✅ обработка завершена для пользователя {telegram_id}")
+        except Exception as e:
+            logging.error(f"[INLINE] handle_start_help: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
+            await callback_query.answer("Произошла ошибка при получении справки")
+    asyncio.create_task(process())
 
 @settings_router.callback_query(lambda c: c.data == "start_referral")
 async def handle_start_referral(callback_query: types.CallbackQuery, state: FSMContext):
-    """Обработчик inline-кнопки 'Реферальная программа' из стартового меню"""
     telegram_id = str(callback_query.from_user.id)
     logging.info(f"[INLINE] handle_start_referral: пользователь {telegram_id} нажал inline-кнопку '🔗 Реферальная программа'")
-    try:
-        await handle_referral_command(callback_query.message, state)
-        await callback_query.answer()
-        logging.info(f"[INLINE] handle_start_referral: ✅ обработка завершена для пользователя {telegram_id}")
-    except Exception as e:
-        logging.error(f"[INLINE] handle_start_referral: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
-        await callback_query.answer("Произошла ошибка при получении реферальной ссылки")
-        raise
+    await callback_query.answer()
+    async def process():
+        try:
+            await handle_referral_command(callback_query.message, state)
+            logging.info(f"[INLINE] handle_start_referral: ✅ обработка завершена для пользователя {telegram_id}")
+        except Exception as e:
+            logging.error(f"[INLINE] handle_start_referral: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
+            await callback_query.answer("Произошла ошибка при получении реферальной ссылки")
+    asyncio.create_task(process())
 
 @settings_router.callback_query(lambda c: c.data == "start_feedback")
 async def handle_start_feedback(callback_query: types.CallbackQuery, state: FSMContext):
-    """Обработчик inline-кнопки 'Оставить отзыв' из стартового меню"""
     telegram_id = str(callback_query.from_user.id)
     logging.info(f"[INLINE] handle_start_feedback: пользователь {telegram_id} нажал inline-кнопку '💬 Оставить отзыв'")
-    try:
-        from settings_feedback import handle_feedback_command
-        await handle_feedback_command(callback_query.message, state)
-        await callback_query.answer()
-        logging.info(f"[INLINE] handle_start_feedback: ✅ обработка завершена для пользователя {telegram_id}")
-    except Exception as e:
-        logging.error(f"[INLINE] handle_start_feedback: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
-        await callback_query.answer("Произошла ошибка при отправке отзыва")
-        raise
+    await callback_query.answer()
+    async def process():
+        try:
+            from settings_feedback import handle_feedback_command
+            await handle_feedback_command(callback_query.message, state)
+            logging.info(f"[INLINE] handle_start_feedback: ✅ обработка завершена для пользователя {telegram_id}")
+        except Exception as e:
+            logging.error(f"[INLINE] handle_start_feedback: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
+            await callback_query.answer("Произошла ошибка при отправке отзыва")
+    asyncio.create_task(process())
 
 async def handle_pay_command(message: types.Message, state: FSMContext):
     """Обработчик команды оплаты"""
@@ -638,59 +640,68 @@ async def handle_projects_command(message: types.Message, state: FSMContext, tel
 
 @settings_router.callback_query(lambda c: c.data.startswith('project_'))
 async def handle_project_selection(callback_query: types.CallbackQuery, state: FSMContext):
-    logging.info(f"[BOT] handle_project_selection: user={callback_query.from_user.id}, data={callback_query.data}")
-    project_id = callback_query.data.replace('project_', '')
-    logger.info(f"Project selected: {project_id}")
-    try:
-        project = await get_project_by_id(project_id)
-        if not project:
-            await callback_query.answer("Проект не найден")
-            return
-        # Сохраняем выбранный проект в состоянии
-        await state.update_data(selected_project_id=project_id, selected_project=project)
-        # Проверяем, есть ли форма у проекта
-        from database import get_project_form
-        form = await get_project_form(project_id)
-        # --- Исправление: инициализация buttons ---
-        buttons = []
-        # Добавляем кнопку формы в зависимости от наличия формы
-        if form:
-            buttons.append([types.InlineKeyboardButton(text="Добавить форму", callback_data="manage_form")])
-        else:
-            buttons.append([types.InlineKeyboardButton(text="Создать форму", callback_data="create_form")])
-        # Меню управления проектом
-        buttons += [
-            [types.InlineKeyboardButton(text="Показать данные", callback_data="show_data")],
-            [types.InlineKeyboardButton(text="Добавить данные", callback_data="add_data")],
-            [types.InlineKeyboardButton(text="Изменить данные", callback_data="change_data")],
-            [types.InlineKeyboardButton(text="Переименовать проект", callback_data="rename_project")],
-            [types.InlineKeyboardButton(text="Удалить проект", callback_data="delete_project")]
-        ]
-        keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
-        await callback_query.message.edit_text(
-            f"Проект: {project['project_name']}\n\nВыберите действие:",
-            reply_markup=keyboard
-        )
-    except Exception as e:
-        logger.error(f"Error in handle_project_selection: {e}")
-        await callback_query.answer("Произошла ошибка")
+    await callback_query.answer()
+    async def process():
+        logging.info(f"[BOT] handle_project_selection: user={callback_query.from_user.id}, data={callback_query.data}")
+        project_id = callback_query.data.replace('project_', '')
+        logger.info(f"Project selected: {project_id}")
+        try:
+            project = await get_project_by_id(project_id)
+            if not project:
+                await callback_query.answer("Проект не найден")
+                return
+            # Сохраняем выбранный проект в состоянии
+            await state.update_data(selected_project_id=project_id, selected_project=project)
+            # Проверяем, есть ли форма у проекта
+            from database import get_project_form
+            form = await get_project_form(project_id)
+            # --- Исправление: инициализация buttons ---
+            buttons = []
+            # Добавляем кнопку формы в зависимости от наличия формы
+            if form:
+                buttons.append([types.InlineKeyboardButton(text="Добавить форму", callback_data="manage_form")])
+            else:
+                buttons.append([types.InlineKeyboardButton(text="Создать форму", callback_data="create_form")])
+            # Меню управления проектом
+            buttons += [
+                [types.InlineKeyboardButton(text="Показать данные", callback_data="show_data")],
+                [types.InlineKeyboardButton(text="Добавить данные", callback_data="add_data")],
+                [types.InlineKeyboardButton(text="Изменить данные", callback_data="change_data")],
+                [types.InlineKeyboardButton(text="Переименовать проект", callback_data="rename_project")],
+                [types.InlineKeyboardButton(text="Удалить проект", callback_data="delete_project")]
+            ]
+            keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
+            await callback_query.message.edit_text(
+                f"Проект: {project['project_name']}\n\nВыберите действие:",
+                reply_markup=keyboard
+            )
+        except Exception as e:
+            logger.error(f"Error in handle_project_selection: {e}")
+            await callback_query.answer("Произошла ошибка")
+    asyncio.create_task(process())
 
 @settings_router.callback_query(lambda c: c.data == "back_to_projects")
 async def handle_back_to_projects(callback_query: types.CallbackQuery, state: FSMContext):
-    """Возврат к списку проектов (использует telegram_id из состояния)"""
-    data = await state.get_data()
-    telegram_id = data.get("telegram_id")
-    if not telegram_id:
-        telegram_id = str(callback_query.from_user.id)
-    # Очищаем только выбор проекта
-    await state.update_data(selected_project_id=None, selected_project=None)
-    await handle_projects_command(callback_query.message, state, telegram_id=telegram_id)
+    await callback_query.answer()
+    async def process():
+        """Возврат к списку проектов (использует telegram_id из состояния)"""
+        data = await state.get_data()
+        telegram_id = data.get("telegram_id")
+        if not telegram_id:
+            telegram_id = str(callback_query.from_user.id)
+        # Очищаем только выбор проекта
+        await state.update_data(selected_project_id=None, selected_project=None)
+        await handle_projects_command(callback_query.message, state, telegram_id=telegram_id)
+    asyncio.create_task(process())
 
 @settings_router.callback_query(lambda c: c.data == "rename_project")
 async def handle_rename_project(callback_query: types.CallbackQuery, state: FSMContext):
-    logging.info(f"[BOT] handle_rename_project: user={callback_query.from_user.id}")
-    await callback_query.message.edit_text("Введите новое название проекта:")
-    await state.set_state(SettingsStates.waiting_for_new_project_name)
+    await callback_query.answer()
+    async def process():
+        logging.info(f"[BOT] handle_rename_project: user={callback_query.from_user.id}")
+        await callback_query.message.edit_text("Введите новое название проекта:")
+        await state.set_state(SettingsStates.waiting_for_new_project_name)
+    asyncio.create_task(process())
 
 @settings_router.message(SettingsStates.waiting_for_new_project_name)
 async def handle_new_project_name(message: types.Message, state: FSMContext):
@@ -725,14 +736,17 @@ async def handle_new_project_name(message: types.Message, state: FSMContext):
 
 @settings_router.callback_query(lambda c: c.data == "add_data")
 async def handle_add_data(callback_query: types.CallbackQuery, state: FSMContext):
-    logging.info(f"[BOT] handle_add_data: user={callback_query.from_user.id}")
-    await callback_query.message.edit_text(
-        "Отправьте дополнительные данные о бизнесе одним из способов:\n"
-        "1️⃣ Загрузите файл (txt, docx, pdf)\n"
-        "2️⃣ Просто отправьте текст сообщением\n"
-        "3️⃣ Или отправьте голосовое сообщение (мы преобразуем его в текст)"
-    )
-    await state.set_state(SettingsStates.waiting_for_additional_data_file)
+    await callback_query.answer()
+    async def process():
+        logging.info(f"[BOT] handle_add_data: user={callback_query.from_user.id}")
+        await callback_query.message.edit_text(
+            "Отправьте дополнительные данные о бизнесе одним из способов:\n"
+            "1️⃣ Загрузите файл (txt, docx, pdf)\n"
+            "2️⃣ Просто отправьте текст сообщением\n"
+            "3️⃣ Или отправьте голосовое сообщение (мы преобразуем его в текст)"
+        )
+        await state.set_state(SettingsStates.waiting_for_additional_data_file)
+    asyncio.create_task(process())
 
 @settings_router.message(SettingsStates.waiting_for_additional_data_file)
 async def handle_additional_data_file(message: types.Message, state: FSMContext):

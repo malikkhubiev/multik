@@ -611,45 +611,53 @@ async def get_or_create_dispatcher(token: str, business_info: str):
             rating = True if rating_type == "like" else False
             # Сразу отвечаем пользователю для ускорения UI
             await callback_query.answer("Спасибо за оценку! 👍" if rating else "Спасибо за оценку! 👎")
-            # Получаем project_id если есть
-            project_id = None
-            from database import get_projects_by_user
-            projects = await get_projects_by_user(str(callback_query.from_user.id))
-            if projects:
-                project_id = projects[0]['id']
-            # Проверяем, не был ли уже сохранен рейтинг для этого сообщения
-            from database import save_response_rating, check_existing_rating
-            existing_rating = await check_existing_rating(str(callback_query.from_user.id), message_id)
-            if existing_rating:
-                # Уже оценено, ничего не делаем (ответ уже отправлен)
-                return
-            # Сохраняем рейтинг в базу данных
-            success = await save_response_rating(
-                str(callback_query.from_user.id),
-                message_id,
-                rating,
-                project_id
-            )
-            if success:
-                # Логируем оценку в аналитику
-                await log_response_rating(str(callback_query.from_user.id), project_id, rating)
-                # Сохраняем статистику рейтинга
-                from database import log_rating_stat
-                await log_rating_stat(
-                    telegram_id=str(callback_query.from_user.id),
-                    message_id=message_id,
-                    rating=rating,
-                    project_id=project_id
-                )
-                # Убираем кнопки рейтинга из сообщения
+
+            # Все дальнейшие действия — в фоне, чтобы не тормозить UI
+            async def process_rating():
                 try:
-                    await callback_query.message.edit_reply_markup(reply_markup=None)
-                    logging.info(f"[RATING] Кнопки рейтинга убраны для сообщения {message_id}")
-                except Exception as edit_error:
-                    logging.error(f"[RATING] Ошибка при удалении кнопок: {edit_error}")
-            else:
-                # Ошибка при сохранении оценки (редко)
-                logging.error(f"[RATING] Ошибка при сохранении оценки в БД")
+                    # Получаем project_id если есть
+                    project_id = None
+                    from database import get_projects_by_user
+                    projects = await get_projects_by_user(str(callback_query.from_user.id))
+                    if projects:
+                        project_id = projects[0]['id']
+                    # Проверяем, не был ли уже сохранен рейтинг для этого сообщения
+                    from database import save_response_rating, check_existing_rating
+                    existing_rating = await check_existing_rating(str(callback_query.from_user.id), message_id)
+                    if existing_rating:
+                        # Уже оценено, ничего не делаем (ответ уже отправлен)
+                        return
+                    # Сохраняем рейтинг в базу данных
+                    success = await save_response_rating(
+                        str(callback_query.from_user.id),
+                        message_id,
+                        rating,
+                        project_id
+                    )
+                    if success:
+                        # Логируем оценку в аналитику
+                        await log_response_rating(str(callback_query.from_user.id), project_id, rating)
+                        # Сохраняем статистику рейтинга
+                        from database import log_rating_stat
+                        await log_rating_stat(
+                            telegram_id=str(callback_query.from_user.id),
+                            message_id=message_id,
+                            rating=rating,
+                            project_id=project_id
+                        )
+                        # Убираем кнопки рейтинга из сообщения
+                        try:
+                            await callback_query.message.edit_reply_markup(reply_markup=None)
+                            logging.info(f"[RATING] Кнопки рейтинга убраны для сообщения {message_id}")
+                        except Exception as edit_error:
+                            logging.error(f"[RATING] Ошибка при удалении кнопок: {edit_error}")
+                    else:
+                        # Ошибка при сохранении оценки (редко)
+                        logging.error(f"[RATING] Ошибка при сохранении оценки в БД")
+                except Exception as e:
+                    logging.error(f"[RATING] handle_rating (async): ОШИБКА: {e}")
+            # Запускаем в фоне
+            asyncio.create_task(process_rating())
         except Exception as e:
             logging.error(f"[RATING] handle_rating: ОШИБКА: {e}")
             try:
@@ -662,30 +670,21 @@ async def get_or_create_dispatcher(token: str, business_info: str):
     async def handle_submit_form(callback_query: types.CallbackQuery):
         """Обрабатывает подтверждение отправки формы"""
         logging.info(f"[FORM] handle_submit_form: user={callback_query.from_user.id}")
-        
         try:
             form_id = callback_query.data.split('_')[2]
-            
             # Получаем данные формы из состояния
             storage = bot_dispatchers[token][0].storage
             state = FSMContext(storage=storage, key=types.Chat(id=callback_query.message.chat.id, type="private"))
             data = await state.get_data()
-            
             form = data.get("current_form")
             form_data = data.get("form_data", {})
-            
             if not form:
                 await callback_query.answer("Ошибка: форма не найдена")
                 return
-            
-            # Сохраняем заявку
+            # Сохраняем заявку и отправляем UI-ответ мгновенно
             from database import save_form_submission
             success = await save_form_submission(form["id"], str(callback_query.from_user.id), form_data)
-            
             if success:
-                # Логируем подтверждение отправки формы
-                await log_form_submission_confirmed(str(callback_query.from_user.id), form["project_id"], form_data)
-                
                 await callback_query.message.edit_text(
                     "✅ Спасибо! Ваша заявка принята.\n\n"
                     "Мы свяжемся с вами в ближайшее время! 🚀"
@@ -695,31 +694,33 @@ async def get_or_create_dispatcher(token: str, business_info: str):
                     "❌ Заявка уже была отправлена ранее.\n\n"
                     "Спасибо за интерес к нашему проекту! 🙏"
                 )
-            
-            await state.clear()
-            
+            # Все дальнейшие действия — в фоне
+            async def process_form_submit():
+                try:
+                    if success:
+                        await log_form_submission_confirmed(str(callback_query.from_user.id), form["project_id"], form_data)
+                    await state.clear()
+                except Exception as e:
+                    logging.error(f"[FORM] handle_submit_form (async): ОШИБКА: {e}")
+            asyncio.create_task(process_form_submit())
         except Exception as e:
             logging.error(f"[FORM] handle_submit_form: ОШИБКА: {e}")
             await callback_query.answer("Произошла ошибка при отправке формы")
-    
+
     @tg_router.callback_query(lambda c: c.data.startswith("edit_form_"))
     async def handle_edit_form(callback_query: types.CallbackQuery):
         """Обрабатывает запрос на ручное заполнение формы"""
         logging.info(f"[FORM] handle_edit_form: user={callback_query.from_user.id}")
-        
         try:
             # Получаем данные формы из состояния
             storage = bot_dispatchers[token][0].storage
             state = FSMContext(storage=storage, key=types.Chat(id=callback_query.message.chat.id, type="private"))
             data = await state.get_data()
-            
             form = data.get("current_form")
             form_data = data.get("form_data", {})
-            
             if not form:
                 await callback_query.answer("Ошибка: форма не найдена")
                 return
-            
             # Сбрасываем состояние и начинаем ручное заполнение
             await state.update_data(
                 current_form=form,
@@ -727,12 +728,9 @@ async def get_or_create_dispatcher(token: str, business_info: str):
                 form_data=form_data,
                 auto_filled=False
             )
-            
-            # Показываем первое поле
             await show_next_form_field(callback_query.message, form, 0, bot)
-            
             await callback_query.answer("Начинаем ручное заполнение формы")
-            
+            # Все дальнейшие действия — в фоне (если появятся)
         except Exception as e:
             logging.error(f"[FORM] handle_edit_form: ОШИБКА: {e}")
             await callback_query.answer("Произошла ошибка")
