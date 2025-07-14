@@ -213,7 +213,6 @@ async def _start_inner(message: types.Message, state: FSMContext):
 Здесь вы можете:
 • 📋 Управлять проектами и создавать новые
 • 💰 Оплачивать подписку и продлевать доступ
-• 📊 Просматривать статистику и аналитику
 • 💬 Оставлять отзывы о сервисе
 • 🔗 Участвовать в реферальной программе
 • ❓ Получать помощь и справку
@@ -237,20 +236,18 @@ async def _start_inner(message: types.Message, state: FSMContext):
             # Создаем inline-клавиатуру для главного меню
             start_menu_keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [
-                        InlineKeyboardButton(text="📋 Проекты", callback_data="start_projects"),
-                        InlineKeyboardButton(text="➕ Создать проект", callback_data="start_new_project")
-                    ],
-                    [
-                        InlineKeyboardButton(text="💰 Оплата", callback_data="start_payment")
-                    ],
-                    [
-                        InlineKeyboardButton(text="❓ Помощь", callback_data="start_help"),
-                        InlineKeyboardButton(text="🔗 Реферальная программа", callback_data="start_referral")
+                    [InlineKeyboardButton(text="➕ Создать проект", callback_data="start_new_project"),
+                        InlineKeyboardButton(text="📋 Мои проекты", callback_data="start_projects")
                     ],
                     [
                         InlineKeyboardButton(text="💬 Оставить отзыв", callback_data="start_feedback"),
-                    ]
+                    ],
+                    [
+                        InlineKeyboardButton(text="🔗 Реферальная программа", callback_data="start_referral"),
+                    ],
+                                        [
+                        InlineKeyboardButton(text="💰 Оплата", callback_data="start_payment")
+                    ],
                 ]
             )
             
@@ -651,26 +648,24 @@ async def handle_project_selection(callback_query: types.CallbackQuery, state: F
             return
         # Сохраняем выбранный проект в состоянии
         await state.update_data(selected_project_id=project_id, selected_project=project)
-        
         # Проверяем, есть ли форма у проекта
         from database import get_project_form
         form = await get_project_form(project_id)
-
-                # Добавляем кнопку формы в зависимости от наличия формы
+        # --- Исправление: инициализация buttons ---
+        buttons = []
+        # Добавляем кнопку формы в зависимости от наличия формы
         if form:
             buttons.append([types.InlineKeyboardButton(text="Добавить форму", callback_data="manage_form")])
         else:
             buttons.append([types.InlineKeyboardButton(text="Создать форму", callback_data="create_form")])
-        
-        # Создаем меню управления проектом
-        buttons = [
+        # Меню управления проектом
+        buttons += [
             [types.InlineKeyboardButton(text="Показать данные", callback_data="show_data")],
             [types.InlineKeyboardButton(text="Добавить данные", callback_data="add_data")],
-            [types.InlineKeyboardButton(text="Изменить данные", callback_data="change_data")]
+            [types.InlineKeyboardButton(text="Изменить данные", callback_data="change_data")],
             [types.InlineKeyboardButton(text="Переименовать проект", callback_data="rename_project")],
+            [types.InlineKeyboardButton(text="Удалить проект", callback_data="delete_project")]
         ]
-        
-        buttons.append([types.InlineKeyboardButton(text="Удалить проект", callback_data="delete_project")])
         keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
         await callback_query.message.edit_text(
             f"Проект: {project['project_name']}\n\nВыберите действие:",
@@ -1228,10 +1223,10 @@ async def _handle_any_message_inner(message: types.Message, state: FSMContext):
 # Главное меню с кнопками
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="📋 Проекты"), KeyboardButton(text="➕ Создать проект")],
-        [KeyboardButton(text="💰 Оплата")],
-        [KeyboardButton(text="❓ Помощь"), KeyboardButton(text="🔗 Реферальная программа")],
-        [KeyboardButton(text="💬 Оставить отзыв")]
+        [KeyboardButton(text="➕ Создать проект"), KeyboardButton(text="📋 Проекты")],
+        [KeyboardButton(text="💬 Оставить отзыв")],
+        [KeyboardButton(text="🔗 Реферальная программа")],
+        [KeyboardButton(text="💰 Оплата")]
     ],
     resize_keyboard=True,
     one_time_keyboard=False
@@ -1242,16 +1237,16 @@ async def handle_settings_start(message: types.Message, state: FSMContext):
     logger.info(f"/start received from user {message.from_user.id}")
     try:
         await state.clear()
-        # Проверяем, есть ли реферальный параметр в команде /start
         referrer_id = None
         if message.text and message.text.startswith('/start'):
             parts = message.text.split()
             if len(parts) > 1 and parts[1].startswith('ref'):
-                referrer_id = parts[1][3:]  # Убираем 'ref' из начала
+                referrer_id = parts[1][3:]
                 logger.info(f"[REFERRAL] handle_settings_start: пользователь {message.from_user.id} пришел по реферальной ссылке от {referrer_id}")
-        
         await create_user(str(message.from_user.id), referrer_id)
-        await message.answer("Добро пожаловать в настройки! Введите имя вашего проекта.", reply_markup=main_menu)
+        # --- Новое: строка с днями ---
+        days_text = await get_days_left_text(str(message.from_user.id))
+        await message.answer(days_text + "Добро пожаловать в настройки! Введите имя вашего проекта.", reply_markup=main_menu)
         await state.set_state(SettingsStates.waiting_for_project_name)
         logger.info(f"Sent welcome message to user {message.from_user.id}")
     except Exception as e:
@@ -1628,3 +1623,38 @@ async def handle_export_form(callback_query: types.CallbackQuery, state: FSMCont
     except Exception as e:
         logging.error(f"[FORM] handle_export_form: ОШИБКА: {e}")
         await callback_query.answer("Ошибка при создании Excel файла")
+
+async def get_days_left_text(telegram_id: str) -> str:
+    user = await get_user_by_id(telegram_id)
+    if not user:
+        return ""
+    if user.get("paid"):
+        payments = await get_payments()
+        confirmed = [p for p in payments if str(p['telegram_id']) == telegram_id and p['status'] == 'confirmed']
+        if confirmed:
+            last_paid = max(confirmed, key=lambda p: p['paid_at'])
+            from datetime import datetime, timezone
+            paid_at = last_paid['paid_at']
+            if isinstance(paid_at, str):
+                from dateutil.parser import parse
+                paid_at = parse(paid_at)
+            now = datetime.now(timezone.utc)
+            days_left = 30 - (now - paid_at).days
+            if days_left < 0:
+                days_left = 0
+            return f"До конца оплаченного периода: {days_left} дней.\n"
+        else:
+            return "Подписка активна.\n"
+    else:
+        start_date = user.get("start_date")
+        if isinstance(start_date, str):
+            from dateutil.parser import parse
+            start_date = parse(start_date)
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        bonus_days = user.get('bonus_days', 0) or 0
+        effective_trial_days = TRIAL_DAYS + bonus_days
+        days_left = effective_trial_days - (now - start_date).days
+        if days_left < 0:
+            days_left = 0
+        return f"До конца пробного периода: {days_left} дней.\n"
