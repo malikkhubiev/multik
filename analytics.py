@@ -29,13 +29,25 @@ class AnalyticsTracker:
         """
         try:
             timestamp = datetime.now(timezone.utc).isoformat()
-            
+            # --- Новый формат additional_data ---
+            readable_data = ""
+            if additional_data:
+                # Если это {'question_text': ...} или {'form_name': ...}
+                if (len(additional_data) == 1 and isinstance(list(additional_data.values())[0], str)):
+                    readable_data = list(additional_data.values())[0]
+                # Если это {'form_data': {...}}
+                elif 'form_data' in additional_data and isinstance(additional_data['form_data'], dict):
+                    # Просто значения полей формы через запятую
+                    readable_data = ', '.join(str(v) for v in additional_data['form_data'].values())
+                else:
+                    # fallback: сериализуем в строку
+                    readable_data = json.dumps(additional_data, ensure_ascii=False)
             data = {
                 "timestamp": timestamp,
                 "user_id": user_id,
                 "action": action,
                 "project_id": project_id or "",
-                "additional_data": json.dumps(additional_data) if additional_data else ""
+                "additional_data": readable_data
             }
             
             logging.info(f"[ANALYTICS] log_user_action: {action} for user {user_id}")
