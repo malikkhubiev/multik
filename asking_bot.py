@@ -28,7 +28,7 @@ bot_dispatchers = {}
 class FormStates(StatesGroup):
     collecting_form_data = State()
 
-role = """
+role_base = """
 Ты - самый npl-прокаченный менеджер по продажам.
 Правила общения:
 - Не используй markdown при ответе
@@ -37,10 +37,12 @@ role = """
 - Если не знаешь что-то о чём спросили, честно скажи и дай вспомогательную инфу из базы
 - Используй красивые смайлики
 - Не продавай, а искренне помогай купить
+"""
 
-ДОПОЛНИТЕЛЬНЫЕ ПРАВИЛА ДЛЯ РАБОТЫ С ФОРМАМИ:
+role_form = """
+\nДОПОЛНИТЕЛЬНЫЕ ПРАВИЛА ДЛЯ РАБОТЫ С ФОРМАМИ:
 - Если клиент упоминает информацию, которая может быть полезна для формы (имя, телефон, email, дата), запоминай это
-- Если клиент говорит "хочу записаться", "оставить заявку", "зарегистрироваться" - предложи заполнить форму
+- Если клиент говорит \"хочу записаться\", \"оставить заявку\", \"зарегистрироваться\" - предложи заполнить форму
 - При заполнении формы будь дружелюбным и помогай клиенту
 - Если клиент не хочет заполнять форму сейчас, не настаивай, но предложи позже
 - Используй контекст разговора для автозаполнения формы
@@ -468,17 +470,19 @@ async def get_or_create_dispatcher(token: str, business_info: str):
         projects = await get_projects_by_user(str(user_id))
         logging.info(f"[ASKING_BOT] handle_question: найдено проектов для пользователя {user_id}: {len(projects)}")
         
+        # --- NEW: Determine if form exists for the project and set prompt accordingly ---
+        prompt = role_base
         if projects and len(projects) > 0:
             project_token = projects[0]['token']
-            logging.info(f"[ASKING_BOT] handle_question: найден токен проекта {project_token[:10]}... для пользователя {user_id}")
-            
             # Незаметно собираем данные формы в процессе разговора
             await gradually_collect_form_data(message, text, project_token, bot)
-            
             # Проверяем, нужно ли показать заполненную форму
             if await check_and_show_completed_form(message, text, project_token, bot):
                 return
-            
+            # Check if form exists for this project
+            form = await get_project_form_by_token(project_token)
+            if form and form.get('fields'):
+                prompt += role_form
             logging.info(f"[ASKING_BOT] handle_question: отправляем typing action для пользователя {user_id}")
             # Используем тот же токен проекта для typing action
             try:
@@ -512,7 +516,7 @@ async def get_or_create_dispatcher(token: str, business_info: str):
             payload = {
                 "model": "deepseek-chat",
                 "messages": [
-                    {"role": "system", "content": role + f"Отвечай на вопросы клиентов на основе информации о бизнесе: {business_info}"},
+                    {"role": "system", "content": prompt + f"Отвечай на вопросы клиентов на основе информации о бизнесе: {business_info}"},
                     {"role": "user", "content": f"Ответь на вопрос клиента: {text}"}
                 ],
                 "temperature": 0.9
