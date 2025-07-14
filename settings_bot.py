@@ -242,8 +242,7 @@ async def _start_inner(message: types.Message, state: FSMContext):
                         InlineKeyboardButton(text="➕ Создать проект", callback_data="start_new_project")
                     ],
                     [
-                        InlineKeyboardButton(text="💰 Оплата", callback_data="start_payment"),
-                        InlineKeyboardButton(text="📊 Статистика", callback_data="start_stats")
+                        InlineKeyboardButton(text="💰 Оплата", callback_data="start_payment")
                     ],
                     [
                         InlineKeyboardButton(text="❓ Помощь", callback_data="start_help"),
@@ -327,11 +326,10 @@ async def projects_with_trial_middleware(message: types.Message, state: FSMConte
 # Обработчики кнопок главного меню
 @settings_router.message(lambda message: message.text == "📋 Проекты")
 async def handle_projects_button(message: types.Message, state: FSMContext):
-    """Обработчик кнопки 'Проекты'"""
     telegram_id = str(message.from_user.id)
     logging.info(f"[BUTTON] handle_projects_button: пользователь {telegram_id} нажал кнопку '📋 Проекты'")
     try:
-        await handle_projects_command(message, state)
+        await handle_projects_command(message, state, telegram_id=telegram_id)
         logging.info(f"[BUTTON] handle_projects_button: ✅ обработка завершена для пользователя {telegram_id}")
     except Exception as e:
         logging.error(f"[BUTTON] handle_projects_button: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
@@ -361,11 +359,6 @@ async def handle_payment_button(message: types.Message, state: FSMContext):
         logging.error(f"[BUTTON] handle_payment_button: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
         raise
 
-# @settings_router.message(lambda message: message.text == "📊 Статистика")
-# async def handle_stats_button(message: types.Message, state: FSMContext):
-#     """Обработчик кнопки 'Статистика'"""
-#     await message.answer("📊 Статистика доступна по адресу:\nhttps://multik.onrender.com/stats")
-
 @settings_router.message(lambda message: message.text == "❓ Помощь")
 async def handle_help_button(message: types.Message, state: FSMContext):
     """Обработчик кнопки 'Помощь'"""
@@ -390,18 +383,6 @@ async def handle_referral_button(message: types.Message, state: FSMContext):
         logging.error(f"[BUTTON] handle_referral_button: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
         raise
 
-@settings_router.message(lambda message: message.text == "📊 Статистика")
-async def handle_stats_button(message: types.Message, state: FSMContext):
-    """Обработчик кнопки 'Статистика'"""
-    telegram_id = str(message.from_user.id)
-    logging.info(f"[BUTTON] handle_stats_button: пользователь {telegram_id} нажал кнопку '📊 Статистика'")
-    try:
-        await message.answer("📊 Статистика доступна по адресу:\nhttps://multik.onrender.com/stats", reply_markup=main_menu)
-        logging.info(f"[BUTTON] handle_stats_button: ✅ обработка завершена для пользователя {telegram_id}")
-    except Exception as e:
-        logging.error(f"[BUTTON] handle_stats_button: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
-        raise
-
 @settings_router.message(lambda message: message.text == "💬 Оставить отзыв")
 async def handle_feedback_button(message: types.Message, state: FSMContext):
     """Обработчик кнопки 'Оставить отзыв'"""
@@ -418,11 +399,10 @@ async def handle_feedback_button(message: types.Message, state: FSMContext):
 # Обработчики inline-кнопок для команды /start
 @settings_router.callback_query(lambda c: c.data == "start_projects")
 async def handle_start_projects(callback_query: types.CallbackQuery, state: FSMContext):
-    """Обработчик inline-кнопки 'Проекты' из стартового меню"""
     telegram_id = str(callback_query.from_user.id)
     logging.info(f"[INLINE] handle_start_projects: пользователь {telegram_id} нажал inline-кнопку '📋 Проекты'")
     try:
-        await handle_projects_command(callback_query.message, state)
+        await handle_projects_command(callback_query.message, state, telegram_id=telegram_id)
         await callback_query.answer()
         logging.info(f"[INLINE] handle_start_projects: ✅ обработка завершена для пользователя {telegram_id}")
     except Exception as e:
@@ -456,20 +436,6 @@ async def handle_start_payment(callback_query: types.CallbackQuery, state: FSMCo
     except Exception as e:
         logging.error(f"[INLINE] handle_start_payment: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
         await callback_query.answer("Произошла ошибка при обработке оплаты")
-        raise
-
-@settings_router.callback_query(lambda c: c.data == "start_stats")
-async def handle_start_stats(callback_query: types.CallbackQuery, state: FSMContext):
-    """Обработчик inline-кнопки 'Статистика' из стартового меню"""
-    telegram_id = str(callback_query.from_user.id)
-    logging.info(f"[INLINE] handle_start_stats: пользователь {telegram_id} нажал inline-кнопку '📊 Статистика'")
-    try:
-        await callback_query.message.answer("📊 Статистика доступна по адресу:\nhttps://multik.onrender.com/stats", reply_markup=main_menu)
-        await callback_query.answer()
-        logging.info(f"[INLINE] handle_start_stats: ✅ обработка завершена для пользователя {telegram_id}")
-    except Exception as e:
-        logging.error(f"[INLINE] handle_start_stats: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
-        await callback_query.answer("Произошла ошибка при получении статистики")
         raise
 
 @settings_router.callback_query(lambda c: c.data == "start_help")
@@ -637,20 +603,24 @@ async def handle_business_file(message: types.Message, state: FSMContext):
 
 @settings_router.message(Command("projects"))
 async def handle_projects_command(message: types.Message, state: FSMContext, telegram_id: str = None):
-    """Показывает список проектов пользователя"""
+    logger = logging.getLogger(__name__)
     logger.info(f"/projects received from user {message.from_user.id}")
+    # Always use the correct telegram_id
+    if telegram_id is None:
+        telegram_id = str(message.from_user.id)
+    logger.info(f"handle_projects_command: telegram_id={telegram_id}")
+    # Reset state for project selection
+    await state.update_data(telegram_id=telegram_id)
+    await state.update_data(selected_project_id=None, selected_project=None)
+    # Log current state for diagnostics
+    data = await state.get_data()
+    logger.info(f"handle_projects_command: FSM state data before fetching projects: {data}")
     try:
-        # Сохраняем telegram_id в состояние
-        if telegram_id is None:
-            telegram_id = str(message.from_user.id)
-        await state.update_data(telegram_id=telegram_id)
-        # Сбрасываем только выбор проекта
-        await state.update_data(selected_project_id=None, selected_project=None)
         projects = await get_projects_by_user(telegram_id)
+        logger.info(f"handle_projects_command: found {len(projects)} projects for user {telegram_id}")
         if not projects:
             await message.answer("У вас пока нет проектов. Создайте первый проект командой /new", reply_markup=main_menu)
             return
-        # 1. Сначала формируем список кнопок
         buttons = []
         for project in projects:
             buttons.append([
@@ -659,7 +629,6 @@ async def handle_projects_command(message: types.Message, state: FSMContext, tel
                     callback_data=f"project_{project['id']}"
                 )
             ])
-        # 2. Только потом создаём клавиатуру (если есть кнопки)
         if buttons:
             keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
             await message.answer("Выберите проект для управления:", reply_markup=main_menu)
@@ -686,24 +655,22 @@ async def handle_project_selection(callback_query: types.CallbackQuery, state: F
         # Проверяем, есть ли форма у проекта
         from database import get_project_form
         form = await get_project_form(project_id)
+
+                # Добавляем кнопку формы в зависимости от наличия формы
+        if form:
+            buttons.append([types.InlineKeyboardButton(text="Добавить форму", callback_data="manage_form")])
+        else:
+            buttons.append([types.InlineKeyboardButton(text="Создать форму", callback_data="create_form")])
         
         # Создаем меню управления проектом
         buttons = [
             [types.InlineKeyboardButton(text="Показать данные", callback_data="show_data")],
-            [types.InlineKeyboardButton(text="Переименовать", callback_data="rename_project")],
-            [types.InlineKeyboardButton(text="Изменить токен", callback_data="change_token")],
             [types.InlineKeyboardButton(text="Добавить данные", callback_data="add_data")],
             [types.InlineKeyboardButton(text="Изменить данные", callback_data="change_data")]
+            [types.InlineKeyboardButton(text="Переименовать проект", callback_data="rename_project")],
         ]
         
-        # Добавляем кнопку формы в зависимости от наличия формы
-        if form:
-            buttons.append([types.InlineKeyboardButton(text="Форма", callback_data="manage_form")])
-        else:
-            buttons.append([types.InlineKeyboardButton(text="Создать форму", callback_data="create_form")])
-        
         buttons.append([types.InlineKeyboardButton(text="Удалить проект", callback_data="delete_project")])
-        buttons.append([types.InlineKeyboardButton(text="Назад к списку", callback_data="back_to_projects")])
         keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
         await callback_query.message.edit_text(
             f"Проект: {project['project_name']}\n\nВыберите действие:",
@@ -918,8 +885,7 @@ async def handle_cancel_delete(callback_query: types.CallbackQuery, state: FSMCo
         [types.InlineKeyboardButton(text="Переименовать", callback_data="rename_project")],
         [types.InlineKeyboardButton(text="Добавить данные", callback_data="add_data")],
         [types.InlineKeyboardButton(text="Изменить данные", callback_data="change_data")],
-        [types.InlineKeyboardButton(text="Удалить проект", callback_data="delete_project")],
-        [types.InlineKeyboardButton(text="Назад к списку", callback_data="back_to_projects")]
+        [types.InlineKeyboardButton(text="Удалить проект", callback_data="delete_project")]
     ]
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
     
@@ -1102,37 +1068,6 @@ async def feedback_change_rating(callback_query: types.CallbackQuery, state: FSM
 async def feedback_text(message: types.Message, state: FSMContext):
     await handle_feedback_text(message, state)
 
-@settings_router.callback_query(lambda c: c.data == "change_token")
-async def handle_change_token(callback_query: types.CallbackQuery, state: FSMContext):
-    logging.info(f"[BOT] handle_change_token: user={callback_query.from_user.id}")
-    await callback_query.message.edit_text("Введите новый API токен для этого проекта:")
-    await state.set_state(SettingsStates.waiting_for_new_token)
-
-@settings_router.message(SettingsStates.waiting_for_new_token)
-async def handle_new_token(message: types.Message, state: FSMContext):
-    await log_fsm_state(message, state)
-    logging.info(f"[BOT] waiting_for_new_token: user={message.from_user.id}, text={message.text}")
-    if await handle_command_in_state(message, state):
-        return
-    from database import update_project_token, get_project_by_token
-    data = await state.get_data()
-    project_id = data.get("selected_project_id")
-    if not project_id:
-        await message.answer("Ошибка: проект не выбран")
-        await state.clear()
-        return
-    # Проверка уникальности токена
-    existing = await get_project_by_token(message.text)
-    if existing and existing["id"] != project_id:
-        await message.answer("❌ Проект с таким токеном уже существует. Пожалуйста, введите другой токен.")
-        return
-    success = await update_project_token(project_id, message.text)
-    if success:
-        await message.answer(f"Токен проекта успешно изменён на: {message.text}")
-    else:
-        await message.answer("Ошибка при изменении токена проекта")
-    await state.clear() 
-
 @settings_router.message(Command("referral"))
 async def referral_command(message: types.Message, state: FSMContext):
     await handle_referral_command(message, state)
@@ -1294,7 +1229,7 @@ async def _handle_any_message_inner(message: types.Message, state: FSMContext):
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="📋 Проекты"), KeyboardButton(text="➕ Создать проект")],
-        [KeyboardButton(text="💰 Оплата"), KeyboardButton(text="📊 Статистика")],
+        [KeyboardButton(text="💰 Оплата")],
         [KeyboardButton(text="❓ Помощь"), KeyboardButton(text="🔗 Реферальная программа")],
         [KeyboardButton(text="💬 Оставить отзыв")]
     ],
@@ -1364,12 +1299,19 @@ async def handle_help_command(message: types.Message, state: FSMContext):
 async def handle_projects_command(message: types.Message, state: FSMContext, telegram_id: str = None):
     logger = logging.getLogger(__name__)
     logger.info(f"/projects received from user {message.from_user.id}")
+    # Always use the correct telegram_id
+    if telegram_id is None:
+        telegram_id = str(message.from_user.id)
+    logger.info(f"handle_projects_command: telegram_id={telegram_id}")
+    # Reset state for project selection
+    await state.update_data(telegram_id=telegram_id)
+    await state.update_data(selected_project_id=None, selected_project=None)
+    # Log current state for diagnostics
+    data = await state.get_data()
+    logger.info(f"handle_projects_command: FSM state data before fetching projects: {data}")
     try:
-        if telegram_id is None:
-            telegram_id = str(message.from_user.id)
-        await state.update_data(telegram_id=telegram_id)
-        await state.update_data(selected_project_id=None, selected_project=None)
         projects = await get_projects_by_user(telegram_id)
+        logger.info(f"handle_projects_command: found {len(projects)} projects for user {telegram_id}")
         if not projects:
             await message.answer("У вас пока нет проектов. Создайте первый проект командой /new", reply_markup=main_menu)
             return
@@ -1489,84 +1431,96 @@ async def handle_manage_form(callback_query: types.CallbackQuery, state: FSMCont
 async def handle_add_form_field(callback_query: types.CallbackQuery, state: FSMContext):
     """Начинает добавление поля в форму"""
     logging.info(f"[FORM] handle_add_form_field: user={callback_query.from_user.id}")
-    
-    data = await state.get_data()
-    project_id = data.get("selected_project_id")
-    
-    if not project_id:
-        await callback_query.answer("Ошибка: проект не выбран")
-        return
-    
-    # Проверяем, есть ли уже форма
-    from database import get_project_form, create_form
-    form = await get_project_form(project_id)
-    
-    if not form:
-        # Создаем новую форму
-        form_name = f"Форма проекта {project_id}"
-        form_id = await create_form(project_id, form_name)
-        
-        # Логируем создание формы в аналитику
-        await log_form_created(str(callback_query.from_user.id), project_id, form_name)
-        
-        await state.update_data(current_form_id=form_id)
-    else:
-        await state.update_data(current_form_id=form["id"])
-    
-    await callback_query.message.edit_text(
-        "Введите название поля формы:\n\nНапример: ФИО, Телефон, Марка машины, Возраст студента и т.д.",
-        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
-            [types.InlineKeyboardButton(text="Отмена", callback_data="back_to_projects")]
-        ])
-    )
-    await state.set_state(SettingsStates.waiting_for_field_name)
+    try:
+        data = await state.get_data()
+        project_id = data.get("selected_project_id")
+        logging.info(f"[FORM] handle_add_form_field: FSM data={data}")
+        if not project_id:
+            await callback_query.answer("Ошибка: проект не выбран")
+            logging.error("[FORM] handle_add_form_field: проект не выбран")
+            return
+        from database import get_project_form, create_form
+        form = await get_project_form(project_id)
+        if not form:
+            form_name = f"Форма проекта {project_id}"
+            form_id = await create_form(project_id, form_name)
+            await log_form_created(str(callback_query.from_user.id), project_id, form_name)
+            await state.update_data(current_form_id=form_id)
+        else:
+            await state.update_data(current_form_id=form["id"])
+        await callback_query.message.edit_text(
+            "Введите название поля формы:\n\nНапример: ФИО, Телефон, Марка машины, Возраст студента и т.д.",
+            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+                [types.InlineKeyboardButton(text="Отмена", callback_data="back_to_projects")]
+            ])
+        )
+        await state.set_state(SettingsStates.waiting_for_field_name)
+        logging.info(f"[FORM] handle_add_form_field: FSM set to waiting_for_field_name")
+    except Exception as e:
+        logging.error(f"[FORM] handle_add_form_field: ОШИБКА: {e}")
+        await callback_query.answer("Произошла ошибка, попробуйте еще раз")
+        await state.clear()
 
 @settings_router.message(SettingsStates.waiting_for_field_name)
 async def handle_field_name(message: types.Message, state: FSMContext):
-    """Обрабатывает название поля формы"""
     await log_fsm_state(message, state)
     logging.info(f"[FORM] handle_field_name: user={message.from_user.id}, text={message.text}")
-    
-    if await handle_command_in_state(message, state):
-        return
-    
-    await state.update_data(field_name=message.text)
-    
-    # Показываем типы полей
-    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="Текст", callback_data="field_type_text")],
-        [types.InlineKeyboardButton(text="Число", callback_data="field_type_number")],
-        [types.InlineKeyboardButton(text="Телефон", callback_data="field_type_phone")],
-        [types.InlineKeyboardButton(text="Дата", callback_data="field_type_date")],
-        [types.InlineKeyboardButton(text="Email", callback_data="field_type_email")],
-        [types.InlineKeyboardButton(text="Назад", callback_data="add_form_field")]
-    ])
-    
-    await message.answer(
-        f"Выберите тип поля для '{message.text}':",
-        reply_markup=keyboard
-    )
+    try:
+        if await handle_command_in_state(message, state):
+            return
+        await state.update_data(field_name=message.text)
+        # Показываем типы полей
+        keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+            [types.InlineKeyboardButton(text="Текст", callback_data="field_type_text")],
+            [types.InlineKeyboardButton(text="Число", callback_data="field_type_number")],
+            [types.InlineKeyboardButton(text="Телефон", callback_data="field_type_phone")],
+            [types.InlineKeyboardButton(text="Дата", callback_data="field_type_date")],
+            [types.InlineKeyboardButton(text="Email", callback_data="field_type_email")],
+            [types.InlineKeyboardButton(text="Назад", callback_data="add_form_field")]
+        ])
+        await message.answer(
+            f"Выберите тип поля для '{message.text}':",
+            reply_markup=keyboard
+        )
+        logging.info(f"[FORM] handle_field_name: типы полей отправлены")
+    except Exception as e:
+        logging.error(f"[FORM] handle_field_name: ОШИБКА: {e}")
+        await message.answer("Произошла ошибка, попробуйте еще раз")
+        await state.clear()
 
 @settings_router.callback_query(lambda c: c.data.startswith("field_type_"))
 async def handle_field_type(callback_query: types.CallbackQuery, state: FSMContext):
     """Обрабатывает выбор типа поля"""
     logging.info(f"[FORM] handle_field_type: user={callback_query.from_user.id}, data={callback_query.data}")
-    
-    field_type = callback_query.data.replace("field_type_", "")
-    data = await state.get_data()
-    field_name = data.get("field_name")
-    form_id = data.get("current_form_id")
-    
-    if not field_name or not form_id:
-        await callback_query.answer("Ошибка: данные не найдены")
-        return
-    
-    # Добавляем поле в форму
-    from database import add_form_field
-    await add_form_field(form_id, field_name, field_type, required=False)
-    
-    # Показываем текущую форму
-    await show_form_preview(callback_query.message, state, form_id)
+    try:
+        field_type = callback_query.data.replace("field_type_", "")
+        data = await state.get_data()
+        field_name = data.get("field_name")
+        form_id = data.get("current_form_id")
+        logging.info(f"[FORM] handle_field_type: FSM data={data}")
+        if not field_name or not form_id:
+            await callback_query.answer("Ошибка: данные не найдены")
+            logging.error("[FORM] handle_field_type: данные не найдены")
+            await state.clear()
+            return
+        from database import add_form_field
+        await add_form_field(form_id, field_name, field_type, required=False)
+        logging.info(f"[FORM] handle_field_type: поле '{field_name}' типа '{field_type}' добавлено в форму {form_id}")
+        # Явно уведомляем пользователя и предлагаем добавить еще поле или завершить
+        keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+            [types.InlineKeyboardButton(text="Добавить еще поле", callback_data="add_form_field")],
+            [types.InlineKeyboardButton(text="Завершить и использовать форму", callback_data="use_form")],
+            [types.InlineKeyboardButton(text="Назад к проекту", callback_data="back_to_projects")]
+        ])
+        await callback_query.message.edit_text(
+            f"✅ Поле '{field_name}' добавлено!\n\nХотите добавить еще поле или использовать форму?",
+            reply_markup=keyboard
+        )
+        await state.update_data(field_name=None)  # Сбросить имя поля
+    except Exception as e:
+        logging.error(f"[FORM] handle_field_type: ОШИБКА: {e}")
+        await callback_query.answer("Произошла ошибка, попробуйте еще раз")
+        await state.clear()
 
 async def show_form_preview(message, state: FSMContext, form_id: str):
     """Показывает предварительный просмотр формы"""
