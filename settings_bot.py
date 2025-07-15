@@ -1214,7 +1214,7 @@ main_menu = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="💎 Создать проект"), KeyboardButton(text="🏔️ Проекты")],
         [KeyboardButton(text="💍 Оставить отзыв")],
-        [KeyboardButton(text="💸 Оплатить")]
+        [KeyboardButton(text="💸 Оплатить")],
         [KeyboardButton(text="🏄‍♂️ Реферальная программа")],
     ],
     resize_keyboard=True,
@@ -1274,8 +1274,8 @@ async def handle_help_command(message: types.Message, state: FSMContext):
     """
     pay_kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Оплатить", callback_data="pay")],
-            [InlineKeyboardButton(text="Реферальная ссылка", callback_data="referral")]
+            [InlineKeyboardButton(text="💸 Оплатить", callback_data="pay")],
+            [InlineKeyboardButton(text="🏄‍♂️ Реферальная ссылка", callback_data="referral")]
         ]
     )
     await message.bot.send_chat_action(message.chat.id, "typing")
