@@ -576,7 +576,7 @@ async def handle_business_file(message: types.Message, state: FSMContext):
     if webhook_result.get("ok"):
         await message.answer(f"Спасибо! Проект создан.\n\nПроект: {project_name}\nТокен: {token}\nВебхук успешно установлен!\n\nБот готов к работе!")
     else:
-        await message.answer(f"Проект создан, но не удалось установить вебхук: {webhook_result}")
+        await message.answer(f"Проект создан, но не удалось установить вебхук. Попробуйте предоставить другой токен")
     await state.clear()
 
 @settings_router.message(Command("projects"))
@@ -1073,12 +1073,6 @@ async def handle_referral_command(message, state, telegram_id=None):
 🏄‍♂️ Ваша реферальная ссылка:\n\n{referral_link}\n\n❤ Как это работает:\n• Отправьте эту ссылку друзьям\n• Когда они зарегистрируются и оплатят подписку\n• Вы получите +10 дней к пользованию за каждого реферала\n\n👏 Просто скопируйте ссылку и поделитесь с друзьями!\n    """
     await message.answer(referral_text)
 
-@settings_router.message()
-async def handle_any_message(message: types.Message, state: FSMContext):
-    current_state = await state.get_state()
-    logging.info(f"[DEBUG] handle_any_message: user={message.from_user.id}, state={current_state}, text={message.text}")
-    await trial_middleware(message, state, _handle_any_message_inner)
-
 async def _handle_any_message_inner(message: types.Message, state: FSMContext):
     await log_fsm_state(message, state)
     logging.info(f"[BOT] handle_any_message: user={message.from_user.id}, text={message.text}")
@@ -1543,3 +1537,9 @@ async def build_main_menu(telegram_id: str):
     keyboard.append([KeyboardButton(text="🏄‍♂️ Реферальная программа")])
     keyboard.append([KeyboardButton(text="💸 Оплатить")])
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, one_time_keyboard=False)
+
+@settings_router.message()
+async def handle_any_message(message: types.Message, state: FSMContext):
+    current_state = await state.get_state()
+    logging.info(f"[DEBUG] handle_any_message: user={message.from_user.id}, state={current_state}, text={message.text}")
+    await trial_middleware(message, state, _handle_any_message_inner)
