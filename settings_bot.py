@@ -296,7 +296,7 @@ async def handle_new_project(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer(
         "Создание нового проекта\n\nВведите имя вашего проекта:",
-        reply_markup=main_menu
+        reply_markup=await build_main_menu(str(message.from_user.id))
     )
     await state.set_state(SettingsStates.waiting_for_project_name)
 
@@ -477,7 +477,7 @@ async def handle_pay_command(message: types.Message, state: FSMContext):
     else:
         payment_text = f"💳 **Продление подписки**\n\nДля продления переведите {PAYMENT_AMOUNT} рублей на карту:\n`{PAYMENT_CARD_NUMBER}`\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
     
-    await message.answer(payment_text, reply_markup=main_menu)
+    await message.answer(payment_text, reply_markup=await build_main_menu(str(message.from_user.id)))
     await state.set_state(SettingsStates.waiting_for_payment_check)
 
 @settings_router.message(SettingsStates.waiting_for_project_name)
@@ -601,7 +601,7 @@ async def handle_projects_command(message: types.Message, state: FSMContext, tel
         projects = await get_projects_by_user(telegram_id)
         logger.info(f"handle_projects_command: found {len(projects)} projects for user {telegram_id}")
         if not projects:
-            await message.answer("У вас пока нет проектов. Создайте первый проект командой /new", reply_markup=main_menu)
+            await message.answer("У вас пока нет проектов. Создайте первый проект командой /new", reply_markup=await build_main_menu(telegram_id))
             return
         buttons = []
         for project in projects:
@@ -613,13 +613,13 @@ async def handle_projects_command(message: types.Message, state: FSMContext, tel
             ])
         if buttons:
             keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
-            await message.answer("Выберите проект для управления:", reply_markup=main_menu)
+            await message.answer("Выберите проект для управления:", reply_markup=await build_main_menu(telegram_id))
             await message.answer("Список проектов:", reply_markup=keyboard)
         else:
-            await message.answer("Нет доступных проектов.", reply_markup=main_menu)
+            await message.answer("Нет доступных проектов.", reply_markup=await build_main_menu(telegram_id))
     except Exception as e:
         logger.error(f"Error in handle_projects_command: {e}")
-        await message.answer("Произошла ошибка при получении списка проектов", reply_markup=main_menu)
+        await message.answer("Произошла ошибка при получении списка проектов", reply_markup=await build_main_menu(telegram_id))
 
 @settings_router.callback_query(lambda c: c.data.startswith('project_'))
 async def handle_project_selection(callback_query: types.CallbackQuery, state: FSMContext):
@@ -1065,29 +1065,26 @@ async def handle_referral_command(message, state):
     """Обработчик команды /referral"""
     telegram_id = str(message.from_user.id)
     logging.info(f"[REFERRAL] handle_referral_command: пользователь {telegram_id} запросил реферальную ссылку")
-    
     from database import get_referral_link, get_user_by_id
     user = await get_user_by_id(telegram_id)
-    
+    logging.info(f"[REFERRAL] handle_referral_command: get_user_by_id({telegram_id}) вернул: {user}")
     if not user:
+        logging.warning(f"[REFERRAL] handle_referral_command: пользователь {telegram_id} не найден в базе. Требуется /start")
         await message.answer("Сначала создайте аккаунт командой /start")
         return
-    
     referral_link = await get_referral_link(telegram_id)
-    
     referral_text = f"""
-🎁 Ваша реферальная ссылка:
+🏄‍♂️ Ваша реферальная ссылка:
 
 {referral_link}
 
-📊 Как это работает:
+❤ Как это работает:
 • Отправьте эту ссылку друзьям
 • Когда они зарегистрируются и оплатят подписку
 • Вы получите +10 дней к пользованию за каждого реферала
 
-💡 Просто скопируйте ссылку и поделитесь с друзьями!
+👏 Просто скопируйте ссылку и поделитесь с друзьями!
     """
-    
     await message.answer(referral_text)
 
 @settings_router.message()
@@ -1209,18 +1206,6 @@ async def _handle_any_message_inner(message: types.Message, state: FSMContext):
         is_paid=is_paid
     )
 
-# Главное меню с кнопками
-main_menu = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="💎 Создать проект"), KeyboardButton(text="🏔️ Проекты")],
-        [KeyboardButton(text="💍 Оставить отзыв")],
-        [KeyboardButton(text="💸 Оплатить")],
-        [KeyboardButton(text="🏄‍♂️ Реферальная программа")],
-    ],
-    resize_keyboard=True,
-    one_time_keyboard=False
-)
-
 async def handle_settings_start(message: types.Message, state: FSMContext):
     logger = logging.getLogger(__name__)
     logger.info(f"/start received from user {message.from_user.id}")
@@ -1298,7 +1283,7 @@ async def handle_projects_command(message: types.Message, state: FSMContext, tel
         projects = await get_projects_by_user(telegram_id)
         logger.info(f"handle_projects_command: found {len(projects)} projects for user {telegram_id}")
         if not projects:
-            await message.answer("У вас пока нет проектов. Создайте первый проект командой /new", reply_markup=main_menu)
+            await message.answer("У вас пока нет проектов. Создайте первый проект командой /new", reply_markup=await build_main_menu(telegram_id))
             return
         buttons = []
         for project in projects:
@@ -1310,13 +1295,13 @@ async def handle_projects_command(message: types.Message, state: FSMContext, tel
             ])
         if buttons:
             keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
-            await message.answer("Выберите проект для управления:", reply_markup=main_menu)
+            await message.answer("Выберите проект для управления:", reply_markup=await build_main_menu(telegram_id))
             await message.answer("Список проектов:", reply_markup=keyboard)
         else:
-            await message.answer("Нет доступных проектов.", reply_markup=main_menu)
+            await message.answer("Нет доступных проектов.", reply_markup=await build_main_menu(telegram_id))
     except Exception as e:
         logger.error(f"Error in handle_projects_command: {e}")
-        await message.answer("Произошла ошибка при получении списка проектов", reply_markup=main_menu)
+        await message.answer("Произошла ошибка при получении списка проектов", reply_markup=await build_main_menu(telegram_id))
 
 @settings_router.callback_query(lambda c: c.data == "pay_subscription")
 async def handle_pay_subscription(callback_query: types.CallbackQuery, state: FSMContext):
