@@ -58,8 +58,8 @@ async def check_expired_trials():
             try:
                 pay_kb = InlineKeyboardMarkup(
                     inline_keyboard=[
-                        [InlineKeyboardButton(text="Оплатить", callback_data="pay")],
-                        [InlineKeyboardButton(text="Удалить проекты", callback_data="delete_trial_projects")]
+                        [InlineKeyboardButton(text="💸 Оплатить", callback_data="pay")],
+                        [InlineKeyboardButton(text="💀 Удалить проекты", callback_data="delete_trial_projects")]
                     ]
                 )
                 await settings_bot.send_message(
@@ -93,7 +93,7 @@ async def check_expired_paid_month():
             
             pay_kb = InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text="Оплатить", callback_data="pay")]
+                    [InlineKeyboardButton(text="💸 Оплатить", callback_data="pay")]
                 ]
             )
             
@@ -143,8 +143,8 @@ async def trial_middleware(message: types.Message, state: FSMContext, handler):
             # Показываем меню оплаты/удаления
             kb = InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text="Оплатить", callback_data="pay_trial")],
-                    [InlineKeyboardButton(text="Удалить проекты", callback_data="delete_trial_projects")]
+                    [InlineKeyboardButton(text="💸 Оплатить", callback_data="pay_trial")],
+                    [InlineKeyboardButton(text="💀 Удалить проекты", callback_data="delete_trial_projects")]
                 ]
             )
             await message.answer(
@@ -280,8 +280,8 @@ async def handle_new_project(message: types.Message, state: FSMContext):
         # Trial limit reached
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="Оплатить", callback_data="pay_trial")],
-                [InlineKeyboardButton(text="Проекты", callback_data="projects_menu")]
+                [InlineKeyboardButton(text="💸 Оплатить", callback_data="pay_trial")],
+                [InlineKeyboardButton(text="🏔️ Проекты", callback_data="projects_menu")]
             ]
         )
         await message.answer(
@@ -308,7 +308,7 @@ async def projects_with_trial_middleware(message: types.Message, state: FSMConte
 @settings_router.message(lambda message: message.text == "📋 Проекты")
 async def handle_projects_button(message: types.Message, state: FSMContext):
     telegram_id = str(message.from_user.id)
-    logging.info(f"[BUTTON] handle_projects_button: пользователь {telegram_id} нажал кнопку '📋 Проекты'")
+    logging.info(f"[BUTTON] handle_projects_button: пользователь {telegram_id} нажал кнопку 'Проекты'")
     try:
         await handle_projects_command(message, state, telegram_id=telegram_id)
         logging.info(f"[BUTTON] handle_projects_button: ✅ обработка завершена для пользователя {telegram_id}")
@@ -316,11 +316,11 @@ async def handle_projects_button(message: types.Message, state: FSMContext):
         logging.error(f"[BUTTON] handle_projects_button: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
         raise
 
-@settings_router.message(lambda message: message.text == "➕ Создать проект")
+@settings_router.message(lambda message: message.text == "💎 Создать проект")
 async def handle_new_project_button(message: types.Message, state: FSMContext):
     """Обработчик кнопки 'Создать проект'"""
     telegram_id = str(message.from_user.id)
-    logging.info(f"[BUTTON] handle_new_project_button: пользователь {telegram_id} нажал кнопку '➕ Создать проект'")
+    logging.info(f"[BUTTON] handle_new_project_button: пользователь {telegram_id} нажал кнопку 'Создать проект'")
     try:
         await handle_new_project(message, state)
         logging.info(f"[BUTTON] handle_new_project_button: ✅ обработка завершена для пользователя {telegram_id}")
@@ -328,11 +328,11 @@ async def handle_new_project_button(message: types.Message, state: FSMContext):
         logging.error(f"[BUTTON] handle_new_project_button: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
         raise
 
-@settings_router.message(lambda message: message.text == "💰 Оплата")
+@settings_router.message(lambda message: message.text == "💸 Оплатить")
 async def handle_payment_button(message: types.Message, state: FSMContext):
     """Обработчик кнопки 'Оплата'"""
     telegram_id = str(message.from_user.id)
-    logging.info(f"[BUTTON] handle_payment_button: пользователь {telegram_id} нажал кнопку '💰 Оплата'")
+    logging.info(f"[BUTTON] handle_payment_button: пользователь {telegram_id} нажал кнопку 'Оплатить'")
     try:
         await handle_pay_command(message, state)
         logging.info(f"[BUTTON] handle_payment_button: ✅ обработка завершена для пользователя {telegram_id}")
@@ -352,11 +352,11 @@ async def handle_help_button(message: types.Message, state: FSMContext):
         logging.error(f"[BUTTON] handle_help_button: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
         raise
 
-@settings_router.message(lambda message: message.text == "🔗 Реферальная программа")
+@settings_router.message(lambda message: message.text == "🏄‍♂️ Реферальная программа")
 async def handle_referral_button(message: types.Message, state: FSMContext):
     """Обработчик кнопки 'Реферальная программа'"""
     telegram_id = str(message.from_user.id)
-    logging.info(f"[BUTTON] handle_referral_button: пользователь {telegram_id} нажал кнопку '🔗 Реферальная программа'")
+    logging.info(f"[BUTTON] handle_referral_button: пользователь {telegram_id} нажал кнопку 'Реферальная программа'")
     try:
         await handle_referral_command(message, state)
         logging.info(f"[BUTTON] handle_referral_button: ✅ обработка завершена для пользователя {telegram_id}")
@@ -364,11 +364,11 @@ async def handle_referral_button(message: types.Message, state: FSMContext):
         logging.error(f"[BUTTON] handle_referral_button: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
         raise
 
-@settings_router.message(lambda message: message.text == "💬 Оставить отзыв")
+@settings_router.message(lambda message: message.text == "💍 Оставить отзыв")
 async def handle_feedback_button(message: types.Message, state: FSMContext):
     """Обработчик кнопки 'Оставить отзыв'"""
     telegram_id = str(message.from_user.id)
-    logging.info(f"[BUTTON] handle_feedback_button: пользователь {telegram_id} нажал кнопку '💬 Оставить отзыв'")
+    logging.info(f"[BUTTON] handle_feedback_button: пользователь {telegram_id} нажал кнопку 'Оставить отзыв'")
     try:
         from settings_feedback import handle_feedback_command
         await handle_feedback_command(message, state)
@@ -381,7 +381,7 @@ async def handle_feedback_button(message: types.Message, state: FSMContext):
 @settings_router.callback_query(lambda c: c.data == "start_projects")
 async def handle_start_projects(callback_query: types.CallbackQuery, state: FSMContext):
     telegram_id = str(callback_query.from_user.id)
-    logging.info(f"[INLINE] handle_start_projects: пользователь {telegram_id} нажал inline-кнопку '📋 Проекты'")
+    logging.info(f"[INLINE] handle_start_projects: пользователь {telegram_id} нажал inline-кнопку '🏔️ Проекты'")
     await callback_query.answer()
     async def process():
         try:
@@ -395,7 +395,7 @@ async def handle_start_projects(callback_query: types.CallbackQuery, state: FSMC
 @settings_router.callback_query(lambda c: c.data == "start_new_project")
 async def handle_start_new_project(callback_query: types.CallbackQuery, state: FSMContext):
     telegram_id = str(callback_query.from_user.id)
-    logging.info(f"[INLINE] handle_start_new_project: пользователь {telegram_id} нажал inline-кнопку '➕ Создать проект'")
+    logging.info(f"[INLINE] handle_start_new_project: пользователь {telegram_id} нажал inline-кнопку 'Создать проект'")
     await callback_query.answer()
     async def process():
         try:
@@ -409,7 +409,7 @@ async def handle_start_new_project(callback_query: types.CallbackQuery, state: F
 @settings_router.callback_query(lambda c: c.data == "start_payment")
 async def handle_start_payment(callback_query: types.CallbackQuery, state: FSMContext):
     telegram_id = str(callback_query.from_user.id)
-    logging.info(f"[INLINE] handle_start_payment: пользователь {telegram_id} нажал inline-кнопку '💰 Оплата'")
+    logging.info(f"[INLINE] handle_start_payment: пользователь {telegram_id} нажал inline-кнопку 'Оплатить'")
     await callback_query.answer()
     async def process():
         try:
@@ -437,7 +437,7 @@ async def handle_start_help(callback_query: types.CallbackQuery, state: FSMConte
 @settings_router.callback_query(lambda c: c.data == "start_referral")
 async def handle_start_referral(callback_query: types.CallbackQuery, state: FSMContext):
     telegram_id = str(callback_query.from_user.id)
-    logging.info(f"[INLINE] handle_start_referral: пользователь {telegram_id} нажал inline-кнопку '🔗 Реферальная программа'")
+    logging.info(f"[INLINE] handle_start_referral: пользователь {telegram_id} нажал inline-кнопку 'Реферальная программа'")
     await callback_query.answer()
     async def process():
         try:
@@ -451,7 +451,7 @@ async def handle_start_referral(callback_query: types.CallbackQuery, state: FSMC
 @settings_router.callback_query(lambda c: c.data == "start_feedback")
 async def handle_start_feedback(callback_query: types.CallbackQuery, state: FSMContext):
     telegram_id = str(callback_query.from_user.id)
-    logging.info(f"[INLINE] handle_start_feedback: пользователь {telegram_id} нажал inline-кнопку '💬 Оставить отзыв'")
+    logging.info(f"[INLINE] handle_start_feedback: пользователь {telegram_id} нажал inline-кнопку 'Оставить отзыв'")
     await callback_query.answer()
     async def process():
         try:
@@ -650,11 +650,10 @@ async def handle_project_selection(callback_query: types.CallbackQuery, state: F
                 [types.InlineKeyboardButton(text="Показать данные", callback_data="show_data")],
                 [
                     types.InlineKeyboardButton(text="Добавить данные", callback_data="add_data"),
-                    types.InlineKeyboardButton(text="Изменить данные", callback_data="change_data"),
-                
+                    types.InlineKeyboardButton(text="Переименовать проект", callback_data="rename_project"),
                 ],
                 [
-                    types.InlineKeyboardButton(text="Переименовать проект", callback_data="rename_project"),
+                    types.InlineKeyboardButton(text="Изменить данные", callback_data="change_data"),
                     types.InlineKeyboardButton(text="Удалить проект", callback_data="delete_project")
                 ],
             ]
@@ -874,24 +873,10 @@ async def handle_delete_project_request(callback_query: types.CallbackQuery, sta
 @settings_router.callback_query(lambda c: c.data == "cancel_delete")
 async def handle_cancel_delete(callback_query: types.CallbackQuery, state: FSMContext):
     logging.info(f"[BOT] handle_cancel_delete: user={callback_query.from_user.id}")
-    """Отменяет удаление проекта"""
-    data = await state.get_data()
-    project = data.get("selected_project")
-    
-    buttons = [
-        [types.InlineKeyboardButton(text="Переименовать", callback_data="rename_project")],
-        [
-            types.InlineKeyboardButton(text="Добавить данные", callback_data="add_data"),
-            types.InlineKeyboardButton(text="Изменить данные", callback_data="change_data")
-        ],
-        [types.InlineKeyboardButton(text="Удалить проект", callback_data="delete_project")]
-    ]
-    keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
-    
-    await callback_query.message.edit_text(
-        f"Проект: {project['project_name']}\n\nВыберите действие:",
-        reply_markup=keyboard
-    )
+    """Отменяет удаление проекта и возвращает к списку проектов"""
+    telegram_id = str(callback_query.from_user.id)
+    await handle_projects_command(callback_query.message, state, telegram_id=telegram_id)
+    await callback_query.answer()
 
 @settings_router.callback_query(lambda c: c.data == "confirm_delete")
 async def handle_confirm_delete(callback_query: types.CallbackQuery, state: FSMContext):
@@ -1227,10 +1212,10 @@ async def _handle_any_message_inner(message: types.Message, state: FSMContext):
 # Главное меню с кнопками
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="➕ Создать проект"), KeyboardButton(text="📋 Проекты")],
-        [KeyboardButton(text="💬 Оставить отзыв")],
-        [KeyboardButton(text="🔗 Реферальная программа")],
-        [KeyboardButton(text="💰 Оплата")]
+        [KeyboardButton(text="💎 Создать проект"), KeyboardButton(text="🏔️ Проекты")],
+        [KeyboardButton(text="💍 Оставить отзыв")],
+        [KeyboardButton(text="💸 Оплатить")]
+        [KeyboardButton(text="🏄‍♂️ Реферальная программа")],
     ],
     resize_keyboard=True,
     one_time_keyboard=False
@@ -1277,7 +1262,7 @@ async def handle_help_command(message: types.Message, state: FSMContext):
 • Создание форм для сбора заявок
 • Удаление проекта (с отключением webhook)
 
-🎁 **Реферальная программа:**
+🏄‍♂️ **Реферальная программа:**
 • Приглашайте друзей по реферальной ссылке
 • За каждую оплату реферала получайте +10 дней к пользованию
 
@@ -1667,28 +1652,28 @@ async def get_days_left_text(telegram_id: str) -> str:
 async def build_start_menu_keyboard(telegram_id: str):
     """Динамически строит клавиатуру главного меню с учетом наличия отзыва"""
     buttons = [
-        [InlineKeyboardButton(text="➕ Создать проект", callback_data="start_new_project"),
-         InlineKeyboardButton(text="📋 Мои проекты", callback_data="start_projects")],
+        [InlineKeyboardButton(text="💎 Создать проект", callback_data="start_new_project"),
+         InlineKeyboardButton(text="🏔️ Проекты", callback_data="start_projects")],
     ]
     if not await has_feedback(telegram_id):
         buttons.append([
-            InlineKeyboardButton(text="💬 Оставить отзыв", callback_data="start_feedback")
+            InlineKeyboardButton(text="💍 Оставить отзыв", callback_data="start_feedback")
         ])
     buttons.append([
-        InlineKeyboardButton(text="🔗 Реферальная программа", callback_data="start_referral")
+        InlineKeyboardButton(text="🏄‍♂️ Реферальная программа", callback_data="start_referral")
     ])
     buttons.append([
-        InlineKeyboardButton(text="💰 Оплата", callback_data="start_payment")
+        InlineKeyboardButton(text="💸 Оплатить", callback_data="start_payment")
     ])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 async def build_main_menu(telegram_id: str):
     """Динамически строит ReplyKeyboardMarkup для главного меню"""
     keyboard = [
-        [KeyboardButton(text="➕ Создать проект"), KeyboardButton(text="📋 Проекты")],
+        [KeyboardButton(text="💎 Создать проект"), KeyboardButton(text="🏔️ Проекты")],
     ]
     if not await has_feedback(telegram_id):
-        keyboard.append([KeyboardButton(text="💬 Оставить отзыв")])
-    keyboard.append([KeyboardButton(text="🔗 Реферальная программа")])
-    keyboard.append([KeyboardButton(text="💰 Оплата")])
+        keyboard.append([KeyboardButton(text="💍 Оставить отзыв")])
+    keyboard.append([KeyboardButton(text="🏄‍♂️ Реферальная программа")])
+    keyboard.append([KeyboardButton(text="💸 Оплатить")])
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, one_time_keyboard=False)
