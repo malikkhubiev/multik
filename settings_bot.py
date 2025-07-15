@@ -1320,9 +1320,9 @@ async def handle_payment_check_fsm(message: types.Message, state: FSMContext):
 # --- Обработчики форм ---
 @settings_router.callback_query(lambda c: c.data == "create_form")
 async def handle_create_form(callback_query: types.CallbackQuery, state: FSMContext):
-    """Начинает создание формы"""
     logging.info(f"[FORM] handle_create_form: user={callback_query.from_user.id}")
-    
+    # Сохраняем draft-форму в state
+    await state.update_data(form_draft={"fields": []})
     form_text = """
 📋 **Создание формы для сбора заявок**
 
@@ -1331,152 +1331,122 @@ async def handle_create_form(callback_query: types.CallbackQuery, state: FSMCont
 • Специализированные данные (марка машины, возраст студента и т.д.)
 • Asking бот будет непринужденно собирать эту информацию
 
-Нажмите "Добавить поле" чтобы начать создание формы.
+Нажмите 'Добавить поле', чтобы начать создание формы.
     """
-    
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
         [types.InlineKeyboardButton(text="Добавить поле", callback_data="add_form_field")],
         [types.InlineKeyboardButton(text="Отмена", callback_data="back_to_projects")]
     ])
-    
-    await callback_query.message.edit_text(form_text, reply_markup=keyboard)
-
-@settings_router.callback_query(lambda c: c.data == "manage_form")
-async def handle_manage_form(callback_query: types.CallbackQuery, state: FSMContext):
-    """Управление существующей формой"""
-    logging.info(f"[FORM] handle_manage_form: user={callback_query.from_user.id}")
-    
-    data = await state.get_data()
-    project_id = data.get("selected_project_id")
-    
-    if not project_id:
-        await callback_query.answer("Ошибка: проект не выбран")
-        return
-    
-    from database import get_project_form, get_form_submissions
-    form = await get_project_form(project_id)
-    
-    if not form:
-        await callback_query.answer("Форма не найдена")
-        return
-    
-    # Получаем количество заявок
-    submissions = await get_form_submissions(form["id"])
-    
-    form_text = f"""
-📋 **Управление формой: {form['name']}**
-
-Поля формы:
-"""
-    
-    for field in form["fields"]:
-        required_mark = "🔴" if field["required"] else "⚪"
-        form_text += f"• {required_mark} {field['name']} ({field['field_type']})\n"
-    
-    form_text += f"\n📊 Заявок: {len(submissions)}"
-    
-    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="Экспорт в Excel", callback_data="export_form")],
-        [types.InlineKeyboardButton(text="Создать новую форму", callback_data="create_form")],
-        [types.InlineKeyboardButton(text="Назад", callback_data="back_to_projects")]
-    ])
-    
     await callback_query.message.edit_text(form_text, reply_markup=keyboard)
 
 @settings_router.callback_query(lambda c: c.data == "add_form_field")
 async def handle_add_form_field(callback_query: types.CallbackQuery, state: FSMContext):
-    """Начинает добавление поля в форму"""
-    logging.info(f"[FORM] handle_add_form_field: user={callback_query.from_user.id}")
-    try:
-        data = await state.get_data()
-        project_id = data.get("selected_project_id")
-        logging.info(f"[FORM] handle_add_form_field: FSM data={data}")
-        if not project_id:
-            await callback_query.answer("Ошибка: проект не выбран")
-            logging.error("[FORM] handle_add_form_field: проект не выбран")
-            return
-        from database import get_project_form, create_form
-        form = await get_project_form(project_id)
-        if not form:
-            form_name = f"Форма проекта {project_id}"
-            form_id = await create_form(project_id, form_name)
-            await log_form_created(str(callback_query.from_user.id), project_id, form_name)
-            await state.update_data(current_form_id=form_id)
-        else:
-            await state.update_data(current_form_id=form["id"])
-        await callback_query.message.edit_text(
-            "Введите название поля формы:\n\nНапример: ФИО, Телефон, Марка машины, Возраст студента и т.д.",
-            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
-                [types.InlineKeyboardButton(text="Отмена", callback_data="back_to_projects")]
-            ])
-        )
-        await state.set_state(SettingsStates.waiting_for_field_name)
-        logging.info(f"[FORM] handle_add_form_field: FSM set to waiting_for_field_name")
-    except Exception as e:
-        logging.error(f"[FORM] handle_add_form_field: ОШИБКА: {e}")
-        await callback_query.answer("Произошла ошибка, попробуйте еще раз")
-        await state.clear()
+    await callback_query.message.edit_text(
+        "Введите название поля формы:\n\nНапример: ФИО, Телефон, Марка машины, Возраст студента и т.д.",
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+            [types.InlineKeyboardButton(text="Отмена", callback_data="back_to_projects")]
+        ])
+    )
+    await state.set_state(SettingsStates.waiting_for_field_name)
 
 @settings_router.message(SettingsStates.waiting_for_field_name)
 async def handle_field_name(message: types.Message, state: FSMContext):
-    await log_fsm_state(message, state)
-    logging.info(f"[FORM] handle_field_name: user={message.from_user.id}, text={message.text}")
-    try:
-        if await handle_command_in_state(message, state):
-            return
-        await state.update_data(field_name=message.text)
-        # Показываем типы полей
-        keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-            [types.InlineKeyboardButton(text="Текст", callback_data="field_type_text")],
-            [types.InlineKeyboardButton(text="Число", callback_data="field_type_number")],
-            [types.InlineKeyboardButton(text="Телефон", callback_data="field_type_phone")],
-            [types.InlineKeyboardButton(text="Дата", callback_data="field_type_date")],
-            [types.InlineKeyboardButton(text="Email", callback_data="field_type_email")],
-            [types.InlineKeyboardButton(text="Назад", callback_data="add_form_field")]
-        ])
-        await message.answer(
-            f"Выберите тип поля для '{message.text}':",
-            reply_markup=keyboard
-        )
-        logging.info(f"[FORM] handle_field_name: типы полей отправлены")
-    except Exception as e:
-        logging.error(f"[FORM] handle_field_name: ОШИБКА: {e}")
-        await message.answer("Произошла ошибка, попробуйте еще раз")
-        await state.clear()
+    await state.update_data(field_name=message.text)
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="Текст", callback_data="field_type_text")],
+        [types.InlineKeyboardButton(text="Число", callback_data="field_type_number")],
+        [types.InlineKeyboardButton(text="Телефон", callback_data="field_type_phone")],
+        [types.InlineKeyboardButton(text="Дата", callback_data="field_type_date")],
+        [types.InlineKeyboardButton(text="Email", callback_data="field_type_email")],
+        [types.InlineKeyboardButton(text="Назад", callback_data="add_form_field")]
+    ])
+    await message.answer(
+        f"Выберите тип поля для '{message.text}':",
+        reply_markup=keyboard
+    )
+    await state.set_state(SettingsStates.waiting_for_field_type)
 
 @settings_router.callback_query(lambda c: c.data.startswith("field_type_"))
 async def handle_field_type(callback_query: types.CallbackQuery, state: FSMContext):
-    """Обрабатывает выбор типа поля"""
-    logging.info(f"[FORM] handle_field_type: user={callback_query.from_user.id}, data={callback_query.data}")
-    try:
-        field_type = callback_query.data.replace("field_type_", "")
-        data = await state.get_data()
-        field_name = data.get("field_name")
-        form_id = data.get("current_form_id")
-        logging.info(f"[FORM] handle_field_type: FSM data={data}")
-        if not field_name or not form_id:
-            await callback_query.answer("Ошибка: данные не найдены")
-            logging.error("[FORM] handle_field_type: данные не найдены")
-            await state.clear()
-            return
-        from database import add_form_field
-        await add_form_field(form_id, field_name, field_type, required=False)
-        logging.info(f"[FORM] handle_field_type: поле '{field_name}' типа '{field_type}' добавлено в форму {form_id}")
-        # Явно уведомляем пользователя и предлагаем добавить еще поле или завершить
-        keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-            [types.InlineKeyboardButton(text="Добавить еще поле", callback_data="add_form_field")],
-            [types.InlineKeyboardButton(text="Завершить и использовать форму", callback_data="use_form")],
+    field_type = callback_query.data.replace("field_type_", "")
+    data = await state.get_data()
+    field_name = data.get("field_name")
+    # Добавляем поле в draft-форму
+    form_draft = data.get("form_draft", {"fields": []})
+    form_draft["fields"].append({"name": field_name, "type": field_type, "required": False})
+    await state.update_data(form_draft=form_draft)
+    # Показываем список полей с возможностью удалить/редактировать
+    fields_text = "\n".join([
+        f"{i+1}. {f['name']} ({f['type']}) [Удалить: del_field_{i}] [Редактировать: edit_field_{i}]"
+        for i, f in enumerate(form_draft["fields"])
+    ]) or "Нет полей"
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="Добавить еще поле", callback_data="add_form_field")],
+        [types.InlineKeyboardButton(text="Завершить и использовать форму", callback_data="use_form")],
+        [types.InlineKeyboardButton(text="Назад к проекту", callback_data="back_to_projects")]
+    ] + [
+        [types.InlineKeyboardButton(text=f"Удалить поле {i+1}", callback_data=f"del_field_{i}") for i in range(len(form_draft["fields"]))],
+        [types.InlineKeyboardButton(text=f"Редактировать поле {i+1}", callback_data=f"edit_field_{i}") for i in range(len(form_draft["fields"]))]
+    ])
+    await callback_query.message.edit_text(
+        f"Поля формы:\n{fields_text}\n\nХотите добавить еще поле или использовать форму?",
+        reply_markup=keyboard
+    )
+    await state.set_state(SettingsStates.form_draft_edit)
+
+# Удаление поля
+@settings_router.callback_query(lambda c: c.data.startswith("del_field_"))
+async def handle_delete_field(callback_query: types.CallbackQuery, state: FSMContext):
+    idx = int(callback_query.data.replace("del_field_", ""))
+    data = await state.get_data()
+    form_draft = data.get("form_draft", {"fields": []})
+    if 0 <= idx < len(form_draft["fields"]):
+        form_draft["fields"].pop(idx)
+        await state.update_data(form_draft=form_draft)
+    # Повторно показываем список
+    fields_text = "\n".join([
+        f"{i+1}. {f['name']} ({f['type']}) [Удалить: del_field_{i}] [Редактировать: edit_field_{i}]"
+        for i, f in enumerate(form_draft["fields"])
+    ]) or "Нет полей"
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="Добавить еще поле", callback_data="add_form_field")],
+        [types.InlineKeyboardButton(text="Завершить и использовать форму", callback_data="use_form")],
+        [types.InlineKeyboardButton(text="Назад к проекту", callback_data="back_to_projects")]
+    ] + [
+        [types.InlineKeyboardButton(text=f"Удалить поле {i+1}", callback_data=f"del_field_{i}") for i in range(len(form_draft["fields"]))],
+        [types.InlineKeyboardButton(text=f"Редактировать поле {i+1}", callback_data=f"edit_field_{i}") for i in range(len(form_draft["fields"]))]
+    ])
+    await callback_query.message.edit_text(
+        f"Поля формы:\n{fields_text}\n\nХотите добавить еще поле или использовать форму?",
+        reply_markup=keyboard
+    )
+    await state.set_state(SettingsStates.form_draft_edit)
+
+# Аналогично реализовать edit_field_X (запросить новое имя/тип и обновить в form_draft)
+
+# При подтверждении — создаём форму и все поля в базе
+@settings_router.callback_query(lambda c: c.data == "use_form")
+async def handle_use_form(callback_query: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    form_draft = data.get("form_draft")
+    project_id = data.get("selected_project_id")
+    if not form_draft or not form_draft["fields"]:
+        await callback_query.answer("Сначала добавьте хотя бы одно поле")
+        return
+    from database import create_form, add_form_field
+    form_name = f"Форма проекта {project_id}"
+    form_id = await create_form(project_id, form_name)
+    for field in form_draft["fields"]:
+        await add_form_field(form_id, field["name"], field["type"], field.get("required", False))
+    await callback_query.message.edit_text(
+        "✅ Форма создана и готова к использованию!\n\nAsking бот будет автоматически собирать информацию от клиентов по этой форме.",
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
             [types.InlineKeyboardButton(text="Назад к проекту", callback_data="back_to_projects")]
         ])
-        await callback_query.message.edit_text(
-            f"✅ Поле '{field_name}' добавлено!\n\nХотите добавить еще поле или использовать форму?",
-            reply_markup=keyboard
-        )
-        await state.update_data(field_name=None)  # Сбросить имя поля
-    except Exception as e:
-        logging.error(f"[FORM] handle_field_type: ОШИБКА: {e}")
-        await callback_query.answer("Произошла ошибка, попробуйте еще раз")
-        await state.clear()
+    )
+    await state.clear()
+
+# При отмене/команде — state сбрасывается (уже реализовано в handle_command_in_state и back_to_projects)
 
 async def show_form_preview(message, state: FSMContext, form_id: str):
     """Показывает предварительный просмотр формы"""
@@ -1505,85 +1475,6 @@ async def show_form_preview(message, state: FSMContext, form_id: str):
     ])
     
     await message.edit_text(preview_text, reply_markup=keyboard)
-
-@settings_router.callback_query(lambda c: c.data == "use_form")
-async def handle_use_form(callback_query: types.CallbackQuery, state: FSMContext):
-    """Подтверждает использование формы"""
-    logging.info(f"[FORM] handle_use_form: user={callback_query.from_user.id}")
-    
-    await callback_query.message.edit_text(
-        "✅ Форма создана и готова к использованию!\n\n"
-        "Asking бот будет автоматически собирать информацию от клиентов по этой форме.",
-        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
-            [types.InlineKeyboardButton(text="Назад к проекту", callback_data="back_to_projects")]
-        ])
-    )
-    await state.clear()
-
-@settings_router.callback_query(lambda c: c.data == "export_form")
-async def handle_export_form(callback_query: types.CallbackQuery, state: FSMContext):
-    """Экспортирует данные формы в Excel"""
-    logging.info(f"[FORM] handle_export_form: user={callback_query.from_user.id}")
-    
-    data = await state.get_data()
-    project_id = data.get("selected_project_id")
-    
-    if not project_id:
-        await callback_query.answer("Ошибка: проект не выбран")
-        return
-    
-    from database import get_project_form, get_form_submissions
-    
-    form = await get_project_form(project_id)
-    if not form:
-        await callback_query.answer("Форма не найдена")
-        return
-    
-    submissions = await get_form_submissions(form["id"])
-    
-    if not submissions:
-        await callback_query.answer("Нет данных для экспорта")
-        return
-    
-    # Создаем Excel файл
-    try:
-        import pandas as pd
-        import io
-        
-        # Подготавливаем данные для Excel
-        excel_data = []
-        for submission in submissions:
-            row = {
-                "ID заявки": submission["id"],
-                "Telegram ID": submission["telegram_id"],
-                "Дата подачи": submission["submitted_at"].strftime("%Y-%m-%d %H:%M:%S")
-            }
-            # Добавляем поля формы
-            for field_name, field_value in submission["data"].items():
-                row[field_name] = field_value
-            excel_data.append(row)
-        
-        df = pd.DataFrame(excel_data)
-        
-        # Создаем Excel файл в памяти
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, sheet_name='Заявки', index=False)
-        
-        output.seek(0)
-        
-        # Отправляем файл
-        await callback_query.message.answer_document(
-            types.BufferedInputFile(
-                output.read(),
-                filename=f"form_submissions_{form['name']}.xlsx"
-            ),
-            caption=f"📊 Экспорт заявок формы '{form['name']}'\n\nВсего заявок: {len(submissions)}"
-        )
-        
-    except Exception as e:
-        logging.error(f"[FORM] handle_export_form: ОШИБКА: {e}")
-        await callback_query.answer("Ошибка при создании Excel файла")
 
 async def get_days_left_text(telegram_id: str) -> str:
     user = await get_user_by_id(telegram_id)
