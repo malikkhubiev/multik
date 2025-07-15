@@ -1375,7 +1375,7 @@ async def handle_field_type(callback_query: types.CallbackQuery, state: FSMConte
     await state.update_data(form_draft=form_draft)
     # Показываем список полей с возможностью удалить/редактировать
     fields_text = "\n".join([
-        f"{i+1}. {f['name']} ({f['type']}) [Удалить: del_field_{i}] [Редактировать: edit_field_{i}]"
+        f"{i+1}. {f['name']} ({f['type']})"
         for i, f in enumerate(form_draft["fields"])
     ]) or "Нет полей"
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
@@ -1383,8 +1383,7 @@ async def handle_field_type(callback_query: types.CallbackQuery, state: FSMConte
         [types.InlineKeyboardButton(text="Завершить и использовать форму", callback_data="use_form")],
         [types.InlineKeyboardButton(text="Назад к проекту", callback_data="back_to_projects")]
     ] + [
-        [types.InlineKeyboardButton(text=f"Удалить поле {i+1}", callback_data=f"del_field_{i}") for i in range(len(form_draft["fields"]))],
-        [types.InlineKeyboardButton(text=f"Редактировать поле {i+1}", callback_data=f"edit_field_{i}") for i in range(len(form_draft["fields"]))]
+        [types.InlineKeyboardButton(text=f"Удалить поле {i+1}", callback_data=f"del_field_{i}")] for i in range(len(form_draft["fields"]))
     ])
     await callback_query.message.edit_text(
         f"Поля формы:\n{fields_text}\n\nХотите добавить еще поле или использовать форму?",
@@ -1403,7 +1402,7 @@ async def handle_delete_field(callback_query: types.CallbackQuery, state: FSMCon
         await state.update_data(form_draft=form_draft)
     # Повторно показываем список
     fields_text = "\n".join([
-        f"{i+1}. {f['name']} ({f['type']}) [Удалить: del_field_{i}] [Редактировать: edit_field_{i}]"
+        f"{i+1}. {f['name']} ({f['type']})"
         for i, f in enumerate(form_draft["fields"])
     ]) or "Нет полей"
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
@@ -1411,16 +1410,13 @@ async def handle_delete_field(callback_query: types.CallbackQuery, state: FSMCon
         [types.InlineKeyboardButton(text="Завершить и использовать форму", callback_data="use_form")],
         [types.InlineKeyboardButton(text="Назад к проекту", callback_data="back_to_projects")]
     ] + [
-        [types.InlineKeyboardButton(text=f"Удалить поле {i+1}", callback_data=f"del_field_{i}") for i in range(len(form_draft["fields"]))],
-        [types.InlineKeyboardButton(text=f"Редактировать поле {i+1}", callback_data=f"edit_field_{i}") for i in range(len(form_draft["fields"]))]
+        [types.InlineKeyboardButton(text=f"Удалить поле {i+1}", callback_data=f"del_field_{i}")] for i in range(len(form_draft["fields"]))
     ])
     await callback_query.message.edit_text(
         f"Поля формы:\n{fields_text}\n\nХотите добавить еще поле или использовать форму?",
         reply_markup=keyboard
     )
     await state.set_state(SettingsStates.form_draft_edit)
-
-# Аналогично реализовать edit_field_X (запросить новое имя/тип и обновить в form_draft)
 
 # При подтверждении — создаём форму и все поля в базе
 @settings_router.callback_query(lambda c: c.data == "use_form")
