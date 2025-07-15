@@ -527,6 +527,8 @@ async def handle_business_file(message: types.Message, state: FSMContext):
     logger.info(f"Business data received from user {message.from_user.id}")
     t0 = time.monotonic()
     try:
+        # Показываем "печатает..." перед обработкой
+        await message.bot.send_chat_action(message.chat.id, "typing")
         logger.info("[LOAD] Получение данных пользователя...")
         t1 = time.monotonic()
         text_content = await get_text_from_message(message, settings_bot)
@@ -560,10 +562,8 @@ async def handle_business_file(message: types.Message, state: FSMContext):
         t3 = time.monotonic()
         project_id = await create_project(telegram_id, project_name, processed_business_info, token)
         logger.info(f"[LOAD] Запись в БД завершена за {time.monotonic() - t3:.2f} сек")
-        
         # Логируем создание проекта в аналитику
         await log_project_created(telegram_id, project_id, project_name)
-        
     except ValueError as e:
         await message.answer(f"❌ Ошибка: {str(e)}\n\nПожалуйста, выберите другое название для проекта.")
         await state.clear()
