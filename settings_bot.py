@@ -305,7 +305,7 @@ async def projects_with_trial_middleware(message: types.Message, state: FSMConte
     await trial_middleware(message, state, handle_projects_command)
 
 # Обработчики кнопок главного меню
-@settings_router.message(lambda message: message.text == "📋 Проекты")
+@settings_router.message(lambda message: message.text == "🏔️ Проекты")
 async def handle_projects_button(message: types.Message, state: FSMContext):
     telegram_id = str(message.from_user.id)
     logging.info(f"[BUTTON] handle_projects_button: пользователь {telegram_id} нажал кнопку 'Проекты'")
@@ -487,13 +487,12 @@ async def handle_project_name(message: types.Message, state: FSMContext):
     # Проверяем команды через универсальную функцию
     if await handle_command_in_state(message, state):
         return
-    
     logger.info(f"Project name received from user {message.from_user.id}: {message.text}")
     telegram_id = str(message.from_user.id)
     from database import check_project_name_exists
     if await check_project_name_exists(telegram_id, message.text):
         await message.answer(f"❌ Проект с именем '{message.text}' уже существует. Пожалуйста, выберите другое имя.")
-        await state.clear()
+        # Не сбрасываем состояние! Ожидаем новое имя
         return
     await state.update_data(project_name=message.text)
     await message.answer("Теперь введите API токен для Telegram-бота.")
@@ -506,12 +505,11 @@ async def handle_token(message: types.Message, state: FSMContext):
     # Проверяем команды через универсальную функцию
     if await handle_command_in_state(message, state):
         return
-    
     logger.info(f"Token received from user {message.from_user.id}: {message.text}")
     from database import get_project_by_token
     if await get_project_by_token(message.text):
         await message.answer(f"❌ Проект с таким токеном уже существует. Пожалуйста, введите другой токен.")
-        await state.clear()
+        # Не сбрасываем состояние! Ожидаем новый токен
         return
     await state.update_data(token=message.text)
     await message.answer(

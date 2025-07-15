@@ -56,5 +56,4 @@ async def handle_feedback_text(message, state):
     await message.answer("Спасибо за ваш отзыв! Он очень важен для нас.")
     from settings_bot import build_main_menu
     main_menu = await build_main_menu(telegram_id)
-    await message.answer("Меню обновлено 👇", reply_markup=main_menu)
     await state.clear() 
