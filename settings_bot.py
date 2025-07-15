@@ -1075,6 +1075,8 @@ async def handle_referral_command(message, state, telegram_id=None):
 
 @settings_router.message()
 async def handle_any_message(message: types.Message, state: FSMContext):
+    current_state = await state.get_state()
+    logging.info(f"[DEBUG] handle_any_message: user={message.from_user.id}, state={current_state}, text={message.text}")
     await trial_middleware(message, state, _handle_any_message_inner)
 
 async def _handle_any_message_inner(message: types.Message, state: FSMContext):
@@ -1351,6 +1353,8 @@ async def handle_add_form_field(callback_query: types.CallbackQuery, state: FSMC
 
 @settings_router.message(SettingsStates.waiting_for_field_name)
 async def handle_field_name(message: types.Message, state: FSMContext):
+    current_state = await state.get_state()
+    logging.info(f"[DEBUG] handle_field_name: user={message.from_user.id}, state={current_state}, text={message.text}")
     await state.update_data(field_name=message.text)
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
         [types.InlineKeyboardButton(text="Текст", callback_data="field_type_text")],
