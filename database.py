@@ -428,6 +428,12 @@ async def get_feedbacks():
     rows = await database.fetch_all(query)
     return [dict(r) for r in rows]
 
+async def has_feedback(telegram_id: str) -> bool:
+    """Проверяет, оставлял ли пользователь уже отзыв"""
+    query = select(Feedback).where(Feedback.telegram_id == telegram_id)
+    row = await database.fetch_one(query)
+    return row is not None
+
 # --- Payment ---
 async def log_payment(telegram_id, amount, status='pending'):
     logging.info(f"[METRIC] log_payment: начало записи платежа telegram_id={telegram_id}, amount={amount}, status={status}")
@@ -864,6 +870,7 @@ async def log_rating_stat(telegram_id: str, message_id: str, rating: bool, proje
     try:
         # Создаем запись в таблице ResponseRating
         query = insert(ResponseRating).values(
+            id=str(uuid.uuid4()),
             telegram_id=telegram_id,
             message_id=message_id,
             rating=rating,

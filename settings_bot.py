@@ -5,7 +5,7 @@ from aiogram import Router, Dispatcher
 from aiogram.filters import Command
 import os
 from config import SETTINGS_BOT_TOKEN, API_URL, SERVER_URL, DEEPSEEK_API_KEY, TRIAL_DAYS, TRIAL_PROJECTS, PAID_PROJECTS, PAYMENT_AMOUNT, PAYMENT_CARD_NUMBER, MAIN_TELEGRAM_ID, DISCOUNT_PAYMENT_AMOUNT
-from database import create_project, get_project_by_id, create_user, get_projects_by_user, update_project_name, update_project_business_info, append_project_business_info, delete_project, get_project_by_token, check_project_name_exists, get_user_by_id, get_users_with_expired_trial, delete_all_projects_for_user, set_user_paid, get_user_projects, log_message_stat, add_feedback, update_project_token, get_users_with_expired_paid_month, set_trial_expired_notified, log_payment
+from database import create_project, get_project_by_id, create_user, get_projects_by_user, update_project_name, update_project_business_info, append_project_business_info, delete_project, get_project_by_token, check_project_name_exists, get_user_by_id, get_users_with_expired_trial, delete_all_projects_for_user, set_user_paid, get_user_projects, log_message_stat, add_feedback, update_project_token, get_users_with_expired_paid_month, set_trial_expired_notified, log_payment, has_feedback
 from analytics import log_project_created, log_form_created
 from utils import set_webhook, delete_webhook
 from aiogram.fsm.context import FSMContext
@@ -234,25 +234,8 @@ async def _start_inner(message: types.Message, state: FSMContext):
             logging.error(f"[START] _start_inner: ❌ ОШИБКА при отправке typing action: {typing_error}")
         
         try:
-            # Создаем inline-клавиатуру для главного меню
-            start_menu_keyboard = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="➕ Создать проект", callback_data="start_new_project"),
-                        InlineKeyboardButton(text="📋 Мои проекты", callback_data="start_projects")
-                    ],
-                    [
-                        InlineKeyboardButton(text="💬 Оставить отзыв", callback_data="start_feedback"),
-                    ],
-                    [
-                        InlineKeyboardButton(text="🔗 Реферальная программа", callback_data="start_referral"),
-                    ],
-                                        [
-                        InlineKeyboardButton(text="💰 Оплата", callback_data="start_payment")
-                    ],
-                ]
-            )
-            
-            # Отправляем сообщение с inline-кнопками
+            # Динамически строим меню
+            start_menu_keyboard = await build_start_menu_keyboard(str(message.from_user.id))
             await message.answer(welcome_text, reply_markup=start_menu_keyboard)
             logging.info(f"[START] _start_inner: ✅ отправлено приветственное сообщение с inline-меню для пользователя {telegram_id}")
             
@@ -659,7 +642,7 @@ async def handle_project_selection(callback_query: types.CallbackQuery, state: F
             buttons = []
             # Добавляем кнопку формы в зависимости от наличия формы
             if form:
-                buttons.append([types.InlineKeyboardButton(text="Добавить форму", callback_data="manage_form")])
+                buttons.append([types.InlineKeyboardButton(text="Работа с формой", callback_data="manage_form")])
             else:
                 buttons.append([types.InlineKeyboardButton(text="Создать форму", callback_data="create_form")])
             # Меню управления проектом
@@ -1260,6 +1243,7 @@ async def handle_settings_start(message: types.Message, state: FSMContext):
         await create_user(str(message.from_user.id), referrer_id)
         # --- Новое: строка с днями ---
         days_text = await get_days_left_text(str(message.from_user.id))
+        main_menu = await build_main_menu(str(message.from_user.id))
         await message.answer(days_text + "Добро пожаловать в настройки! Введите имя вашего проекта.", reply_markup=main_menu)
         await state.set_state(SettingsStates.waiting_for_project_name)
         logger.info(f"Sent welcome message to user {message.from_user.id}")
@@ -1672,3 +1656,32 @@ async def get_days_left_text(telegram_id: str) -> str:
         if days_left < 0:
             days_left = 0
         return f"До конца пробного периода: {days_left} дней.\n"
+
+async def build_start_menu_keyboard(telegram_id: str):
+    """Динамически строит клавиатуру главного меню с учетом наличия отзыва"""
+    buttons = [
+        [InlineKeyboardButton(text="➕ Создать проект", callback_data="start_new_project"),
+         InlineKeyboardButton(text="📋 Мои проекты", callback_data="start_projects")],
+    ]
+    if not await has_feedback(telegram_id):
+        buttons.append([
+            InlineKeyboardButton(text="💬 Оставить отзыв", callback_data="start_feedback")
+        ])
+    buttons.append([
+        InlineKeyboardButton(text="🔗 Реферальная программа", callback_data="start_referral")
+    ])
+    buttons.append([
+        InlineKeyboardButton(text="💰 Оплата", callback_data="start_payment")
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+async def build_main_menu(telegram_id: str):
+    """Динамически строит ReplyKeyboardMarkup для главного меню"""
+    keyboard = [
+        [KeyboardButton(text="➕ Создать проект"), KeyboardButton(text="📋 Проекты")],
+    ]
+    if not await has_feedback(telegram_id):
+        keyboard.append([KeyboardButton(text="💬 Оставить отзыв")])
+    keyboard.append([KeyboardButton(text="🔗 Реферальная программа")])
+    keyboard.append([KeyboardButton(text="💰 Оплата")])
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, one_time_keyboard=False)
