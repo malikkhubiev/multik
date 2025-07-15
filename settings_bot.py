@@ -441,7 +441,7 @@ async def handle_start_referral(callback_query: types.CallbackQuery, state: FSMC
     await callback_query.answer()
     async def process():
         try:
-            await handle_referral_command(callback_query.message, state)
+            await handle_referral_command(callback_query.message, state, telegram_id=telegram_id)
             logging.info(f"[INLINE] handle_start_referral: ✅ обработка завершена для пользователя {telegram_id}")
         except Exception as e:
             logging.error(f"[INLINE] handle_start_referral: ❌ ОШИБКА для пользователя {telegram_id}: {e}")
@@ -1061,9 +1061,9 @@ async def referral_callback(callback_query: types.CallbackQuery, state: FSMConte
     await handle_referral_command(callback_query.message, state)
     await callback_query.answer()
 
-async def handle_referral_command(message, state):
-    """Обработчик команды /referral"""
-    telegram_id = str(message.from_user.id)
+async def handle_referral_command(message, state, telegram_id=None):
+    if telegram_id is None:
+        telegram_id = str(message.from_user.id)
     logging.info(f"[REFERRAL] handle_referral_command: пользователь {telegram_id} запросил реферальную ссылку")
     from database import get_referral_link, get_user_by_id
     user = await get_user_by_id(telegram_id)
@@ -1074,17 +1074,7 @@ async def handle_referral_command(message, state):
         return
     referral_link = await get_referral_link(telegram_id)
     referral_text = f"""
-🏄‍♂️ Ваша реферальная ссылка:
-
-{referral_link}
-
-❤ Как это работает:
-• Отправьте эту ссылку друзьям
-• Когда они зарегистрируются и оплатят подписку
-• Вы получите +10 дней к пользованию за каждого реферала
-
-👏 Просто скопируйте ссылку и поделитесь с друзьями!
-    """
+🏄‍♂️ Ваша реферальная ссылка:\n\n{referral_link}\n\n❤ Как это работает:\n• Отправьте эту ссылку друзьям\n• Когда они зарегистрируются и оплатят подписку\n• Вы получите +10 дней к пользованию за каждого реферала\n\n👏 Просто скопируйте ссылку и поделитесь с друзьями!\n    """
     await message.answer(referral_text)
 
 @settings_router.message()
