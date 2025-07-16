@@ -23,6 +23,8 @@ import traceback
 import time
 import datetime
 import asyncio
+import pandas as pd
+import io
 
 router = APIRouter()
 
@@ -464,16 +466,17 @@ async def handle_start_feedback(callback_query: types.CallbackQuery, state: FSMC
 async def handle_pay_command(message: types.Message, state: FSMContext):
     """Обработчик команды оплаты"""
     from database import get_payments
-    from config import DISCOUNT_PAYMENT_AMOUNT, PAYMENT_AMOUNT, PAYMENT_CARD_NUMBER
+    from config import DISCOUNT_PAYMENT_AMOUNT, PAYMENT_AMOUNT, PAYMENT_CARD_NUMBER1, PAYMENT_CARD_NUMBER2, PAYMENT_CARD_NUMBER3
     
     telegram_id = str(message.from_user.id)
     payments = await get_payments()
     user_payments = [p for p in payments if str(p['telegram_id']) == telegram_id]
+    card = random.choice([PAYMENT_CARD_NUMBER1, PAYMENT_CARD_NUMBER2, PAYMENT_CARD_NUMBER3])
     
     if len(user_payments) <= 1:
-        payment_text = f"💳 **Оплата подписки**\n\nДля оплаты переведите {DISCOUNT_PAYMENT_AMOUNT} рублей на карту:\n`{PAYMENT_CARD_NUMBER}`\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
+        payment_text = f"💳 **Оплата подписки**\n\nДля оплаты переведите {DISCOUNT_PAYMENT_AMOUNT} рублей на карту:\n`{card}`\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
     else:
-        payment_text = f"💳 **Продление подписки**\n\nДля продления переведите {PAYMENT_AMOUNT} рублей на карту:\n`{PAYMENT_CARD_NUMBER}`\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
+        payment_text = f"💳 **Продление подписки**\n\nДля продления переведите {PAYMENT_AMOUNT} рублей на карту:\n`{card}`\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
     
     await message.answer(payment_text, reply_markup=await build_main_menu(str(message.from_user.id)))
     await state.set_state(SettingsStates.waiting_for_payment_check)
@@ -639,6 +642,8 @@ async def handle_project_selection(callback_query: types.CallbackQuery, state: F
             # Добавляем кнопку формы в зависимости от наличия формы
             if form:
                 buttons.append([types.InlineKeyboardButton(text="Работа с формой", callback_data="manage_form")])
+                # Добавляем кнопку экспорта заявок
+                buttons.append([types.InlineKeyboardButton(text="Экспорт заявок", callback_data="export_form_submissions")])
             else:
                 buttons.append([types.InlineKeyboardButton(text="Создать форму", callback_data="create_form")])
             # Меню управления проектом
@@ -1539,3 +1544,39 @@ async def handle_any_message(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
     logging.info(f"[DEBUG] handle_any_message: user={message.from_user.id}, state={current_state}, text={message.text}")
     await trial_middleware(message, state, _handle_any_message_inner)
+
+@settings_router.callback_query(lambda c: c.data == "export_form_submissions")
+async def handle_export_form_submissions(callback_query: types.CallbackQuery, state: FSMContext):
+    import pandas as pd
+    import io
+    from database import get_project_form, get_form_submissions
+    await callback_query.answer()
+    data = await state.get_data()
+    project_id = data.get("selected_project_id")
+    if not project_id:
+        await callback_query.message.answer("Ошибка: проект не выбран")
+        return
+    form = await get_project_form(project_id)
+    if not form:
+        await callback_query.message.answer("У проекта нет формы для экспорта заявок.")
+        return
+    submissions = await get_form_submissions(form["id"])
+    if not submissions:
+        await callback_query.message.answer("Нет заявок для экспорта.")
+        return
+    # Собираем данные для DataFrame
+    rows = []
+    for sub in submissions:
+        row = {"telegram_id": sub["telegram_id"], "submitted_at": sub["submitted_at"]}
+        row.update(sub["data"])
+        rows.append(row)
+    df = pd.DataFrame(rows)
+    # Сохраняем в Excel в память
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df.to_excel(writer, index=False, sheet_name="Submissions")
+    output.seek(0)
+    await callback_query.message.answer_document(
+        types.InputFile(output, filename="form_submissions.xlsx"),
+        caption="Экспорт заявок из формы"
+    )
