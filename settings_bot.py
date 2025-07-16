@@ -171,32 +171,29 @@ def _get_trial_and_paid_limits(user):
 async def _start_inner(message: types.Message, state: FSMContext):
     telegram_id = str(message.from_user.id)
     logging.info(f"[START] _start_inner: начало обработки для пользователя {telegram_id}")
-    
     try:
         from database import get_projects_by_user, get_user_by_id, create_user
-        
         # Проверяем, есть ли реферальный параметр в команде /start
         referrer_id = None
         if message.text and message.text.startswith('/start'):
             parts = message.text.split()
             if len(parts) > 1 and parts[1].startswith('ref'):
                 referrer_id = parts[1][3:]  # Убираем 'ref' из начала
-                logging.info(f"[REFERRAL] _start_inner: пользователь {telegram_id} пришел по реферальной ссылке от {referrer_id}")
-        
+                logging.info(f"[REFERRAL][START] Пользователь {telegram_id} стартует по реферальной ссылке от {referrer_id}")
         try:
             user = await get_user_by_id(telegram_id)
-            logging.info(f"[START] _start_inner: получен пользователь: {user is not None}")
+            logging.info(f"[REFERRAL][START] get_user_by_id({telegram_id}) вернул: {user}")
         except Exception as user_error:
             logging.error(f"[START] _start_inner: ❌ ОШИБКА при получении пользователя: {user_error}")
             raise user_error
-        
         if not user:
             try:
                 await create_user(str(message.from_user.id), referrer_id)
+                logging.info(f"[REFERRAL][START] create_user({telegram_id}, referrer_id={referrer_id}) вызван")
                 user = await get_user_by_id(telegram_id)
-                logging.info(f"[START] _start_inner: ✅ пользователь {telegram_id} создан")
+                logging.info(f"[REFERRAL][START] после create_user get_user_by_id({telegram_id}) вернул: {user}")
                 if referrer_id:
-                    logging.info(f"[REFERRAL] _start_inner: пользователь {telegram_id} создан с реферером {referrer_id}")
+                    logging.info(f"[REFERRAL][START] пользователь {telegram_id} создан с реферером {referrer_id}")
             except Exception as create_error:
                 logging.error(f"[START] _start_inner: ❌ ОШИБКА при создании пользователя: {create_error}")
                 raise create_error
@@ -205,7 +202,9 @@ async def _start_inner(message: types.Message, state: FSMContext):
             try:
                 from database import update_user_referrer
                 await update_user_referrer(telegram_id, referrer_id)
-                logging.info(f"[REFERRAL] _start_inner: пользователю {telegram_id} добавлен реферер {referrer_id}")
+                logging.info(f"[REFERRAL][START] пользователю {telegram_id} добавлен реферер {referrer_id} через update_user_referrer")
+                user = await get_user_by_id(telegram_id)
+                logging.info(f"[REFERRAL][START] после update_user_referrer get_user_by_id({telegram_id}) вернул: {user}")
             except Exception as referrer_error:
                 logging.error(f"[START] _start_inner: ❌ ОШИБКА при добавлении реферера: {referrer_error}")
                 raise referrer_error
@@ -1095,6 +1094,7 @@ async def handle_referral_command(message, state, telegram_id=None):
         logging.warning(f"[REFERRAL] handle_referral_command: пользователь {telegram_id} не найден в базе. Требуется /start")
         await message.answer("Сначала создайте аккаунт командой /start")
         return
+    logging.info(f"[REFERRAL] handle_referral_command: referrer_id={user.get('referrer_id')}")
     referral_link = await get_referral_link(telegram_id)
     referral_text = f"""
 🏄‍♂️ Ваша реферальная ссылка:\n\n{referral_link}\n\n❤ Как это работает:\n• Отправьте эту ссылку друзьям\n• Когда они зарегистрируются и оплатят подписку\n• Вы получите +10 дней к пользованию за каждого реферала\n\n👏 Просто скопируйте ссылку и поделитесь с друзьями!\n    """
