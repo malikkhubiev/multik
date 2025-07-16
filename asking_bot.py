@@ -484,14 +484,21 @@ async def get_or_create_dispatcher(token: str, business_info: str):
         projects = await get_projects_by_user(str(user_id))
         logging.info(f"[ASKING_BOT] handle_question: найдено проектов для пользователя {user_id}: {len(projects)}")
         
-        # --- NEW: Determine if form exists for the project and set prompt accordingly ---
+        # --- NEW: LOG FORM FIELDS IF EXISTS ---
         prompt = role_base
         if projects and len(projects) > 0:
             project_token = projects[0]['token']
+            from database import get_project_form
+            form = await get_project_form(projects[0]['id'])
+            if form and form.get('fields'):
+                logging.info(f"[ASKING_BOT] handle_question: у проекта есть форма (id={form['id']}), поля: {[f['name'] for f in form['fields']]}")
+            else:
+                logging.info(f"[ASKING_BOT] handle_question: у проекта НЕТ формы или нет полей формы")
             # Незаметно собираем данные формы в процессе разговора
             await gradually_collect_form_data(message, text, project_token, bot)
             # Проверяем, нужно ли показать заполненную форму
             if await check_and_show_completed_form(message, text, project_token, bot):
+                logging.info(f"[ASKING_BOT] handle_question: форма была показана пользователю (auto preview)")
                 return
             # Check if form exists for this project
             form = await get_project_form_by_token(project_token)
@@ -735,8 +742,61 @@ async def get_or_create_dispatcher(token: str, business_info: str):
             logging.error(f"[FORM] handle_edit_form: ОШИБКА: {e}")
             await callback_query.answer("Произошла ошибка")
     
+    # --- Обработчик для кнопки 'Работа с формой' ---
+    @tg_router.callback_query(lambda c: c.data == "manage_form")
+    async def handle_manage_form(callback_query: types.CallbackQuery):
+        user_id = callback_query.from_user.id
+        logging.info(f"[FORM] handle_manage_form: user={user_id}")
+        try:
+            from database import get_projects_by_user, get_project_form
+            projects = await get_projects_by_user(str(user_id))
+            if not projects:
+                await callback_query.answer("Нет проектов", show_alert=True)
+                return
+            project_id = projects[0]['id']
+            form = await get_project_form(project_id)
+            if not form or not form.get('fields'):
+                await callback_query.answer("Форма не найдена", show_alert=True)
+                return
+            # Показываем превью формы
+            preview_text = f"📋 Форма: {form['name']}\n\nПоля формы:\n"
+            for i, field in enumerate(form["fields"], 1):
+                required_mark = "🔴" if field["required"] else "⚪"
+                preview_text += f"{i}. {required_mark} {field['name']} ({field['field_type']})\n"
+            preview_text += "\nХотите заполнить заявку?"
+            keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+                [types.InlineKeyboardButton(text="Заполнить заявку", callback_data=f"start_form_{form['id']}")],
+                [types.InlineKeyboardButton(text="Назад", callback_data="back_to_projects")]
+            ])
+            await callback_query.message.edit_text(preview_text, reply_markup=keyboard)
+            await callback_query.answer()
+        except Exception as e:
+            logging.error(f"[FORM] handle_manage_form: ОШИБКА: {e}")
+            await callback_query.answer("Произошла ошибка", show_alert=True)
 
-    
+    # --- Обработчик для старта заполнения формы по кнопке ---
+    @tg_router.callback_query(lambda c: c.data.startswith("start_form_"))
+    async def handle_start_form(callback_query: types.CallbackQuery):
+        user_id = callback_query.from_user.id
+        form_id = callback_query.data.split('_')[2]
+        logging.info(f"[FORM] handle_start_form: user={user_id}, form_id={form_id}")
+        try:
+            from database import get_project_form
+            form = await get_project_form(form_id)
+            if not form or not form.get('fields'):
+                await callback_query.answer("Форма не найдена", show_alert=True)
+                return
+            # Сбросить состояние и начать заполнение
+            storage = bot_dispatchers[token][0].storage
+            state = FSMContext(storage=storage, key=types.Chat(id=callback_query.message.chat.id, type="private"))
+            await state.update_data(current_form=form, current_field_index=0, form_data={})
+            await state.set_state(FormStates.collecting_form_data)
+            await show_next_form_field(callback_query.message, form, 0, bot)
+            await callback_query.answer()
+        except Exception as e:
+            logging.error(f"[FORM] handle_start_form: ОШИБКА: {e}")
+            await callback_query.answer("Произошла ошибка", show_alert=True)
+
     bot_dispatchers[token] = (dp, bot)
     return dp, bot
 
