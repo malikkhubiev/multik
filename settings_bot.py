@@ -210,9 +210,11 @@ async def _start_inner(message: types.Message, state: FSMContext):
                 logging.error(f"[START] _start_inner: ❌ ОШИБКА при добавлении реферера: {referrer_error}")
                 raise referrer_error
         
+        # Получаем количество оставшихся дней
+        days_text = await get_days_left_text(telegram_id)
+        
         # Показываем приветствие и главное меню
-        welcome_text = """
-Добро пожаловать в AI-бот для бизнеса!
+        welcome_text = f"""{days_text}Добро пожаловать в AI-бот для бизнеса!
 
 Здесь вы можете:
 • 🏔️ Управлять проектами и создавать новые
@@ -224,8 +226,7 @@ async def _start_inner(message: types.Message, state: FSMContext):
 • Настройка ответов на основе бизнес-данных
 • Автоматический сбор заявок от клиентов через Ai-формы с последующей выгрузкой в Excel-таблицу
 
-Выберите действие из меню ниже:
-        """
+Выберите действие из меню ниже:"""
         
         try:
             await message.bot.send_chat_action(message.chat.id, "typing")
@@ -469,9 +470,13 @@ async def handle_pay_command(message: types.Message, state: FSMContext):
     from config import DISCOUNT_PAYMENT_AMOUNT, PAYMENT_AMOUNT
     
     telegram_id = str(message.from_user.id)
+    logging.info(f"[PAYMENT-DEBUG] handle_pay_command: telegram_id from message = {telegram_id}")
     payments = await get_payments()
+    logging.info(f"[PAYMENT-DEBUG] handle_pay_command: all payments count = {len(payments)}")
     all_user_payments = [p for p in payments if str(p['telegram_id']) == telegram_id]
+    logging.info(f"[PAYMENT-DEBUG] handle_pay_command: user payments for {telegram_id}: {all_user_payments}")
     confirmed_payments = [p for p in all_user_payments if p['status'] == 'confirmed']
+    logging.info(f"[PAYMENT-DEBUG] handle_pay_command: confirmed payments for {telegram_id}: {confirmed_payments}")
     card = random.choice([PAYMENT_CARD_NUMBER1, PAYMENT_CARD_NUMBER2, PAYMENT_CARD_NUMBER3])
     logging.info(f"[PAYMENT] Пользователь {telegram_id}: всего платежей={len(all_user_payments)}, подтверждённых={len(confirmed_payments)}")
     if len(confirmed_payments) == 0:
@@ -1498,39 +1503,54 @@ async def show_form_preview(message, state: FSMContext, form_id: str):
     await message.edit_text(preview_text, reply_markup=keyboard)
 
 async def get_days_left_text(telegram_id: str) -> str:
+    logging.info(f"[DAYS_LEFT] get_days_left_text: called for telegram_id={telegram_id}")
     user = await get_user_by_id(telegram_id)
+    logging.info(f"[DAYS_LEFT] get_days_left_text: user from DB: {user}")
     if not user:
+        logging.info(f"[DAYS_LEFT] get_days_left_text: user not found, returning empty string")
         return ""
     if user.get("paid"):
         payments = await get_payments()
         confirmed = [p for p in payments if str(p['telegram_id']) == telegram_id and p['status'] == 'confirmed']
+        logging.info(f"[DAYS_LEFT] get_days_left_text: confirmed payments: {confirmed}")
         if confirmed:
             last_paid = max(confirmed, key=lambda p: p['paid_at'])
             from datetime import datetime, timezone
             paid_at = last_paid['paid_at']
+            logging.info(f"[DAYS_LEFT] get_days_left_text: paid_at raw: {paid_at} (type: {type(paid_at)})")
             if isinstance(paid_at, str):
                 from dateutil.parser import parse
                 paid_at = parse(paid_at)
+                logging.info(f"[DAYS_LEFT] get_days_left_text: paid_at parsed: {paid_at} (type: {type(paid_at)})")
             now = datetime.now(timezone.utc)
             days_left = 30 - (now - paid_at).days
+            logging.info(f"[DAYS_LEFT] get_days_left_text: now={now}, days_left={days_left}")
             if days_left < 0:
                 days_left = 0
-            return f"До конца оплаченного периода: {days_left} дней.\n"
+            result = f"До конца оплаченного периода: {days_left} дней.\n"
+            logging.info(f"[DAYS_LEFT] get_days_left_text: result='{result}'")
+            return result
         else:
+            logging.info(f"[DAYS_LEFT] get_days_left_text: подписка активна, но нет подтверждённых платежей")
             return "Подписка активна.\n"
     else:
         start_date = user.get("start_date")
+        logging.info(f"[DAYS_LEFT] get_days_left_text: start_date raw: {start_date} (type: {type(start_date)})")
         if isinstance(start_date, str):
             from dateutil.parser import parse
             start_date = parse(start_date)
+            logging.info(f"[DAYS_LEFT] get_days_left_text: start_date parsed: {start_date} (type: {type(start_date)})")
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc)
         bonus_days = user.get('bonus_days', 0) or 0
         effective_trial_days = TRIAL_DAYS + bonus_days
         days_left = effective_trial_days - (now - start_date).days
+        logging.info(f"[DAYS_LEFT] get_days_left_text: now={now}, effective_trial_days={effective_trial_days}, days_left={days_left}")
         if days_left < 0:
             days_left = 0
-        return f"До конца пробного периода: {days_left} дней.\n"
+        result = f"До конца пробного периода: {days_left} дней.\n"
+        logging.info(f"[DAYS_LEFT] get_days_left_text: result='{result}'")
+        return result
 
 async def build_start_menu_keyboard(telegram_id: str):
     """Динамически строит клавиатуру главного меню с учетом наличия отзыва"""
