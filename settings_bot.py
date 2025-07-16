@@ -4,7 +4,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram import Router, Dispatcher
 from aiogram.filters import Command
 import os
-from config import SETTINGS_BOT_TOKEN, API_URL, SERVER_URL, DEEPSEEK_API_KEY, TRIAL_DAYS, TRIAL_PROJECTS, PAID_PROJECTS, PAYMENT_AMOUNT, PAYMENT_CARD_NUMBER, MAIN_TELEGRAM_ID, DISCOUNT_PAYMENT_AMOUNT
+from config import SETTINGS_BOT_TOKEN, API_URL, SERVER_URL, DEEPSEEK_API_KEY, TRIAL_DAYS, TRIAL_PROJECTS, PAID_PROJECTS, PAYMENT_AMOUNT, MAIN_TELEGRAM_ID, DISCOUNT_PAYMENT_AMOUNT, PAYMENT_CARD_NUMBER1, PAYMENT_CARD_NUMBER2, PAYMENT_CARD_NUMBER3
 from database import create_project, get_project_by_id, create_user, get_projects_by_user, update_project_name, update_project_business_info, append_project_business_info, delete_project, get_project_by_token, check_project_name_exists, get_user_by_id, get_users_with_expired_trial, delete_all_projects_for_user, set_user_paid, get_user_projects, log_message_stat, add_feedback, update_project_token, get_users_with_expired_paid_month, set_trial_expired_notified, log_payment, has_feedback
 from analytics import log_project_created, log_form_created
 from utils import set_webhook, delete_webhook
@@ -466,7 +466,7 @@ async def handle_start_feedback(callback_query: types.CallbackQuery, state: FSMC
 async def handle_pay_command(message: types.Message, state: FSMContext):
     """Обработчик команды оплаты"""
     from database import get_payments
-    from config import DISCOUNT_PAYMENT_AMOUNT, PAYMENT_AMOUNT, PAYMENT_CARD_NUMBER1, PAYMENT_CARD_NUMBER2, PAYMENT_CARD_NUMBER3
+    from config import DISCOUNT_PAYMENT_AMOUNT, PAYMENT_AMOUNT
     
     telegram_id = str(message.from_user.id)
     payments = await get_payments()
@@ -974,8 +974,9 @@ async def handle_show_data(callback_query: types.CallbackQuery, state: FSMContex
 
 @settings_router.callback_query(lambda c: c.data == "pay_trial")
 async def handle_pay_trial(callback_query: types.CallbackQuery, state: FSMContext):
+    card = random.choice([PAYMENT_CARD_NUMBER1, PAYMENT_CARD_NUMBER2, PAYMENT_CARD_NUMBER3])
     await callback_query.message.answer(
-        f"Для оплаты переведите {DISCOUNT_PAYMENT_AMOUNT} рублей на карту: {PAYMENT_CARD_NUMBER}\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
+        f"Для оплаты переведите {DISCOUNT_PAYMENT_AMOUNT} рублей на карту: {card}\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
     )
     await state.set_state(SettingsStates.waiting_for_payment_check)
     await callback_query.answer()
@@ -1293,17 +1294,19 @@ async def handle_projects_command(message: types.Message, state: FSMContext, tel
 @settings_router.callback_query(lambda c: c.data == "pay_subscription")
 async def handle_pay_subscription(callback_query: types.CallbackQuery, state: FSMContext):
     from database import get_payments
-    from config import DISCOUNT_PAYMENT_AMOUNT, PAYMENT_AMOUNT, PAYMENT_CARD_NUMBER
+    from config import DISCOUNT_PAYMENT_AMOUNT, payment_amount
+    
     telegram_id = str(callback_query.from_user.id)
     payments = await get_payments()
     user_payments = [p for p in payments if str(p['telegram_id']) == telegram_id]
+    card = random.choice([PAYMENT_CARD_NUMBER1, PAYMENT_CARD_NUMBER2, PAYMENT_CARD_NUMBER3])
     if len(user_payments) <= 1:
         await callback_query.message.answer(
-            f"Для оплаты переведите {DISCOUNT_PAYMENT_AMOUNT} рублей на карту: {PAYMENT_CARD_NUMBER}\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
+            f"Для оплаты переведите {DISCOUNT_PAYMENT_AMOUNT} рублей на карту: {card}\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
         )
     else:
         await callback_query.message.answer(
-            f"Для продления подписки переведите {PAYMENT_AMOUNT} рублей на карту: {PAYMENT_CARD_NUMBER}\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
+            f"Для продления подписки переведите {PAYMENT_AMOUNT} рублей на карту: {card}\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
         )
     await state.set_state(SettingsStates.waiting_for_payment_check)
     await callback_query.answer()
