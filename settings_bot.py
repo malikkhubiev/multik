@@ -470,14 +470,16 @@ async def handle_pay_command(message: types.Message, state: FSMContext):
     
     telegram_id = str(message.from_user.id)
     payments = await get_payments()
-    user_payments = [p for p in payments if str(p['telegram_id']) == telegram_id]
+    all_user_payments = [p for p in payments if str(p['telegram_id']) == telegram_id]
+    confirmed_payments = [p for p in all_user_payments if p['status'] == 'confirmed']
     card = random.choice([PAYMENT_CARD_NUMBER1, PAYMENT_CARD_NUMBER2, PAYMENT_CARD_NUMBER3])
-    
-    if len(user_payments) <= 1:
+    logging.info(f"[PAYMENT] Пользователь {telegram_id}: всего платежей={len(all_user_payments)}, подтверждённых={len(confirmed_payments)}")
+    if len(confirmed_payments) == 0:
         payment_text = f"💳 **Оплата подписки**\n\nДля оплаты переведите {DISCOUNT_PAYMENT_AMOUNT} рублей на карту:\n`{card}`\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
+        logging.info(f"[PAYMENT] Пользователь {telegram_id}: предлагается сумма {DISCOUNT_PAYMENT_AMOUNT}")
     else:
         payment_text = f"💳 **Продление подписки**\n\nДля продления переведите {PAYMENT_AMOUNT} рублей на карту:\n`{card}`\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
-    
+        logging.info(f"[PAYMENT] Пользователь {telegram_id}: предлагается сумма {PAYMENT_AMOUNT}")
     await message.answer(payment_text, reply_markup=await build_main_menu(str(message.from_user.id)))
     await state.set_state(SettingsStates.waiting_for_payment_check)
 
@@ -974,10 +976,24 @@ async def handle_show_data(callback_query: types.CallbackQuery, state: FSMContex
 
 @settings_router.callback_query(lambda c: c.data == "pay_trial")
 async def handle_pay_trial(callback_query: types.CallbackQuery, state: FSMContext):
+    from database import get_payments
+    from config import DISCOUNT_PAYMENT_AMOUNT, PAYMENT_AMOUNT
+    telegram_id = str(callback_query.from_user.id)
+    payments = await get_payments()
+    all_user_payments = [p for p in payments if str(p['telegram_id']) == telegram_id]
+    confirmed_payments = [p for p in all_user_payments if p['status'] == 'confirmed']
     card = random.choice([PAYMENT_CARD_NUMBER1, PAYMENT_CARD_NUMBER2, PAYMENT_CARD_NUMBER3])
-    await callback_query.message.answer(
-        f"Для оплаты переведите {DISCOUNT_PAYMENT_AMOUNT} рублей на карту: {card}\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
-    )
+    logging.info(f"[PAYMENT] Пользователь {telegram_id}: всего платежей={len(all_user_payments)}, подтверждённых={len(confirmed_payments)} (pay_trial)")
+    if len(confirmed_payments) == 0:
+        await callback_query.message.answer(
+            f"Для оплаты переведите {DISCOUNT_PAYMENT_AMOUNT} рублей на карту: {card}\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
+        )
+        logging.info(f"[PAYMENT] Пользователь {telegram_id}: предлагается сумма {DISCOUNT_PAYMENT_AMOUNT} (pay_trial)")
+    else:
+        await callback_query.message.answer(
+            f"Для продления подписки переведите {PAYMENT_AMOUNT} рублей на карту: {card}\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
+        )
+        logging.info(f"[PAYMENT] Пользователь {telegram_id}: предлагается сумма {PAYMENT_AMOUNT} (pay_trial)")
     await state.set_state(SettingsStates.waiting_for_payment_check)
     await callback_query.answer()
 
@@ -1294,20 +1310,23 @@ async def handle_projects_command(message: types.Message, state: FSMContext, tel
 @settings_router.callback_query(lambda c: c.data == "pay_subscription")
 async def handle_pay_subscription(callback_query: types.CallbackQuery, state: FSMContext):
     from database import get_payments
-    from config import DISCOUNT_PAYMENT_AMOUNT, payment_amount
-    
+    from config import DISCOUNT_PAYMENT_AMOUNT, PAYMENT_AMOUNT
     telegram_id = str(callback_query.from_user.id)
     payments = await get_payments()
-    user_payments = [p for p in payments if str(p['telegram_id']) == telegram_id]
+    all_user_payments = [p for p in payments if str(p['telegram_id']) == telegram_id]
+    confirmed_payments = [p for p in all_user_payments if p['status'] == 'confirmed']
     card = random.choice([PAYMENT_CARD_NUMBER1, PAYMENT_CARD_NUMBER2, PAYMENT_CARD_NUMBER3])
-    if len(user_payments) <= 1:
+    logging.info(f"[PAYMENT] Пользователь {telegram_id}: всего платежей={len(all_user_payments)}, подтверждённых={len(confirmed_payments)} (pay_subscription)")
+    if len(confirmed_payments) == 0:
         await callback_query.message.answer(
             f"Для оплаты переведите {DISCOUNT_PAYMENT_AMOUNT} рублей на карту: {card}\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
         )
+        logging.info(f"[PAYMENT] Пользователь {telegram_id}: предлагается сумма {DISCOUNT_PAYMENT_AMOUNT} (pay_subscription)")
     else:
         await callback_query.message.answer(
             f"Для продления подписки переведите {PAYMENT_AMOUNT} рублей на карту: {card}\n\nПосле оплаты отправьте чек сюда (фото/скриншот)."
         )
+        logging.info(f"[PAYMENT] Пользователь {telegram_id}: предлагается сумма {PAYMENT_AMOUNT} (pay_subscription)")
     await state.set_state(SettingsStates.waiting_for_payment_check)
     await callback_query.answer()
 

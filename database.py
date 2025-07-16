@@ -480,11 +480,12 @@ async def confirm_payment(telegram_id: str):
         if not pending_payment:
             logging.warning(f"[DB] confirm_payment: не найден pending платеж для пользователя {telegram_id}")
             return False
-        
+        # Подробное логирование перед обновлением
+        logging.info(f"[DB] confirm_payment: найден pending платеж: id={pending_payment['id']}, amount={pending_payment['amount']}, paid_at={pending_payment['paid_at']}, status={pending_payment['status']}, telegram_id={pending_payment['telegram_id']}")
         # Обновляем статус на confirmed
         update_query = update(Payment).where(Payment.id == pending_payment['id']).values(status='confirmed')
         await database.execute(update_query)
-        logging.info(f"[DB] confirm_payment: платеж {pending_payment['id']} подтвержден для пользователя {telegram_id}")
+        logging.info(f"[DB] confirm_payment: платеж {pending_payment['id']} для пользователя {telegram_id} обновлён: статус 'pending' -> 'confirmed'")
         return True
     except Exception as e:
         logging.error(f"[DB] confirm_payment: ОШИБКА: {e}")
