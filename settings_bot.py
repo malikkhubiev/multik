@@ -1545,9 +1545,13 @@ async def get_days_left_text(telegram_id: str) -> str:
         bonus_days = user.get('bonus_days', 0) or 0
         effective_trial_days = TRIAL_DAYS + bonus_days
         # Привести start_date к tz-aware (UTC), если нужно
-        if start_date.tzinfo is None:
-            start_date = start_date.replace(tzinfo=timezone.utc)
-        days_left = effective_trial_days - (now - start_date).days
+        try:
+            if start_date.tzinfo is None:
+                start_date = start_date.replace(tzinfo=timezone.utc)
+            days_left = effective_trial_days - (now - start_date).days
+        except TypeError as e:
+            logging.error(f"[DAYS_LEFT][ERROR] TypeError при вычислении дней: now={now} (tzinfo={now.tzinfo}), start_date={start_date} (tzinfo={getattr(start_date, 'tzinfo', None)}), effective_trial_days={effective_trial_days}, ошибка: {e}")
+            raise
         logging.info(f"[DAYS_LEFT] get_days_left_text: now={now}, effective_trial_days={effective_trial_days}, days_left={days_left}")
         if days_left < 0:
             days_left = 0
