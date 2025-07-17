@@ -477,55 +477,17 @@ async def get_or_create_dispatcher(token: str, business_info: str):
                     logging.warning(f"[ASKING_BOT] handle_question: chat not found for chat_id={message.chat.id}")
             return
         logging.info(f"[ASKING_BOT] handle_question: user_id={user_id}, text={text}")
-        
-        # Проверяем, находится ли пользователь в процессе заполнения формы
+
+        # Всегда отправляем typing, кроме случая, когда пользователь в процессе заполнения формы
         storage = bot_dispatchers[token][0].storage
         state = FSMContext(storage=storage, key=types.Chat(id=message.chat.id, type="private"))
         current_state = await state.get_state()
-        
-        if current_state == FormStates.collecting_form_data.state:
-            # Обрабатываем заполнение формы
-            await handle_form_field_input(message, state, bot)
-            return
-        
-        user = await get_user_by_id(str(user_id))
-        is_trial = user and not user['paid']
-        is_paid = user and user['paid']
-        t0 = time.monotonic()
-        # Получаем токен из Project по user_id
-        from database import get_projects_by_user
-        logging.info(f"[ASKING_BOT] handle_question: получаем проекты для пользователя {user_id}")
-        projects = await get_projects_by_user(str(user_id))
-        logging.info(f"[ASKING_BOT] handle_question: найдено проектов для пользователя {user_id}: {len(projects)}")
-        
-        # --- NEW: LOG FORM FIELDS IF EXISTS ---
-        prompt = role_base
-        if projects and len(projects) > 0:
-            project_token = projects[0]['token']
-            from database import get_project_form
-            form = await get_project_form(projects[0]['id'])
-            if form and form.get('fields'):
-                logging.info(f"[ASKING_BOT] handle_question: у проекта есть форма (id={form['id']}), поля: {[f['name'] for f in form['fields']]}")
-            else:
-                logging.info(f"[ASKING_BOT] handle_question: у проекта НЕТ формы или нет полей формы")
-            # Незаметно собираем данные формы в процессе разговора
-            await gradually_collect_form_data(message, text, project_token, bot)
-            # Проверяем, нужно ли показать заполненную форму
-            if await check_and_show_completed_form(message, text, project_token, bot):
-                logging.info(f"[ASKING_BOT] handle_question: форма была показана пользователю (auto preview)")
-                return
-            # Check if form exists for this project
-            form = await get_project_form_by_token(project_token)
-            if form and form.get('fields'):
-                prompt += role_form
-            logging.info(f"[ASKING_BOT] handle_question: отправляем typing action для пользователя {user_id}")
-            # Используем тот же токен проекта для typing action
+        if current_state != FormStates.collecting_form_data.state:
             try:
                 await message.bot.send_chat_action(message.chat.id, "typing")
                 logging.info(f"[ASKING_BOT] handle_question: typing action отправлен для пользователя {user_id}")
             except Exception as typing_error:
                 logging.error(f"[ASKING_BOT] handle_question: ОШИБКА при отправке typing action: {typing_error}")
-                # Пробуем альтернативный способ
                 try:
                     from config import SETTINGS_BOT_TOKEN
                     main_bot = Bot(token=SETTINGS_BOT_TOKEN)
@@ -534,13 +496,54 @@ async def get_or_create_dispatcher(token: str, business_info: str):
                     logging.info(f"[ASKING_BOT] handle_question: typing action отправлен через основной бот для пользователя {user_id}")
                 except Exception as fallback_error:
                     logging.error(f"[ASKING_BOT] handle_question: ОШИБКА при отправке typing action через основной бот: {fallback_error}")
+
+        # Если пользователь в процессе заполнения формы — обрабатываем форму
+        if current_state == FormStates.collecting_form_data.state:
+            await handle_form_field_input(message, state, bot)
+            return
+
+        user = await get_user_by_id(str(user_id))
+        is_trial = user and not user['paid']
+        is_paid = user and user['paid']
+        t0 = time.monotonic()
+        from database import get_projects_by_user, get_project_form
+        logging.info(f"[ASKING_BOT] handle_question: получаем проекты для пользователя {user_id}")
+        projects = await get_projects_by_user(str(user_id))
+        logging.info(f"[ASKING_BOT] handle_question: найдено проектов для пользователя {user_id}: {len(projects)}")
+
+        # Если у пользователя есть проект и у проекта есть форма с полями — всегда запускаем процесс заполнения формы
+        if projects and len(projects) > 0:
+            project_token = projects[0]['token']
+            project_id = projects[0]['id']
+            form = await get_project_form(project_id)
+            if form and form.get('fields'):
+                logging.info(f"[ASKING_BOT] handle_question: у проекта есть форма (id={form['id']}), поля: {[f['name'] for f in form['fields']]}")
+                # Пробуем автосбор данных
+                await gradually_collect_form_data(message, text, project_token, bot)
+                # Если после автосбора заполнены все поля — показываем превью
+                state_data = await state.get_data()
+                form_data = state_data.get("form_data", {})
+                if len(form_data) == len(form['fields']):
+                    logging.info(f"[ASKING_BOT] handle_question: форма заполнена на 100%, показываем превью")
+                    await show_form_preview_with_auto_fill(message, form, form_data, bot)
+                    return
+                # Если не все поля заполнены — запускаем обычный процесс заполнения формы
+                logging.info(f"[ASKING_BOT] handle_question: форма не заполнена на 100%, запускаем обычный процесс заполнения формы")
+                await start_form_collection(message, form, bot)
+                return
+            else:
+                logging.info(f"[ASKING_BOT] handle_question: у проекта НЕТ формы или нет полей формы")
         else:
-            logging.warning(f"[ASKING_BOT] Не найден проект для пользователя {user_id}, не отправляю typing action")
+            logging.warning(f"[ASKING_BOT] Не найден проект для пользователя {user_id}, не запускаю форму")
+
+        # Если не запущен процесс формы — обычный ответ через Deepseek
         if not business_info:
             await message.answer("Информация о бизнесе не найдена. Обратитесь к администратору.")
             logging.warning(f"[ASKING_BOT] handle_question: business_info not found for project")
             return
         try:
+            # Промпт для Deepseek: если форма неактивна — отвечай на вопросы, если форма активна — только собирай данные
+            prompt = role_base
             logging.info("[ASKING] Формирование запроса к Deepseek...")
             t1 = time.monotonic()
             url = "https://api.deepseek.com/v1/chat/completions"
@@ -551,7 +554,7 @@ async def get_or_create_dispatcher(token: str, business_info: str):
             payload = {
                 "model": "deepseek-chat",
                 "messages": [
-                    {"role": "system", "content": prompt + f"Отвечай на вопросы клиентов на основе информации о бизнесе: {business_info}"},
+                    {"role": "system", "content": prompt + "\nЕсли сейчас идёт сбор формы, не отвечай на вопросы пользователя, а только собирай данные по форме. Если форма неактивна — отвечай на вопросы максимально полезно и кратко." + f"\nИнформация о бизнесе: {business_info}"},
                     {"role": "user", "content": f"Ответь на вопрос клиента: {text}"}
                 ],
                 "temperature": 0.9
@@ -566,10 +569,7 @@ async def get_or_create_dispatcher(token: str, business_info: str):
             content = data["choices"][0]["message"]["content"]
             content = clean_markdown(content)
             logging.info(f"[ASKING_BOT] handle_question: deepseek response='{content}'")
-            
-            # Обрабатываем ссылки в ответе
             content_without_links, links = extract_links_from_text(content)
-            
             try:
                 response_message = await message.answer(content_without_links)
             except Exception as e:
@@ -578,21 +578,13 @@ async def get_or_create_dispatcher(token: str, business_info: str):
                 if 'chat not found' in str(e):
                     logging.warning(f"[ASKING_BOT] handle_question: chat not found for chat_id={message.chat.id}")
                     return
-            
-            # Создаем клавиатуру с кнопками лайк/дизлайк используя ID отправленного сообщения
             rating_keyboard = create_rating_keyboard(str(response_message.message_id))
-            
-            # Редактируем сообщение чтобы добавить кнопки
             await response_message.edit_reply_markup(reply_markup=rating_keyboard)
-            
-            # Если есть ссылки, отправляем их отдельно
             if links:
                 links_keyboard = create_links_keyboard(links)
                 await message.answer("🔗 Полезные ссылки:", reply_markup=links_keyboard)
-            
             t3 = time.monotonic()
             response_time = time.monotonic() - t0
-            # Логируем время ответа и общее количество ответов
             query = select(func.count()).select_from(MessageStat)
             row = await database.fetch_one(query)
             total_answers = row[0] if row else 0
@@ -602,12 +594,10 @@ async def get_or_create_dispatcher(token: str, business_info: str):
                 is_command=False,
                 is_reply=False,
                 response_time=response_time,
-                project_id=None,  # Можно добавить project_id, если есть
+                project_id=None,
                 is_trial=is_trial,
                 is_paid=is_paid
             )
-            
-            # Логируем заданный вопрос в аналитику
             project_id = None
             if projects and len(projects) > 0:
                 project_id = projects[0]['id']
