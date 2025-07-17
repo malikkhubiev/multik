@@ -1461,20 +1461,31 @@ async def handle_use_form(callback_query: types.CallbackQuery, state: FSMContext
         logging.warning(f"[FORM] handle_use_form: попытка сохранить пустую форму (form_draft={form_draft})")
         await callback_query.answer("Сначала добавьте хотя бы одно поле")
         return
-    from database import create_form, add_form_field
+    # Новый этап: спросить цель заявки
+    await state.update_data(form_draft=form_draft, form_stage="waiting_for_purpose")
+    await callback_query.message.edit_text(
+        "Зачем нужна заявка?\n\nНапример: Для того, чтобы мой сотрудник связался по телефону и договорился об индивидуальной консультации.\n\nЧем подробнее будет цель, тем лучше!",
+    )
+    await state.set_state(SettingsStates.waiting_for_form_purpose)
+
+@settings_router.message(SettingsStates.waiting_for_form_purpose)
+async def handle_form_purpose(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    form_draft = data.get("form_draft")
+    project_id = data.get("selected_project_id")
+    purpose = message.text.strip()
+    logging.info(f"[FORM] handle_form_purpose: user={message.from_user.id}, project_id={project_id}, purpose={purpose}")
+    from database import create_form, add_form_field, set_form_purpose
     form_name = f"Форма проекта {project_id}"
     form_id = await create_form(project_id, form_name)
-    logging.info(f"[FORM] handle_use_form: создана форма form_id={form_id} для project_id={project_id}")
     for field in form_draft["fields"]:
         await add_form_field(form_id, field["name"], field["type"], field.get("required", False))
-        logging.info(f"[FORM] handle_use_form: добавлено поле {field['name']} ({field['type']}) в форму {form_id}")
-    await callback_query.message.edit_text(
+    # Сохраняем цель заявки
+    await set_form_purpose(form_id, purpose)
+    await message.answer(
         "✅ Форма создана и готова к использованию!\n\nAsking бот будет автоматически собирать информацию от клиентов по этой форме.",
-        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
-            [types.InlineKeyboardButton(text="Назад к проекту", callback_data="back_to_projects")]
-        ])
     )
-    logging.info(f"[FORM] handle_use_form: форма {form_id} успешно сохранена и готова к использованию")
+    logging.info(f"[FORM] handle_form_purpose: форма {form_id} успешно сохранена с целью '{purpose}' и готова к использованию")
     await state.clear()
 
 # При отмене/команде — state сбрасывается (уже реализовано в handle_command_in_state и back_to_projects)

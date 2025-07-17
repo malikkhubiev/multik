@@ -19,3 +19,4 @@ SpeechRecognition
 pydub
 plotly
 apscheduler
+xlsxwriter

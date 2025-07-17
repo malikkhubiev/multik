@@ -498,6 +498,15 @@ async def get_or_create_dispatcher(token: str, business_info: str):
                 except Exception as fallback_error:
                     logging.error(f"[ASKING_BOT] handle_question: ОШИБКА при отправке typing action через основной бот: {fallback_error}")
 
+        # --- Контекст для Deepseek: сохраняем последние 4 сообщения (user+bot) ---
+        state_data = await state.get_data()
+        history = state_data.get('history', [])
+        # Добавляем новое сообщение пользователя
+        if not text.startswith('/start') and text.strip():
+            history.append({'role': 'user', 'content': text})
+            history = history[-4:]
+            await state.update_data(history=history)
+
         # Если пользователь в процессе заполнения формы — обрабатываем форму
         if current_state == FormStates.collecting_form_data.state:
             await handle_form_field_input(message, state, bot)
@@ -541,102 +550,111 @@ async def get_or_create_dispatcher(token: str, business_info: str):
         else:
             logging.warning(f"[ASKING_BOT] Не найден проект для пользователя {user_id}, не запускаю форму")
 
-        # Если не запущен процесс формы — обычный ответ через Deepseek
-        if not business_info:
-            await message.answer("Информация о бизнесе не найдена. Обратитесь к администратору.")
-            logging.warning(f"[ASKING_BOT] handle_question: business_info not found for project")
-            return
-        try:
-            # Промпт для Deepseek: если форма неактивна — отвечай на вопросы, если форма активна — только собирай данные
-            prompt = role_base
-            logging.info("[ASKING] Формирование запроса к Deepseek...")
-            t1 = time.monotonic()
-            url = "https://api.deepseek.com/v1/chat/completions"
-            headers = {
-                "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "model": "deepseek-chat",
-                "messages": [
-                    {"role": "system", "content": prompt + "\nЕсли сейчас идёт сбор формы, не отвечай на вопросы пользователя, а только собирай данные по форме. Если форма неактивна — отвечай на вопросы максимально полезно и кратко." + f"\nИнформация о бизнесе: {business_info}"},
-                    {"role": "user", "content": f"Ответь на вопрос клиента: {text}"}
-                ],
-                "temperature": 0.9
-            }
-            logging.info(f"[ASKING] Deepseek запрос сформирован за {time.monotonic() - t1:.2f} сек")
-            t2 = time.monotonic()
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.post(url, headers=headers, json=payload)
-                resp.raise_for_status()
-                data = resp.json()
-            logging.info(f"[ASKING] Deepseek ответ получен за {time.monotonic() - t2:.2f} сек")
-            content = data["choices"][0]["message"]["content"]
-            content = clean_markdown(content)
-            logging.info(f"[ASKING_BOT] handle_question: deepseek response='{content}'")
-            # --- Новый блок: обработка ссылок и кнопок ---
-            content_without_links, links = extract_links_from_text(content)
-            # Попробуем найти названия для каждой ссылки (например, по шаблону '📺 Телевизор: ...')
-            import re
-            buttons = []
-            if links:
-                # Ищем строки вида '...: ссылка' или эмодзи + название + : ссылка
-                for link in links:
-                    # Найти строку с этой ссылкой
-                    pattern = r'([\w\s\-\d\.:\u0400-\u04FF]+):?\s*' + re.escape(link)
-                    match = re.search(pattern, content)
-                    button_text = None
-                    if match:
-                        # Берём название до ':'
-                        button_text = match.group(1).strip()
-                        # Убираем эмодзи, если есть
-                        button_text = re.sub(r'^[^\w\d\u0400-\u04FF]+', '', button_text).strip()
-                    if not button_text:
-                        # Попробовать найти название товара в тексте
-                        product_match = re.search(r'(Телевизор [A-Za-z0-9\- ]+)', content_without_links)
-                        if product_match:
-                            button_text = product_match.group(1).strip()
-                    if not button_text:
-                        button_text = "Подробнее"
-                    from aiogram.types import InlineKeyboardButton
-                    buttons.append(InlineKeyboardButton(text=button_text, url=link))
-                from aiogram.types import InlineKeyboardMarkup
-                links_keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons])
-                # Удаляем все ссылки из текста ответа
-                await message.answer(content_without_links, reply_markup=links_keyboard)
-            else:
-                response_message = await message.answer(content_without_links)
-                rating_keyboard = create_rating_keyboard(str(response_message.message_id))
-                await response_message.edit_reply_markup(reply_markup=rating_keyboard)
-            # Кнопки лайк/дизлайк всегда добавляем
-            if not links:
-                rating_keyboard = create_rating_keyboard(str(response_message.message_id))
-                await response_message.edit_reply_markup(reply_markup=rating_keyboard)
-            t3 = time.monotonic()
-            response_time = time.monotonic() - t0
-            query = select(func.count()).select_from(MessageStat)
-            row = await database.fetch_one(query)
-            total_answers = row[0] if row else 0
-            logging.info(f"[ASKING_BOT] Время ответа на этот вопрос: {response_time:.2f} сек. Всего ответов в БД: {total_answers}")
-            await log_message_stat(
-                telegram_id=str(user_id),
-                is_command=False,
-                is_reply=False,
-                response_time=response_time,
-                project_id=None,
-                is_trial=is_trial,
-                is_paid=is_paid
-            )
-            project_id = None
-            if projects and len(projects) > 0:
-                project_id = projects[0]['id']
-            await log_question_asked(str(user_id), project_id, text)
-            logging.info(f"[ASKING] Ответ пользователю отправлен за {response_time:.2f} сек")
-            logging.info(f"[ASKING] ВСЕГО времени на ответ: {response_time:.2f} сек")
-        except Exception as e:
-            import traceback
-            logging.error(f"[ASKING_BOT] handle_question: error: {e}\n{traceback.format_exc()}")
-            await message.answer("Произошла ошибка при обработке вашего вопроса. Пожалуйста, попробуйте позже.")
+        # --- Deepseek: формируем промпт с контекстом и структурой ответа ---
+        # Получаем причину заявки из формы, если есть
+        form_purpose = None
+        if projects and len(projects) > 0:
+            project_id = projects[0]['id']
+            form = await get_project_form(project_id)
+            if form and form.get('purpose'):
+                form_purpose = form['purpose']
+        # Структура промпта
+        prompt = role_base + "\nСтруктура ответа: 1) Сначала ответь на вопрос пользователя максимально полезно. 2) Если в данных есть ссылки на товары, после ответа начни продвигать эти товары, объясни их преимущества и призови купить. 3) Если у проекта есть форма, обязательно предложи оформить заявку и объясни зачем это нужно: '" + (form_purpose or 'чтобы мы могли связаться и сделать индивидуальное предложение') + "'. Не отвечай шаблонно, используй детали из диалога."
+        # Формируем messages для Deepseek
+        messages = []
+        for msg in history:
+            messages.append(msg)
+        messages.append({'role': 'user', 'content': text})
+        payload = {
+            "model": "deepseek-chat",
+            "messages": [{"role": "system", "content": prompt}] + messages,
+            "temperature": 0.9
+        }
+        logging.info(f"[ASKING] Deepseek запрос сформирован за {time.monotonic() - t1:.2f} сек")
+        t2 = time.monotonic()
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+        logging.info(f"[ASKING] Deepseek ответ получен за {time.monotonic() - t2:.2f} сек")
+        content = data["choices"][0]["message"]["content"]
+        content = clean_markdown(content)
+        logging.info(f"[ASKING_BOT] handle_question: deepseek response='{content}'")
+        # --- Новый блок: обработка ссылок и кнопок ---
+        content_without_links, links = extract_links_from_text(content)
+        # Попробуем найти названия для каждой ссылки (например, по шаблону '📺 Телевизор: ...')
+        import re
+        buttons = []
+        msg = None
+        if links:
+            # Ищем строки вида '...: ссылка' или эмодзи + название + : ссылка
+            for link in links:
+                # Найти строку с этой ссылкой
+                pattern = r'([\w\s\-\d\.:\u0400-\u04FF]+):?\s*' + re.escape(link)
+                match = re.search(pattern, content)
+                button_text = None
+                if match:
+                    # Берём название до ':'
+                    button_text = match.group(1).strip()
+                    # Убираем эмодзи, если есть
+                    button_text = re.sub(r'^[^\w\d\u0400-\u04FF]+', '', button_text).strip()
+                if not button_text:
+                    # Попробовать найти название товара в тексте
+                    product_match = re.search(r'(Телевизор [A-Za-z0-9\- ]+)', content_without_links)
+                    if product_match:
+                        button_text = product_match.group(1).strip()
+                if not button_text:
+                    button_text = "Подробнее"
+                from aiogram.types import InlineKeyboardButton
+                buttons.append(InlineKeyboardButton(text=button_text, url=link))
+            from aiogram.types import InlineKeyboardMarkup
+            links_keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons])
+            msg = await message.answer(content_without_links, reply_markup=links_keyboard)
+            # Если хотите добавить лайк/дизлайк к ссылкам, раскомментируйте и объедините клавиатуры
+            # rating_keyboard = create_rating_keyboard(str(msg.message_id))
+            # await msg.edit_reply_markup(reply_markup=links_keyboard) # Удалено: edit_reply_markup вызывается дважды
+        else:
+            msg = await message.answer(content_without_links)
+            rating_keyboard = create_rating_keyboard(str(msg.message_id))
+            await msg.edit_reply_markup(reply_markup=rating_keyboard)
+        # Кнопки лайк/дизлайк всегда добавляем
+        if not links:
+            rating_keyboard = create_rating_keyboard(str(msg.message_id))
+            await msg.edit_reply_markup(reply_markup=rating_keyboard)
+        t3 = time.monotonic()
+        response_time = time.monotonic() - t0
+        query = select(func.count()).select_from(MessageStat)
+        row = await database.fetch_one(query)
+        total_answers = row[0] if row else 0
+        logging.info(f"[ASKING_BOT] Время ответа на этот вопрос: {response_time:.2f} сек. Всего ответов в БД: {total_answers}")
+        await log_message_stat(
+            telegram_id=str(user_id),
+            is_command=False,
+            is_reply=False,
+            response_time=response_time,
+            project_id=None,
+            is_trial=is_trial,
+            is_paid=is_paid
+        )
+        project_id = None
+        if projects and len(projects) > 0:
+            project_id = projects[0]['id']
+        await log_question_asked(str(user_id), project_id, text)
+        logging.info(f"[ASKING] Ответ пользователю отправлен за {response_time:.2f} сек")
+        logging.info(f"[ASKING] ВСЕГО времени на ответ: {response_time:.2f} сек")
+        # --- После первого ответа всегда предлагаем оформить заявку, если форма есть ---
+        if form and form.get('fields'):
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            btn_text = "Оформить заявку"
+            purpose_text = form_purpose or 'чтобы мы могли связаться и сделать индивидуальное предложение'
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text=btn_text, callback_data="start_form")]
+            ])
+            await message.answer(f"Хотите оформить заявку? Давайте оформим заявку, {purpose_text}.", reply_markup=keyboard)
+    except Exception as e:
+        import traceback
+        logging.error(f"[ASKING_BOT] handle_question: error: {e}\n{traceback.format_exc()}")
+        await message.answer("Произошла ошибка при обработке вашего вопроса. Пожалуйста, попробуйте позже.")
     
     # Обработчики для кнопок лайк/дизлайк
     @tg_router.callback_query(lambda c: c.data.startswith("rate_"))
