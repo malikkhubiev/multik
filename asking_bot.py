@@ -572,8 +572,11 @@ async def get_or_create_dispatcher(token: str, business_info: str):
         }
         logging.info(f"[ASKING] Deepseek запрос сформирован за {time.monotonic() - t0:.2f} сек")
         t2 = time.monotonic()
+        # Define Deepseek API URL
+        deepseek_url = "https://api.deepseek.com/v1/chat/completions"
+        headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}"}
         async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(url, headers=headers, json=payload)
+            resp = await client.post(deepseek_url, headers=headers, json=payload)
             resp.raise_for_status()
             data = resp.json()
         logging.info(f"[ASKING] Deepseek ответ получен за {time.monotonic() - t2:.2f} сек")
