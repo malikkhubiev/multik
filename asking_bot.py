@@ -64,10 +64,14 @@ def clear_dispatcher_cache(token: str):
 async def get_project_form_by_token(token: str):
     """Получает форму проекта по токену"""
     from database import get_project_by_token, get_project_form
+    logging.info(f"[FORM] get_project_form_by_token: token={token}")
     project = await get_project_by_token(token)
+    logging.info(f"[FORM] get_project_form_by_token: project={project}")
     if not project:
+        logging.warning(f"[FORM] get_project_form_by_token: проект не найден по token={token}")
         return None
     form = await get_project_form(project["id"])
+    logging.info(f"[FORM] get_project_form_by_token: form={form}")
     if form:
         # Добавляем project_id в форму для удобства
         form["project_id"] = project["id"]
@@ -75,31 +79,27 @@ async def get_project_form_by_token(token: str):
 
 async def start_form_collection(message: types.Message, form, bot):
     """Начинает сбор данных формы"""
-    logging.info(f"[FORM] start_form_collection: user={message.from_user.id}")
-    
+    logging.info(f"[FORM] start_form_collection: user={message.from_user.id}, form_id={form.get('id') if form else None}, fields={len(form.get('fields', [])) if form else 0}")
     if not form or not form["fields"]:
+        logging.warning(f"[FORM] start_form_collection: форма не найдена или нет полей (form={form})")
         await message.answer("Форма не настроена или не содержит полей.")
         return
-    
-    # Получаем токен проекта
     from database import get_project_by_id
     project = await get_project_by_id(form["project_id"])
+    logging.info(f"[FORM] start_form_collection: project={project}")
     if not project:
+        logging.error(f"[FORM] start_form_collection: проект не найден по project_id={form['project_id']}")
         await message.answer("Ошибка: проект не найден")
         return
-    
-    # Сохраняем данные формы в состоянии пользователя
     storage = bot_dispatchers.get(project["token"])[0].storage
     state = FSMContext(storage=storage, key=types.Chat(id=message.chat.id, type="private"))
-    
     await state.update_data(
         current_form=form,
         current_field_index=0,
         form_data={}
     )
     await state.set_state(FormStates.collecting_form_data)
-    
-    # Показываем первое поле
+    logging.info(f"[FORM] start_form_collection: FSM set to collecting_form_data, state updated")
     await show_next_form_field(message, form, 0, bot)
 
 async def show_next_form_field(message: types.Message, form, field_index: int, bot):
@@ -129,22 +129,26 @@ async def show_next_form_field(message: types.Message, form, field_index: int, b
 
 async def finish_form_collection(message: types.Message, form, bot):
     """Завершает сбор данных формы"""
-    logging.info(f"[FORM] finish_form_collection: user={message.from_user.id}")
+    logging.info(f"[FORM] finish_form_collection: user={message.from_user.id}, form_id={form.get('id') if form else None}")
     
     # Получаем токен проекта
     from database import get_project_by_id
     project = await get_project_by_id(form["project_id"])
+    logging.info(f"[FORM] finish_form_collection: project={project}")
     if not project:
+        logging.error(f"[FORM] finish_form_collection: проект не найден по project_id={form['project_id']}")
         await message.answer("Ошибка: проект не найден")
         return
     
     storage = bot_dispatchers.get(project["token"])[0].storage
     state = FSMContext(storage=storage, key=types.Chat(id=message.chat.id, type="private"))
     form_data = (await state.get_data()).get("form_data", {})
+    logging.info(f"[FORM] finish_form_collection: form_data={form_data}")
     
     # Сохраняем заявку
     from database import save_form_submission
     success = await save_form_submission(form["id"], str(message.from_user.id), form_data)
+    logging.info(f"[FORM] finish_form_collection: save_form_submission result={success}")
     
     if success:
         # Логируем подтверждение отправки формы
@@ -154,13 +158,16 @@ async def finish_form_collection(message: types.Message, form, bot):
             "✅ Спасибо! Ваша заявка принята.\n\n"
             "Мы свяжемся с вами в ближайшее время! 🚀"
         )
+        logging.info(f"[FORM] finish_form_collection: заявка успешно сохранена и подтверждение отправлено")
     else:
         await message.answer(
             "❌ Заявка уже была отправлена ранее.\n\n"
             "Спасибо за интерес к нашему проекту! 🙏"
         )
+        logging.warning(f"[FORM] finish_form_collection: заявка уже была отправлена ранее")
     
     await state.clear()
+    logging.info(f"[FORM] finish_form_collection: FSM state cleared")
 
 async def validate_field_value(value: str, field_type: str) -> tuple[bool, str]:
     """Валидирует значение поля формы"""
@@ -236,16 +243,20 @@ async def handle_form_field_input(message: types.Message, state: FSMContext, bot
     form = data.get("current_form")
     current_field_index = data.get("current_field_index", 0)
     form_data = data.get("form_data", {})
+    logging.info(f"[FORM] handle_form_field_input: user={message.from_user.id}, field_index={current_field_index}, form_id={form.get('id') if form else None}")
     
     if not form or current_field_index >= len(form["fields"]):
+        logging.warning(f"[FORM] handle_form_field_input: нет формы или индекс поля вне диапазона (form={form}, current_field_index={current_field_index})")
         await state.clear()
         return
     
     field = form["fields"][current_field_index]
     field_value = message.text
+    logging.info(f"[FORM] handle_form_field_input: field_name={field['name']}, field_type={field['field_type']}, value='{field_value}'")
     
     # Валидируем значение
     is_valid, error_message = await validate_field_value(field_value, field["field_type"])
+    logging.info(f"[FORM] handle_form_field_input: value validation result: is_valid={is_valid}, error='{error_message}'")
     
     if not is_valid:
         await message.answer(error_message)
@@ -254,13 +265,16 @@ async def handle_form_field_input(message: types.Message, state: FSMContext, bot
     # Сохраняем значение
     form_data[field["name"]] = field_value
     await state.update_data(form_data=form_data)
+    logging.info(f"[FORM] handle_form_field_input: value saved for field '{field['name']}'")
     
     # Переходим к следующему полю
     next_field_index = current_field_index + 1
     await state.update_data(current_field_index=next_field_index)
+    logging.info(f"[FORM] handle_form_field_input: moving to next_field_index={next_field_index}")
     
     if next_field_index >= len(form["fields"]):
         # Форма заполнена
+        logging.info(f"[FORM] handle_form_field_input: все поля формы заполнены, завершаем сбор")
         await finish_form_collection(message, form, bot)
     else:
         # Показываем следующее поле

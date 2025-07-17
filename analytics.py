@@ -27,6 +27,7 @@ class AnalyticsTracker:
         - "rated_response" - поставил оценку ответу
         - "filled_form" - заполнил форму
         """
+        logging.info(f"[ANALYTICS] log_user_action: начало, user_id={user_id}, action={action}, project_id={project_id}, additional_data={additional_data}")
         try:
             timestamp = datetime.now(timezone.utc).isoformat()
             # --- Новый формат additional_data ---
@@ -49,6 +50,7 @@ class AnalyticsTracker:
                 "project_id": project_id or "",
                 "additional_data": readable_data
             }
+            logging.info(f"[ANALYTICS] log_user_action: сформирован пакет данных для отправки: {data}")
             
             logging.info(f"[ANALYTICS] log_user_action: {action} for user {user_id}")
             
@@ -56,14 +58,14 @@ class AnalyticsTracker:
                 async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
                     response = await client.post(self.webhook_url, json=data)
                     response.raise_for_status()
-                    logging.info(f"[ANALYTICS] Данные успешно отправлены в Google Sheets")
+                    logging.info(f"[ANALYTICS] log_user_action: данные успешно отправлены в Google Sheets")
             else:
                 logging.warning(f"[ANALYTICS] GOOGLE_SHEETS_WEBHOOK_URL не настроен, данные не отправлены")
                 
         except Exception as e:
-            logging.error(f"[ANALYTICS] Ошибка при отправке данных в Google Sheets: {e}")
+            logging.error(f"[ANALYTICS] log_user_action: ОШИБКА: {e}")
             import traceback
-            logging.error(f"[ANALYTICS] Полный traceback: {traceback.format_exc()}")
+            logging.error(f"[ANALYTICS] log_user_action: полный traceback: {traceback.format_exc()}")
 
 # Глобальный экземпляр трекера
 analytics = AnalyticsTracker()

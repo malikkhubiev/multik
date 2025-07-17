@@ -1348,8 +1348,7 @@ async def handle_payment_check_fsm(message: types.Message, state: FSMContext):
 # --- Обработчики форм ---
 @settings_router.callback_query(lambda c: c.data == "create_form")
 async def handle_create_form(callback_query: types.CallbackQuery, state: FSMContext):
-    logging.info(f"[FORM] handle_create_form: user={callback_query.from_user.id}")
-    # Сохраняем draft-форму в state
+    logging.info(f"[FORM] handle_create_form: user={callback_query.from_user.id} (начало создания формы)")
     await state.update_data(form_draft={"fields": []})
     form_text = """
 📋 **Создание формы для сбора заявок**
@@ -1365,6 +1364,7 @@ async def handle_create_form(callback_query: types.CallbackQuery, state: FSMCont
         [types.InlineKeyboardButton(text="Добавить поле", callback_data="add_form_field")],
         [types.InlineKeyboardButton(text="Отмена", callback_data="back_to_projects")]
     ])
+    logging.info(f"[FORM] handle_create_form: user={callback_query.from_user.id} (черновик формы создан)")
     await callback_query.message.edit_text(form_text, reply_markup=keyboard)
 
 @settings_router.callback_query(lambda c: c.data == "add_form_field")
@@ -1401,11 +1401,10 @@ async def handle_field_type(callback_query: types.CallbackQuery, state: FSMConte
     field_type = callback_query.data.replace("field_type_", "")
     data = await state.get_data()
     field_name = data.get("field_name")
-    # Добавляем поле в draft-форму
     form_draft = data.get("form_draft", {"fields": []})
+    logging.info(f"[FORM] handle_field_type: user={callback_query.from_user.id}, field_name={field_name}, field_type={field_type}")
     form_draft["fields"].append({"name": field_name, "type": field_type, "required": False})
     await state.update_data(form_draft=form_draft)
-    # Показываем список полей с возможностью удалить/редактировать
     fields_text = "\n".join([
         f"{i+1}. {f['name']} ({f['type']})"
         for i, f in enumerate(form_draft["fields"])
@@ -1417,6 +1416,7 @@ async def handle_field_type(callback_query: types.CallbackQuery, state: FSMConte
     ] + [
         [types.InlineKeyboardButton(text=f"Удалить поле {i+1}", callback_data=f"del_field_{i}")] for i in range(len(form_draft["fields"]))
     ])
+    logging.info(f"[FORM] handle_field_type: user={callback_query.from_user.id}, form_draft={form_draft}")
     await callback_query.message.edit_text(
         f"Поля формы:\n{fields_text}\n\nХотите добавить еще поле или использовать форму?",
         reply_markup=keyboard
@@ -1456,20 +1456,25 @@ async def handle_use_form(callback_query: types.CallbackQuery, state: FSMContext
     data = await state.get_data()
     form_draft = data.get("form_draft")
     project_id = data.get("selected_project_id")
+    logging.info(f"[FORM] handle_use_form: user={callback_query.from_user.id}, project_id={project_id}, form_draft={form_draft}")
     if not form_draft or not form_draft["fields"]:
+        logging.warning(f"[FORM] handle_use_form: попытка сохранить пустую форму (form_draft={form_draft})")
         await callback_query.answer("Сначала добавьте хотя бы одно поле")
         return
     from database import create_form, add_form_field
     form_name = f"Форма проекта {project_id}"
     form_id = await create_form(project_id, form_name)
+    logging.info(f"[FORM] handle_use_form: создана форма form_id={form_id} для project_id={project_id}")
     for field in form_draft["fields"]:
         await add_form_field(form_id, field["name"], field["type"], field.get("required", False))
+        logging.info(f"[FORM] handle_use_form: добавлено поле {field['name']} ({field['type']}) в форму {form_id}")
     await callback_query.message.edit_text(
         "✅ Форма создана и готова к использованию!\n\nAsking бот будет автоматически собирать информацию от клиентов по этой форме.",
         reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
             [types.InlineKeyboardButton(text="Назад к проекту", callback_data="back_to_projects")]
         ])
     )
+    logging.info(f"[FORM] handle_use_form: форма {form_id} успешно сохранена и готова к использованию")
     await state.clear()
 
 # При отмене/команде — state сбрасывается (уже реализовано в handle_command_in_state и back_to_projects)

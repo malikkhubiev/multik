@@ -34,18 +34,20 @@ class FormAutoFiller:
         }
     
     def extract_data_from_text(self, text: str) -> Dict[str, str]:
-        """Извлекает данные из текста на основе паттернов"""
+        logger.info(f"[AUTO_FILL] extract_data_from_text: начало, text='{text}'")
         extracted_data = {}
         
         for field_type, patterns in self.patterns.items():
             for pattern in patterns:
                 match = re.search(pattern, text, re.IGNORECASE)
+                logger.info(f"[AUTO_FILL] extract_data_from_text: field_type={field_type}, pattern={pattern}, match={bool(match)}")
                 if match:
                     value = match.group(1).strip()
+                    logger.info(f"[AUTO_FILL] extract_data_from_text: найдено значение '{value}' для типа '{field_type}'")
                     if value and value not in extracted_data.values():
                         extracted_data[field_type] = value
                         break
-        
+        logger.info(f"[AUTO_FILL] extract_data_from_text: итоговый результат {extracted_data}")
         return extracted_data
     
     def map_field_to_form_field(self, field_name: str, field_type: str) -> Optional[str]:
