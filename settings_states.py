@@ -20,6 +20,7 @@ class SettingsStates(StatesGroup):
     waiting_for_field_type = State()
     waiting_for_form_edit = State()
     waiting_for_form_purpose = State()
+    form_draft_edit = State()
 
 class ExtendedSettingsStates(StatesGroup):
     waiting_for_payment_confirmation = State() 

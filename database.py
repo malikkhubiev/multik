@@ -87,6 +87,7 @@ class Form(Base):
     project_id = Column(String, ForeignKey('project.id'), nullable=False)
     name = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    purpose = Column(String, nullable=True)
     project = relationship("Project", back_populates="forms")
     fields = relationship("FormField", back_populates="form", order_by="FormField.order_index")
     submissions = relationship("FormSubmission", back_populates="form")
@@ -814,6 +815,19 @@ async def delete_form(form_id: str) -> bool:
     except Exception as e:
         logging.error(f"[FORM] delete_form: ОШИБКА: {e}")
         return False
+
+async def set_form_purpose(form_id: str, purpose: str) -> None:
+    """Устанавливает цель (purpose) для формы"""
+    logging.info(f"[FORM] set_form_purpose: form_id={form_id}, purpose={purpose}")
+    try:
+        query = update(Form).where(Form.id == form_id).values(purpose=purpose)
+        await database.execute(query)
+        logging.info(f"[FORM] set_form_purpose: цель формы обновлена")
+    except Exception as e:
+        logging.error(f"[FORM] set_form_purpose: ОШИБКА: {e}")
+        import traceback
+        logging.error(f"[FORM] set_form_purpose: полный traceback: {traceback.format_exc()}")
+        raise
 
 # --- Рейтинг ответов ---
 async def save_response_rating(telegram_id: str, message_id: str, rating: bool, project_id: str = None) -> bool:
