@@ -639,22 +639,23 @@ async def get_or_create_dispatcher(token: str, business_info: str):
         project_id = None
         if projects and len(projects) > 0:
             project_id = projects[0]['id']
-        await log_question_asked(str(user_id), project_id, text)
-        logging.info(f"[ASKING] Ответ пользователю отправлен за {response_time:.2f} сек")
-        logging.info(f"[ASKING] ВСЕГО времени на ответ: {response_time:.2f} сек")
-        # --- После первого ответа всегда предлагаем оформить заявку, если форма есть ---
-        if form and form.get('fields'):
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-            btn_text = "Оформить заявку"
-            purpose_text = form_purpose or 'чтобы мы могли связаться и сделать индивидуальное предложение'
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text=btn_text, callback_data="start_form")]
-            ])
-            await message.answer(f"Хотите оформить заявку? Давайте оформим заявку, {purpose_text}.", reply_markup=keyboard)
-    except Exception as e:
-        import traceback
-        logging.error(f"[ASKING_BOT] handle_question: error: {e}\n{traceback.format_exc()}")
-        await message.answer("Произошла ошибка при обработке вашего вопроса. Пожалуйста, попробуйте позже.")
+        try:
+            await log_question_asked(str(user_id), project_id, text)
+            logging.info(f"[ASKING] Ответ пользователю отправлен за {response_time:.2f} сек")
+            logging.info(f"[ASKING] ВСЕГО времени на ответ: {response_time:.2f} сек")
+            # --- После первого ответа всегда предлагаем оформить заявку, если форма есть ---
+            if form and form.get('fields'):
+                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                btn_text = "Оформить заявку"
+                purpose_text = form_purpose or 'чтобы мы могли связаться и сделать индивидуальное предложение'
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text=btn_text, callback_data="start_form")]
+                ])
+                await message.answer(f"Хотите оформить заявку? Давайте оформим заявку, {purpose_text}.", reply_markup=keyboard)
+        except Exception as e:
+            import traceback
+            logging.error(f"[ASKING_BOT] handle_question: error: {e}\n{traceback.format_exc()}")
+            await message.answer("Произошла ошибка при обработке вашего вопроса. Пожалуйста, попробуйте позже.")
     
     # Обработчики для кнопок лайк/дизлайк
     @tg_router.callback_query(lambda c: c.data.startswith("rate_"))
