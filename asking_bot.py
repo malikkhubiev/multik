@@ -32,6 +32,7 @@ role_base = """
 Ты - самый npl-прокаченный менеджер по продажам.
 Правила общения:
 - Не используй markdown при ответе
+- Если есть ссылка, помогающая продать, вставь её в ответ
 - После каждого ответа предложи купить
 - Если вопрос не по теме, переводи в шутку, связанную с бизнесом и продолжай продавливать продажу
 - Если не знаешь что-то о чём спросили, честно скажи и дай вспомогательную инфу из базы
@@ -518,6 +519,10 @@ async def get_or_create_dispatcher(token: str, business_info: str):
             form = await get_project_form(project_id)
             if form and form.get('fields'):
                 logging.info(f"[ASKING_BOT] handle_question: у проекта есть форма (id={form['id']}), поля: {[f['name'] for f in form['fields']]}")
+                # Гарантируем наличие project_id в form
+                if 'project_id' not in form:
+                    form['project_id'] = project_id
+                    logging.info(f"[ASKING_BOT] handle_question: добавлен project_id={project_id} в form")
                 # Пробуем автосбор данных
                 await gradually_collect_form_data(message, text, project_token, bot)
                 # Если после автосбора заполнены все поля — показываем превью
@@ -569,20 +574,31 @@ async def get_or_create_dispatcher(token: str, business_info: str):
             content = data["choices"][0]["message"]["content"]
             content = clean_markdown(content)
             logging.info(f"[ASKING_BOT] handle_question: deepseek response='{content}'")
+            # --- Новый блок: обработка ссылок и кнопок ---
             content_without_links, links = extract_links_from_text(content)
-            try:
-                response_message = await message.answer(content_without_links)
-            except Exception as e:
-                import traceback
-                logging.error(f"[ASKING_BOT] handle_question: error: {e}\n{traceback.format_exc()}")
-                if 'chat not found' in str(e):
-                    logging.warning(f"[ASKING_BOT] handle_question: chat not found for chat_id={message.chat.id}")
-                    return
-            rating_keyboard = create_rating_keyboard(str(response_message.message_id))
-            await response_message.edit_reply_markup(reply_markup=rating_keyboard)
+            # Попробуем найти название товара в ответе (например, Телевизор ...)
+            import re
+            product_name = None
+            product_match = re.search(r'(Телевизор [A-Za-z0-9\- ]+)', content_without_links)
+            if product_match:
+                product_name = product_match.group(1).strip()
+            # Если есть ссылки, делаем отдельную кнопку
             if links:
-                links_keyboard = create_links_keyboard(links)
-                await message.answer("🔗 Полезные ссылки:", reply_markup=links_keyboard)
+                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                button_text = product_name if product_name else "Подробнее"
+                links_keyboard = InlineKeyboardMarkup(
+                    inline_keyboard=[[InlineKeyboardButton(text=button_text, url=links[0])]]
+                )
+                # Удаляем ссылку из текста ответа
+                await message.answer(content_without_links, reply_markup=links_keyboard)
+            else:
+                response_message = await message.answer(content_without_links)
+                rating_keyboard = create_rating_keyboard(str(response_message.message_id))
+                await response_message.edit_reply_markup(reply_markup=rating_keyboard)
+            # Кнопки лайк/дизлайк всегда добавляем
+            if not links:
+                rating_keyboard = create_rating_keyboard(str(response_message.message_id))
+                await response_message.edit_reply_markup(reply_markup=rating_keyboard)
             t3 = time.monotonic()
             response_time = time.monotonic() - t0
             query = select(func.count()).select_from(MessageStat)
