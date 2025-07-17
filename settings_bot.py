@@ -1403,6 +1403,10 @@ async def handle_field_type(callback_query: types.CallbackQuery, state: FSMConte
     field_name = data.get("field_name")
     form_draft = data.get("form_draft", {"fields": []})
     logging.info(f"[FORM] handle_field_type: user={callback_query.from_user.id}, field_name={field_name}, field_type={field_type}")
+    if any(f['name'].strip().lower() == field_name.strip().lower() for f in form_draft["fields"]):
+        await callback_query.message.answer(f"Поле с названием '{field_name}' уже есть в форме. Введите уникальное название поля.")
+        await state.set_state(SettingsStates.waiting_for_field_name)
+        return
     form_draft["fields"].append({"name": field_name, "type": field_type, "required": False})
     await state.update_data(form_draft=form_draft)
     fields_text = "\n".join([
@@ -1414,7 +1418,7 @@ async def handle_field_type(callback_query: types.CallbackQuery, state: FSMConte
         [types.InlineKeyboardButton(text="Завершить и использовать форму", callback_data="use_form")],
         [types.InlineKeyboardButton(text="Назад к проекту", callback_data="back_to_projects")]
     ] + [
-        [types.InlineKeyboardButton(text=f"Удалить поле {i+1}", callback_data=f"del_field_{i}")] for i in range(len(form_draft["fields"]))
+        [types.InlineKeyboardButton(text=f"Удалить поле {f['name']}", callback_data=f"del_field_{i}")] for i, f in enumerate(form_draft["fields"])
     ])
     logging.info(f"[FORM] handle_field_type: user={callback_query.from_user.id}, form_draft={form_draft}")
     await callback_query.message.edit_text(
@@ -1442,7 +1446,7 @@ async def handle_delete_field(callback_query: types.CallbackQuery, state: FSMCon
         [types.InlineKeyboardButton(text="Завершить и использовать форму", callback_data="use_form")],
         [types.InlineKeyboardButton(text="Назад к проекту", callback_data="back_to_projects")]
     ] + [
-        [types.InlineKeyboardButton(text=f"Удалить поле {i+1}", callback_data=f"del_field_{i}")] for i in range(len(form_draft["fields"]))
+        [types.InlineKeyboardButton(text=f"Удалить поле {f['name']}", callback_data=f"del_field_{i}")] for i, f in enumerate(form_draft["fields"])
     ])
     await callback_query.message.edit_text(
         f"Поля формы:\n{fields_text}\n\nХотите добавить еще поле или использовать форму?",

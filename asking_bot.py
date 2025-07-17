@@ -570,7 +570,7 @@ async def get_or_create_dispatcher(token: str, business_info: str):
             "messages": [{"role": "system", "content": prompt}] + messages,
             "temperature": 0.9
         }
-        logging.info(f"[ASKING] Deepseek запрос сформирован за {time.monotonic() - t1:.2f} сек")
+        logging.info(f"[ASKING] Deepseek запрос сформирован за {time.monotonic() - t0:.2f} сек")
         t2 = time.monotonic()
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(url, headers=headers, json=payload)
