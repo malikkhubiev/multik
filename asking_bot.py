@@ -576,20 +576,33 @@ async def get_or_create_dispatcher(token: str, business_info: str):
             logging.info(f"[ASKING_BOT] handle_question: deepseek response='{content}'")
             # --- Новый блок: обработка ссылок и кнопок ---
             content_without_links, links = extract_links_from_text(content)
-            # Попробуем найти название товара в ответе (например, Телевизор ...)
+            # Попробуем найти названия для каждой ссылки (например, по шаблону '📺 Телевизор: ...')
             import re
-            product_name = None
-            product_match = re.search(r'(Телевизор [A-Za-z0-9\- ]+)', content_without_links)
-            if product_match:
-                product_name = product_match.group(1).strip()
-            # Если есть ссылки, делаем отдельную кнопку
+            buttons = []
             if links:
-                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-                button_text = product_name if product_name else "Подробнее"
-                links_keyboard = InlineKeyboardMarkup(
-                    inline_keyboard=[[InlineKeyboardButton(text=button_text, url=links[0])]]
-                )
-                # Удаляем ссылку из текста ответа
+                # Ищем строки вида '...: ссылка' или эмодзи + название + : ссылка
+                for link in links:
+                    # Найти строку с этой ссылкой
+                    pattern = r'([\w\s\-\d\.:\u0400-\u04FF]+):?\s*' + re.escape(link)
+                    match = re.search(pattern, content)
+                    button_text = None
+                    if match:
+                        # Берём название до ':'
+                        button_text = match.group(1).strip()
+                        # Убираем эмодзи, если есть
+                        button_text = re.sub(r'^[^\w\d\u0400-\u04FF]+', '', button_text).strip()
+                    if not button_text:
+                        # Попробовать найти название товара в тексте
+                        product_match = re.search(r'(Телевизор [A-Za-z0-9\- ]+)', content_without_links)
+                        if product_match:
+                            button_text = product_match.group(1).strip()
+                    if not button_text:
+                        button_text = "Подробнее"
+                    from aiogram.types import InlineKeyboardButton
+                    buttons.append(InlineKeyboardButton(text=button_text, url=link))
+                from aiogram.types import InlineKeyboardMarkup
+                links_keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons])
+                # Удаляем все ссылки из текста ответа
                 await message.answer(content_without_links, reply_markup=links_keyboard)
             else:
                 response_message = await message.answer(content_without_links)
