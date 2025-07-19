@@ -655,7 +655,7 @@ async def handle_project_selection(callback_query: types.CallbackQuery, state: F
                 buttons.append([types.InlineKeyboardButton(text="Создать форму", callback_data="create_form")])
             # Меню управления проектом
             buttons += [
-                [types.InlineKeyboardButton(text="Оформление", callback_data="open_design")],
+                [types.InlineKeyboardButton(text="Оформление бота", callback_data="open_design")],
                 [types.InlineKeyboardButton(text="Показать данные", callback_data="show_data")],
                 [
                     types.InlineKeyboardButton(text="Добавить данные", callback_data="add_data"),
@@ -1652,34 +1652,45 @@ async def handle_export_form_submissions(callback_query: types.CallbackQuery, st
         caption="Экспорт заявок из формы"
     )
 
+async def show_design_menu(callback_or_message, state: FSMContext):
+    """Показывает меню оформления с актуальными значениями из state."""
+    data = await state.get_data()
+    project = data.get("selected_project")
+    if not project:
+        await (callback_or_message.answer if hasattr(callback_or_message, 'answer') else callback_or_message.reply)("Ошибка: проект не выбран", show_alert=True if hasattr(callback_or_message, 'answer') else None)
+        await state.clear()
+        return
+    design_name = data.get("design_name")
+    design_avatar = data.get("design_avatar")
+    design_welcome_text = data.get("design_welcome_text")
+    design_welcome_image = data.get("design_welcome_image")
+    design_description = data.get("design_description")
+    text = f"Оформление проекта: {project['project_name']}\n\n" \
+        f"Имя: {design_name or 'не задано'}\n" \
+        f"Аватарка: {'задано' if design_avatar else 'не задано'}\n" \
+        f"Парадное описание: {design_welcome_text or 'не задано'}\n" \
+        f"Парадная картинка: {'задано' if design_welcome_image else 'не задано'}\n" \
+        f"Описание: {design_description or 'не задано'}\n\nВыберите, что хотите изменить:" 
+    buttons = [
+        [types.InlineKeyboardButton(text="Изменить имя", callback_data="design_change_name")],
+        [types.InlineKeyboardButton(text="Изменить аватарку", callback_data="design_change_avatar")],
+        [types.InlineKeyboardButton(text="Изменить парадное описание", callback_data="design_change_welcome_text")],
+        [types.InlineKeyboardButton(text="Изменить парадную картинку", callback_data="design_change_welcome_image")],
+        [types.InlineKeyboardButton(text="Изменить описание", callback_data="design_change_description")],
+        [types.InlineKeyboardButton(text="Применить оформление", callback_data="apply_design")],
+        [types.InlineKeyboardButton(text="Назад", callback_data="back_to_projects")],
+    ]
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
+    if hasattr(callback_or_message, 'edit_text'):
+        await callback_or_message.edit_text(text, reply_markup=keyboard)
+    else:
+        await callback_or_message.answer(text, reply_markup=keyboard)
+
 @settings_router.callback_query(lambda c: c.data == "open_design")
 async def handle_project_design(callback_query: types.CallbackQuery, state: FSMContext):
     logging.info(f"[DESIGN][CLICK] Пользователь {callback_query.from_user.id} нажал кнопку 'Оформление'")
     await callback_query.answer()
-    async def process():
-        data = await state.get_data()
-        project = data.get("selected_project")
-        if not project:
-            logging.error(f"[DESIGN] Проект не выбран для пользователя {callback_query.from_user.id}")
-            await callback_query.answer("Проект не выбран", show_alert=True)
-            return
-        logging.info(f"[DESIGN] Открыто меню оформления для проекта {project['id']} ({project['project_name']}) пользователем {callback_query.from_user.id}")
-        buttons = [
-            [types.InlineKeyboardButton(text="Изменить имя", callback_data="design_change_name")],
-            [types.InlineKeyboardButton(text="Изменить аватарку", callback_data="design_change_avatar")],
-            [types.InlineKeyboardButton(text="Изменить парадное сообщение", callback_data="design_change_welcome_text")],
-            [types.InlineKeyboardButton(text="Изменить парадную картинку", callback_data="design_change_welcome_image")],
-            [types.InlineKeyboardButton(text="Изменить описание", callback_data="design_change_description")],
-            [types.InlineKeyboardButton(text="Применить оформление", callback_data="apply_design")],
-            [types.InlineKeyboardButton(text="Назад", callback_data="back_to_projects")],
-        ]
-        keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
-        await callback_query.message.edit_text(
-            f"Оформление проекта: {project['project_name']}\n\nВыберите, что хотите изменить:",
-            reply_markup=keyboard
-        )
-    import asyncio
-    asyncio.create_task(process())
+    await show_design_menu(callback_query.message, state)
 
 @settings_router.callback_query(lambda c: c.data == "design_change_name")
 async def handle_design_change_name(callback_query: types.CallbackQuery, state: FSMContext):
@@ -1690,6 +1701,18 @@ async def handle_design_change_name(callback_query: types.CallbackQuery, state: 
     from settings_states import SettingsStates
     await state.set_state(SettingsStates.waiting_for_design_name)
 
+@settings_router.message(SettingsStates.waiting_for_design_name)
+async def process_design_name(message: types.Message, state: FSMContext):
+    logging.info(f"[DESIGN] Пользователь {message.from_user.id} вводит новое имя: {message.text}")
+    if message.text and message.text.startswith('/'):
+        await state.clear()
+        await message.answer("Вышли из режима оформления.")
+        return
+    await state.update_data(design_name=message.text)
+    await message.answer(f"Новое имя проекта сохранено!")
+    await show_design_menu(message, state)
+    await state.set_state(None)
+
 @settings_router.callback_query(lambda c: c.data == "design_change_avatar")
 async def handle_design_change_avatar(callback_query: types.CallbackQuery, state: FSMContext):
     logging.info(f"[DESIGN][CLICK] Пользователь {callback_query.from_user.id} нажал кнопку 'Изменить аватарку'")
@@ -1699,14 +1722,43 @@ async def handle_design_change_avatar(callback_query: types.CallbackQuery, state
     from settings_states import SettingsStates
     await state.set_state(SettingsStates.waiting_for_design_avatar)
 
+@settings_router.message(SettingsStates.waiting_for_design_avatar)
+async def process_design_avatar(message: types.Message, state: FSMContext):
+    if message.text and message.text.startswith('/'):
+        await state.clear()
+        await message.answer("Вышли из режима оформления.")
+        return
+    if not message.photo:
+        logging.info(f"[DESIGN] Пользователь {message.from_user.id} не отправил фото для аватарки")
+        await message.answer("Пожалуйста, отправьте фото для аватарки.")
+        return
+    file_id = message.photo[-1].file_id
+    logging.info(f"[DESIGN] Пользователь {message.from_user.id} отправил аватарку, file_id={file_id}")
+    await state.update_data(design_avatar=file_id)
+    await message.answer("Аватарка сохранена!")
+    await show_design_menu(message, state)
+    await state.set_state(None)
+
 @settings_router.callback_query(lambda c: c.data == "design_change_welcome_text")
 async def handle_design_change_welcome_text(callback_query: types.CallbackQuery, state: FSMContext):
-    logging.info(f"[DESIGN][CLICK] Пользователь {callback_query.from_user.id} нажал кнопку 'Изменить парадное сообщение'")
-    logging.info(f"[DESIGN] Пользователь {callback_query.from_user.id} выбрал 'Изменить парадное сообщение'")
+    logging.info(f"[DESIGN][CLICK] Пользователь {callback_query.from_user.id} нажал кнопку 'Изменить парадное описание'")
+    logging.info(f"[DESIGN] Пользователь {callback_query.from_user.id} выбрал 'Изменить парадное описание'")
     await callback_query.answer()
-    await callback_query.message.edit_text("Введите новое парадное сообщение:")
+    await callback_query.message.edit_text("Введите новое парадное описание:")
     from settings_states import SettingsStates
     await state.set_state(SettingsStates.waiting_for_design_welcome_text)
+
+@settings_router.message(SettingsStates.waiting_for_design_welcome_text)
+async def process_design_welcome_text(message: types.Message, state: FSMContext):
+    if message.text and message.text.startswith('/'):
+        await state.clear()
+        await message.answer("Вышли из режима оформления.")
+        return
+    logging.info(f"[DESIGN] Пользователь {message.from_user.id} вводит парадное описание: {message.text}")
+    await state.update_data(design_welcome_text=message.text)
+    await message.answer(f"Парадное описание сохранено!")
+    await show_design_menu(message, state)
+    await state.set_state(None)
 
 @settings_router.callback_query(lambda c: c.data == "design_change_welcome_image")
 async def handle_design_change_welcome_image(callback_query: types.CallbackQuery, state: FSMContext):
@@ -1717,6 +1769,23 @@ async def handle_design_change_welcome_image(callback_query: types.CallbackQuery
     from settings_states import SettingsStates
     await state.set_state(SettingsStates.waiting_for_design_welcome_image)
 
+@settings_router.message(SettingsStates.waiting_for_design_welcome_image)
+async def process_design_welcome_image(message: types.Message, state: FSMContext):
+    if message.text and message.text.startswith('/'):
+        await state.clear()
+        await message.answer("Вышли из режима оформления.")
+        return
+    if not message.photo:
+        logging.info(f"[DESIGN] Пользователь {message.from_user.id} не отправил фото для парадной картинки")
+        await message.answer("Пожалуйста, отправьте фото для парадной картинки.")
+        return
+    file_id = message.photo[-1].file_id
+    logging.info(f"[DESIGN] Пользователь {message.from_user.id} отправил парадную картинку, file_id={file_id}")
+    await state.update_data(design_welcome_image=file_id)
+    await message.answer("Парадная картинка сохранена!")
+    await show_design_menu(message, state)
+    await state.set_state(None)
+
 @settings_router.callback_query(lambda c: c.data == "design_change_description")
 async def handle_design_change_description(callback_query: types.CallbackQuery, state: FSMContext):
     logging.info(f"[DESIGN][CLICK] Пользователь {callback_query.from_user.id} нажал кнопку 'Изменить описание'")
@@ -1726,50 +1795,17 @@ async def handle_design_change_description(callback_query: types.CallbackQuery, 
     from settings_states import SettingsStates
     await state.set_state(SettingsStates.waiting_for_design_description)
 
-@settings_router.message(SettingsStates.waiting_for_design_name)
-async def process_design_name(message: types.Message, state: FSMContext):
-    logging.info(f"[DESIGN] Пользователь {message.from_user.id} вводит новое имя: {message.text}")
-    await state.update_data(design_name=message.text)
-    await message.answer(f"Новое имя проекта сохранено!")
-    await state.clear()
-
-@settings_router.message(SettingsStates.waiting_for_design_avatar)
-async def process_design_avatar(message: types.Message, state: FSMContext):
-    if not message.photo:
-        logging.info(f"[DESIGN] Пользователь {message.from_user.id} не отправил фото для аватарки")
-        await message.answer("Пожалуйста, отправьте фото для аватарки.")
-        return
-    file_id = message.photo[-1].file_id
-    logging.info(f"[DESIGN] Пользователь {message.from_user.id} отправил аватарку, file_id={file_id}")
-    await state.update_data(design_avatar=file_id)
-    await message.answer("Аватарка сохранена!")
-    await state.clear()
-
-@settings_router.message(SettingsStates.waiting_for_design_welcome_text)
-async def process_design_welcome_text(message: types.Message, state: FSMContext):
-    logging.info(f"[DESIGN] Пользователь {message.from_user.id} вводит парадное сообщение: {message.text}")
-    await state.update_data(design_welcome_text=message.text)
-    await message.answer(f"Парадное сообщение сохранено!")
-    await state.clear()
-
-@settings_router.message(SettingsStates.waiting_for_design_welcome_image)
-async def process_design_welcome_image(message: types.Message, state: FSMContext):
-    if not message.photo:
-        logging.info(f"[DESIGN] Пользователь {message.from_user.id} не отправил фото для парадной картинки")
-        await message.answer("Пожалуйста, отправьте фото для парадной картинки.")
-        return
-    file_id = message.photo[-1].file_id
-    logging.info(f"[DESIGN] Пользователь {message.from_user.id} отправил парадную картинку, file_id={file_id}")
-    await state.update_data(design_welcome_image=file_id)
-    await message.answer("Парадная картинка сохранена!")
-    await state.clear()
-
 @settings_router.message(SettingsStates.waiting_for_design_description)
 async def process_design_description(message: types.Message, state: FSMContext):
+    if message.text and message.text.startswith('/'):
+        await state.clear()
+        await message.answer("Вышли из режима оформления.")
+        return
     logging.info(f"[DESIGN] Пользователь {message.from_user.id} вводит описание: {message.text}")
     await state.update_data(design_description=message.text)
     await message.answer(f"Описание проекта сохранено!")
-    await state.clear()
+    await show_design_menu(message, state)
+    await state.set_state(None)
 
 @settings_router.callback_query(lambda c: c.data == "apply_design")
 async def handle_apply_design(callback_query: types.CallbackQuery, state: FSMContext):
@@ -1782,11 +1818,13 @@ async def handle_apply_design(callback_query: types.CallbackQuery, state: FSMCon
     if not project:
         logging.error(f"[DESIGN] Не выбран проект для применения оформления пользователем {callback_query.from_user.id}")
         await callback_query.message.edit_text("Ошибка: проект не выбран")
+        await state.clear()
         return
     token = project.get("token")
     if not token:
         logging.error(f"[DESIGN] Не найден токен бота проекта для пользователя {callback_query.from_user.id}")
         await callback_query.message.edit_text("Ошибка: не найден токен бота проекта")
+        await state.clear()
         return
     api_url = f"https://api.telegram.org/bot{token}"
     design_name = data.get("design_name")
@@ -1865,11 +1903,14 @@ async def handle_apply_design(callback_query: types.CallbackQuery, state: FSMCon
                 results.append(f"Парадная картинка: ❌ ({e})")
     text = "Результат применения оформления:\n" + "\n".join(results)
     await callback_query.message.edit_text(text)
+    # Очищаем только значения оформления, не трогаем selected_project и telegram_id
+    await state.update_data(design_name=None, design_avatar=None, design_welcome_text=None, design_welcome_image=None, design_description=None)
 
 @settings_router.callback_query(lambda c: c.data == "back_to_projects")
 async def handle_back_to_projects(callback_query: types.CallbackQuery, state: FSMContext):
     logging.info(f"[DESIGN][CLICK] Пользователь {callback_query.from_user.id} нажал кнопку 'Назад' в меню оформления")
     await callback_query.answer()
+    await state.clear()
     async def process():
         data = await state.get_data()
         telegram_id = data.get("telegram_id")
