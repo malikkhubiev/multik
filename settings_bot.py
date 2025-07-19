@@ -49,9 +49,6 @@ logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler()
 
-logging.info('[BOOT] Registering settings_design_router')
-settings_dp.include_router(settings_design_router)
-
 async def check_expired_trials():
     users = await get_users_with_expired_trial()
     logging.info(f"[TRIAL] Найдено пользователей с истекшим trial: {len(users)}")
