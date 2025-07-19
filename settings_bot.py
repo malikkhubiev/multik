@@ -1697,7 +1697,7 @@ async def handle_design_change_name(callback_query: types.CallbackQuery, state: 
     logging.info(f"[DESIGN][CLICK] Пользователь {callback_query.from_user.id} нажал кнопку 'Изменить имя'")
     logging.info(f"[DESIGN] Пользователь {callback_query.from_user.id} выбрал 'Изменить имя'")
     await callback_query.answer()
-    await callback_query.message.edit_text("Введите новое имя проекта:")
+    await callback_query.message.edit_text("Введите новое имя бота:")
     from settings_states import SettingsStates
     await state.set_state(SettingsStates.waiting_for_design_name)
 
@@ -1709,9 +1709,11 @@ async def process_design_name(message: types.Message, state: FSMContext):
         await message.answer("Вышли из режима оформления.")
         return
     await state.update_data(design_name=message.text)
-    await message.answer(f"Новое имя проекта сохранено!")
+    logging.info(f"[DESIGN] Новое имя проекта сохранено для user={message.from_user.id}, name={message.text}")
+    logging.info(f"[DESIGN] Показываем меню оформления после смены имени для user={message.from_user.id}")
     await show_design_menu(message, state)
     await state.set_state(None)
+    logging.info(f"[DESIGN] Состояние сброшено после показа меню оформления для user={message.from_user.id}")
 
 @settings_router.callback_query(lambda c: c.data == "design_change_avatar")
 async def handle_design_change_avatar(callback_query: types.CallbackQuery, state: FSMContext):
