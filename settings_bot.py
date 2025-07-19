@@ -1879,3 +1879,8 @@ async def handle_back_to_projects(callback_query: types.CallbackQuery, state: FS
         await handle_projects_command(callback_query.message, state, telegram_id=telegram_id)
     import asyncio
     asyncio.create_task(process())
+
+@settings_router.callback_query()
+async def handle_any_callback_query(callback_query: types.CallbackQuery, state: FSMContext):
+    logging.warning(f"[CALLBACK][CATCH-ALL] Пользователь {callback_query.from_user.id} нажал callback: {callback_query.data}")
+    await callback_query.answer("Неизвестная кнопка или действие. Пожалуйста, попробуйте ещё раз.", show_alert=True)
