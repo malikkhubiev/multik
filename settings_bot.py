@@ -1614,6 +1614,8 @@ async def build_main_menu(telegram_id: str):
 async def handle_any_message(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
     logging.info(f"[DEBUG] handle_any_message: user={message.from_user.id}, state={current_state}, text={message.text}")
+    logging.info(f"[DEBUG] handle_any_message: type(state)={type(current_state)}, repr(state)={repr(current_state)}")
+    logging.info(f"[DEBUG] handle_any_message: type(SettingsStates.waiting_for_design_name)={type(SettingsStates.waiting_for_design_name)}, value={SettingsStates.waiting_for_design_name}, str={str(SettingsStates.waiting_for_design_name)}")
     if current_state == str(SettingsStates.waiting_for_design_name):
         logging.warning(f"[FSM][WARNING] handle_any_message: ПОЛУЧЕНО СООБЩЕНИЕ В СОСТОЯНИИ waiting_for_design_name! user={message.from_user.id}, text={message.text}")
     await trial_middleware(message, state, _handle_any_message_inner)
@@ -1707,6 +1709,8 @@ async def handle_design_change_name(callback_query: types.CallbackQuery, state: 
 async def process_design_name(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
     logging.info(f"[FSM] process_design_name CALLED for user={message.from_user.id}, text={message.text}, state={current_state}")
+    logging.info(f"[FSM] process_design_name: type(state)={type(current_state)}, repr(state)={repr(current_state)}")
+    logging.info(f"[FSM] process_design_name: type(SettingsStates.waiting_for_design_name)={type(SettingsStates.waiting_for_design_name)}, value={SettingsStates.waiting_for_design_name}, str={str(SettingsStates.waiting_for_design_name)}")
     if message.text and message.text.startswith('/'):
         await state.clear()
         await message.answer("Вышли из режима оформления.")
