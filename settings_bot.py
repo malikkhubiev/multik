@@ -655,7 +655,7 @@ async def handle_project_selection(callback_query: types.CallbackQuery, state: F
                 buttons.append([types.InlineKeyboardButton(text="Создать форму", callback_data="create_form")])
             # Меню управления проектом
             buttons += [
-                [types.InlineKeyboardButton(text="Оформление", callback_data="project_design")],
+                [types.InlineKeyboardButton(text="Оформление", callback_data="open_design")],
                 [types.InlineKeyboardButton(text="Показать данные", callback_data="show_data")],
                 [
                     types.InlineKeyboardButton(text="Добавить данные", callback_data="add_data"),
@@ -1652,7 +1652,7 @@ async def handle_export_form_submissions(callback_query: types.CallbackQuery, st
         caption="Экспорт заявок из формы"
     )
 
-@settings_router.callback_query(lambda c: c.data == "project_design")
+@settings_router.callback_query(lambda c: c.data == "open_design")
 async def handle_project_design(callback_query: types.CallbackQuery, state: FSMContext):
     logging.info(f"[DESIGN][CLICK] Пользователь {callback_query.from_user.id} нажал кнопку 'Оформление'")
     await callback_query.answer()
