@@ -1614,6 +1614,8 @@ async def build_main_menu(telegram_id: str):
 async def handle_any_message(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
     logging.info(f"[DEBUG] handle_any_message: user={message.from_user.id}, state={current_state}, text={message.text}")
+    if current_state == str(SettingsStates.waiting_for_design_name):
+        logging.warning(f"[FSM][WARNING] handle_any_message: ПОЛУЧЕНО СООБЩЕНИЕ В СОСТОЯНИИ waiting_for_design_name! user={message.from_user.id}, text={message.text}")
     await trial_middleware(message, state, _handle_any_message_inner)
 
 @settings_router.callback_query(lambda c: c.data == "export_form_submissions")
@@ -1703,17 +1705,19 @@ async def handle_design_change_name(callback_query: types.CallbackQuery, state: 
 
 @settings_router.message(SettingsStates.waiting_for_design_name)
 async def process_design_name(message: types.Message, state: FSMContext):
-    logging.info(f"[DESIGN] Пользователь {message.from_user.id} вводит новое имя: {message.text}")
+    current_state = await state.get_state()
+    logging.info(f"[FSM] process_design_name CALLED for user={message.from_user.id}, text={message.text}, state={current_state}")
     if message.text and message.text.startswith('/'):
         await state.clear()
         await message.answer("Вышли из режима оформления.")
+        logging.info(f"[FSM] process_design_name EXIT: команда /, state cleared for user={message.from_user.id}")
         return
     await state.update_data(design_name=message.text)
-    logging.info(f"[DESIGN] Новое имя проекта сохранено для user={message.from_user.id}, name={message.text}")
-    logging.info(f"[DESIGN] Показываем меню оформления после смены имени для user={message.from_user.id}")
+    logging.info(f"[FSM] process_design_name: design_name set for user={message.from_user.id}, name={message.text}")
+    logging.info(f"[FSM] process_design_name: Показываем меню оформления после смены имени для user={message.from_user.id}")
     await show_design_menu(message, state)
     await state.set_state(None)
-    logging.info(f"[DESIGN] Состояние сброшено после показа меню оформления для user={message.from_user.id}")
+    logging.info(f"[FSM] process_design_name END: Состояние сброшено после показа меню оформления для user={message.from_user.id}")
 
 @settings_router.callback_query(lambda c: c.data == "design_change_avatar")
 async def handle_design_change_avatar(callback_query: types.CallbackQuery, state: FSMContext):
