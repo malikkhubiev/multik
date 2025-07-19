@@ -1654,7 +1654,7 @@ async def handle_export_form_submissions(callback_query: types.CallbackQuery, st
 
 @settings_router.callback_query(lambda c: c.data == "project_design")
 async def handle_project_design(callback_query: types.CallbackQuery, state: FSMContext):
-    logging.info(f"[DESIGN] Пользователь {callback_query.from_user.id} нажал кнопку 'Оформление'")
+    logging.info(f"[DESIGN][CLICK] Пользователь {callback_query.from_user.id} нажал кнопку 'Оформление'")
     await callback_query.answer()
     async def process():
         data = await state.get_data()
@@ -1683,6 +1683,7 @@ async def handle_project_design(callback_query: types.CallbackQuery, state: FSMC
 
 @settings_router.callback_query(lambda c: c.data == "design_change_name")
 async def handle_design_change_name(callback_query: types.CallbackQuery, state: FSMContext):
+    logging.info(f"[DESIGN][CLICK] Пользователь {callback_query.from_user.id} нажал кнопку 'Изменить имя'")
     logging.info(f"[DESIGN] Пользователь {callback_query.from_user.id} выбрал 'Изменить имя'")
     await callback_query.answer()
     await callback_query.message.edit_text("Введите новое имя проекта:")
@@ -1691,6 +1692,7 @@ async def handle_design_change_name(callback_query: types.CallbackQuery, state: 
 
 @settings_router.callback_query(lambda c: c.data == "design_change_avatar")
 async def handle_design_change_avatar(callback_query: types.CallbackQuery, state: FSMContext):
+    logging.info(f"[DESIGN][CLICK] Пользователь {callback_query.from_user.id} нажал кнопку 'Изменить аватарку'")
     logging.info(f"[DESIGN] Пользователь {callback_query.from_user.id} выбрал 'Изменить аватарку'")
     await callback_query.answer()
     await callback_query.message.edit_text("Отправьте новую аватарку (фото):")
@@ -1699,6 +1701,7 @@ async def handle_design_change_avatar(callback_query: types.CallbackQuery, state
 
 @settings_router.callback_query(lambda c: c.data == "design_change_welcome_text")
 async def handle_design_change_welcome_text(callback_query: types.CallbackQuery, state: FSMContext):
+    logging.info(f"[DESIGN][CLICK] Пользователь {callback_query.from_user.id} нажал кнопку 'Изменить парадное сообщение'")
     logging.info(f"[DESIGN] Пользователь {callback_query.from_user.id} выбрал 'Изменить парадное сообщение'")
     await callback_query.answer()
     await callback_query.message.edit_text("Введите новое парадное сообщение:")
@@ -1707,6 +1710,7 @@ async def handle_design_change_welcome_text(callback_query: types.CallbackQuery,
 
 @settings_router.callback_query(lambda c: c.data == "design_change_welcome_image")
 async def handle_design_change_welcome_image(callback_query: types.CallbackQuery, state: FSMContext):
+    logging.info(f"[DESIGN][CLICK] Пользователь {callback_query.from_user.id} нажал кнопку 'Изменить парадную картинку'")
     logging.info(f"[DESIGN] Пользователь {callback_query.from_user.id} выбрал 'Изменить парадную картинку'")
     await callback_query.answer()
     await callback_query.message.edit_text("Отправьте новую парадную картинку (фото):")
@@ -1715,6 +1719,7 @@ async def handle_design_change_welcome_image(callback_query: types.CallbackQuery
 
 @settings_router.callback_query(lambda c: c.data == "design_change_description")
 async def handle_design_change_description(callback_query: types.CallbackQuery, state: FSMContext):
+    logging.info(f"[DESIGN][CLICK] Пользователь {callback_query.from_user.id} нажал кнопку 'Изменить описание'")
     logging.info(f"[DESIGN] Пользователь {callback_query.from_user.id} выбрал 'Изменить описание'")
     await callback_query.answer()
     await callback_query.message.edit_text("Введите новое описание проекта:")
@@ -1769,6 +1774,7 @@ async def process_design_description(message: types.Message, state: FSMContext):
 @settings_router.callback_query(lambda c: c.data == "apply_design")
 async def handle_apply_design(callback_query: types.CallbackQuery, state: FSMContext):
     import httpx
+    logging.info(f"[DESIGN][CLICK] Пользователь {callback_query.from_user.id} нажал кнопку 'Применить оформление'")
     logging.info(f"[DESIGN] Пользователь {callback_query.from_user.id} нажал 'Применить оформление'")
     await callback_query.answer()
     data = await state.get_data()
@@ -1859,3 +1865,17 @@ async def handle_apply_design(callback_query: types.CallbackQuery, state: FSMCon
                 results.append(f"Парадная картинка: ❌ ({e})")
     text = "Результат применения оформления:\n" + "\n".join(results)
     await callback_query.message.edit_text(text)
+
+@settings_router.callback_query(lambda c: c.data == "back_to_projects")
+async def handle_back_to_projects(callback_query: types.CallbackQuery, state: FSMContext):
+    logging.info(f"[DESIGN][CLICK] Пользователь {callback_query.from_user.id} нажал кнопку 'Назад' в меню оформления")
+    await callback_query.answer()
+    async def process():
+        data = await state.get_data()
+        telegram_id = data.get("telegram_id")
+        if not telegram_id:
+            telegram_id = str(callback_query.from_user.id)
+        await state.update_data(selected_project_id=None, selected_project=None)
+        await handle_projects_command(callback_query.message, state, telegram_id=telegram_id)
+    import asyncio
+    asyncio.create_task(process())
