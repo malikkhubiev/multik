@@ -1705,7 +1705,7 @@ async def handle_design_change_name(callback_query: types.CallbackQuery, state: 
     from settings_states import SettingsStates
     await state.set_state(SettingsStates.waiting_for_design_name)
 
-@settings_router.message(SettingsStates.waiting_for_design_name)
+@settings_router.message('SettingsStates:waiting_for_design_name')
 async def process_design_name(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
     logging.info(f"[FSM] process_design_name CALLED for user={message.from_user.id}, text={message.text}, state={current_state}")
