@@ -22,5 +22,12 @@ class SettingsStates(StatesGroup):
     waiting_for_form_purpose = State()
     form_draft_edit = State()
 
+    # Состояния для оформления проекта
+    waiting_for_design_name = State()
+    waiting_for_design_avatar = State()
+    waiting_for_design_welcome_text = State()
+    waiting_for_design_welcome_image = State()
+    waiting_for_design_description = State()
+
 class ExtendedSettingsStates(StatesGroup):
     waiting_for_payment_confirmation = State() 

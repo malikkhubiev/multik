@@ -26,6 +26,7 @@ import datetime
 import asyncio
 import pandas as pd
 import io
+import httpx
 
 router = APIRouter()
 
@@ -654,6 +655,7 @@ async def handle_project_selection(callback_query: types.CallbackQuery, state: F
                 buttons.append([types.InlineKeyboardButton(text="Создать форму", callback_data="create_form")])
             # Меню управления проектом
             buttons += [
+                [types.InlineKeyboardButton(text="Оформление", callback_data="project_design")],
                 [types.InlineKeyboardButton(text="Показать данные", callback_data="show_data")],
                 [
                     types.InlineKeyboardButton(text="Добавить данные", callback_data="add_data"),
@@ -1649,3 +1651,211 @@ async def handle_export_form_submissions(callback_query: types.CallbackQuery, st
         types.InputFile(output, filename="form_submissions.xlsx"),
         caption="Экспорт заявок из формы"
     )
+
+@settings_router.callback_query(lambda c: c.data == "project_design")
+async def handle_project_design(callback_query: types.CallbackQuery, state: FSMContext):
+    logging.info(f"[DESIGN] Пользователь {callback_query.from_user.id} нажал кнопку 'Оформление'")
+    await callback_query.answer()
+    async def process():
+        data = await state.get_data()
+        project = data.get("selected_project")
+        if not project:
+            logging.error(f"[DESIGN] Проект не выбран для пользователя {callback_query.from_user.id}")
+            await callback_query.answer("Проект не выбран", show_alert=True)
+            return
+        logging.info(f"[DESIGN] Открыто меню оформления для проекта {project['id']} ({project['project_name']}) пользователем {callback_query.from_user.id}")
+        buttons = [
+            [types.InlineKeyboardButton(text="Изменить имя", callback_data="design_change_name")],
+            [types.InlineKeyboardButton(text="Изменить аватарку", callback_data="design_change_avatar")],
+            [types.InlineKeyboardButton(text="Изменить парадное сообщение", callback_data="design_change_welcome_text")],
+            [types.InlineKeyboardButton(text="Изменить парадную картинку", callback_data="design_change_welcome_image")],
+            [types.InlineKeyboardButton(text="Изменить описание", callback_data="design_change_description")],
+            [types.InlineKeyboardButton(text="Применить оформление", callback_data="apply_design")],
+            [types.InlineKeyboardButton(text="Назад", callback_data="back_to_projects")],
+        ]
+        keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
+        await callback_query.message.edit_text(
+            f"Оформление проекта: {project['project_name']}\n\nВыберите, что хотите изменить:",
+            reply_markup=keyboard
+        )
+    import asyncio
+    asyncio.create_task(process())
+
+@settings_router.callback_query(lambda c: c.data == "design_change_name")
+async def handle_design_change_name(callback_query: types.CallbackQuery, state: FSMContext):
+    logging.info(f"[DESIGN] Пользователь {callback_query.from_user.id} выбрал 'Изменить имя'")
+    await callback_query.answer()
+    await callback_query.message.edit_text("Введите новое имя проекта:")
+    from settings_states import SettingsStates
+    await state.set_state(SettingsStates.waiting_for_design_name)
+
+@settings_router.callback_query(lambda c: c.data == "design_change_avatar")
+async def handle_design_change_avatar(callback_query: types.CallbackQuery, state: FSMContext):
+    logging.info(f"[DESIGN] Пользователь {callback_query.from_user.id} выбрал 'Изменить аватарку'")
+    await callback_query.answer()
+    await callback_query.message.edit_text("Отправьте новую аватарку (фото):")
+    from settings_states import SettingsStates
+    await state.set_state(SettingsStates.waiting_for_design_avatar)
+
+@settings_router.callback_query(lambda c: c.data == "design_change_welcome_text")
+async def handle_design_change_welcome_text(callback_query: types.CallbackQuery, state: FSMContext):
+    logging.info(f"[DESIGN] Пользователь {callback_query.from_user.id} выбрал 'Изменить парадное сообщение'")
+    await callback_query.answer()
+    await callback_query.message.edit_text("Введите новое парадное сообщение:")
+    from settings_states import SettingsStates
+    await state.set_state(SettingsStates.waiting_for_design_welcome_text)
+
+@settings_router.callback_query(lambda c: c.data == "design_change_welcome_image")
+async def handle_design_change_welcome_image(callback_query: types.CallbackQuery, state: FSMContext):
+    logging.info(f"[DESIGN] Пользователь {callback_query.from_user.id} выбрал 'Изменить парадную картинку'")
+    await callback_query.answer()
+    await callback_query.message.edit_text("Отправьте новую парадную картинку (фото):")
+    from settings_states import SettingsStates
+    await state.set_state(SettingsStates.waiting_for_design_welcome_image)
+
+@settings_router.callback_query(lambda c: c.data == "design_change_description")
+async def handle_design_change_description(callback_query: types.CallbackQuery, state: FSMContext):
+    logging.info(f"[DESIGN] Пользователь {callback_query.from_user.id} выбрал 'Изменить описание'")
+    await callback_query.answer()
+    await callback_query.message.edit_text("Введите новое описание проекта:")
+    from settings_states import SettingsStates
+    await state.set_state(SettingsStates.waiting_for_design_description)
+
+@settings_router.message(SettingsStates.waiting_for_design_name)
+async def process_design_name(message: types.Message, state: FSMContext):
+    logging.info(f"[DESIGN] Пользователь {message.from_user.id} вводит новое имя: {message.text}")
+    await state.update_data(design_name=message.text)
+    await message.answer(f"Новое имя проекта сохранено!")
+    await state.clear()
+
+@settings_router.message(SettingsStates.waiting_for_design_avatar)
+async def process_design_avatar(message: types.Message, state: FSMContext):
+    if not message.photo:
+        logging.info(f"[DESIGN] Пользователь {message.from_user.id} не отправил фото для аватарки")
+        await message.answer("Пожалуйста, отправьте фото для аватарки.")
+        return
+    file_id = message.photo[-1].file_id
+    logging.info(f"[DESIGN] Пользователь {message.from_user.id} отправил аватарку, file_id={file_id}")
+    await state.update_data(design_avatar=file_id)
+    await message.answer("Аватарка сохранена!")
+    await state.clear()
+
+@settings_router.message(SettingsStates.waiting_for_design_welcome_text)
+async def process_design_welcome_text(message: types.Message, state: FSMContext):
+    logging.info(f"[DESIGN] Пользователь {message.from_user.id} вводит парадное сообщение: {message.text}")
+    await state.update_data(design_welcome_text=message.text)
+    await message.answer(f"Парадное сообщение сохранено!")
+    await state.clear()
+
+@settings_router.message(SettingsStates.waiting_for_design_welcome_image)
+async def process_design_welcome_image(message: types.Message, state: FSMContext):
+    if not message.photo:
+        logging.info(f"[DESIGN] Пользователь {message.from_user.id} не отправил фото для парадной картинки")
+        await message.answer("Пожалуйста, отправьте фото для парадной картинки.")
+        return
+    file_id = message.photo[-1].file_id
+    logging.info(f"[DESIGN] Пользователь {message.from_user.id} отправил парадную картинку, file_id={file_id}")
+    await state.update_data(design_welcome_image=file_id)
+    await message.answer("Парадная картинка сохранена!")
+    await state.clear()
+
+@settings_router.message(SettingsStates.waiting_for_design_description)
+async def process_design_description(message: types.Message, state: FSMContext):
+    logging.info(f"[DESIGN] Пользователь {message.from_user.id} вводит описание: {message.text}")
+    await state.update_data(design_description=message.text)
+    await message.answer(f"Описание проекта сохранено!")
+    await state.clear()
+
+@settings_router.callback_query(lambda c: c.data == "apply_design")
+async def handle_apply_design(callback_query: types.CallbackQuery, state: FSMContext):
+    import httpx
+    logging.info(f"[DESIGN] Пользователь {callback_query.from_user.id} нажал 'Применить оформление'")
+    await callback_query.answer()
+    data = await state.get_data()
+    project = data.get("selected_project")
+    if not project:
+        logging.error(f"[DESIGN] Не выбран проект для применения оформления пользователем {callback_query.from_user.id}")
+        await callback_query.message.edit_text("Ошибка: проект не выбран")
+        return
+    token = project.get("token")
+    if not token:
+        logging.error(f"[DESIGN] Не найден токен бота проекта для пользователя {callback_query.from_user.id}")
+        await callback_query.message.edit_text("Ошибка: не найден токен бота проекта")
+        return
+    api_url = f"https://api.telegram.org/bot{token}"
+    design_name = data.get("design_name")
+    design_avatar = data.get("design_avatar")
+    design_welcome_text = data.get("design_welcome_text")
+    design_welcome_image = data.get("design_welcome_image")
+    design_description = data.get("design_description")
+    results = []
+    async with httpx.AsyncClient() as client:
+        # Имя
+        if design_name:
+            logging.info(f"[DESIGN][API] Отправка setMyName: {design_name}")
+            resp = await client.post(f"{api_url}/setMyName", json={"name": design_name})
+            logging.info(f"[DESIGN][API] Ответ setMyName: {resp.status_code} {resp.text}")
+            if resp.status_code == 200 and resp.json().get("ok"):
+                results.append("Имя: ✅")
+            else:
+                results.append("Имя: ❌")
+        # Описание
+        if design_description:
+            logging.info(f"[DESIGN][API] Отправка setMyDescription: {design_description}")
+            resp = await client.post(f"{api_url}/setMyDescription", json={"description": design_description})
+            logging.info(f"[DESIGN][API] Ответ setMyDescription: {resp.status_code} {resp.text}")
+            if resp.status_code == 200 and resp.json().get("ok"):
+                results.append("Описание: ✅")
+            else:
+                results.append("Описание: ❌")
+        # Парадное сообщение
+        if design_welcome_text:
+            logging.info(f"[DESIGN][API] Отправка setMyShortDescription: {design_welcome_text}")
+            resp = await client.post(f"{api_url}/setMyShortDescription", json={"short_description": design_welcome_text})
+            logging.info(f"[DESIGN][API] Ответ setMyShortDescription: {resp.status_code} {resp.text}")
+            if resp.status_code == 200 and resp.json().get("ok"):
+                results.append("Парадное сообщение: ✅")
+            else:
+                results.append("Парадное сообщение: ❌")
+        # Аватарка
+        if design_avatar:
+            try:
+                logging.info(f"[DESIGN][API] Получение file_id аватарки: {design_avatar}")
+                file = await callback_query.bot.get_file(design_avatar)
+                file_path = file.file_path
+                file_url = f"https://api.telegram.org/file/bot{callback_query.bot.token}/{file_path}"
+                logging.info(f"[DESIGN][API] Скачивание файла аватарки: {file_url}")
+                file_bytes = (await httpx.AsyncClient().get(file_url)).content
+                files = {"photo": ("avatar.jpg", file_bytes)}
+                logging.info(f"[DESIGN][API] Отправка setMyPhoto (аватарка)")
+                resp = await client.post(f"{api_url}/setMyPhoto", files=files)
+                logging.info(f"[DESIGN][API] Ответ setMyPhoto (аватарка): {resp.status_code} {resp.text}")
+                if resp.status_code == 200 and resp.json().get("ok"):
+                    results.append("Аватарка: ✅")
+                else:
+                    results.append("Аватарка: ❌")
+            except Exception as e:
+                logging.error(f"[DESIGN][API] Ошибка при установке аватарки: {e}")
+                results.append(f"Аватарка: ❌ ({e})")
+        # Парадная картинка
+        if design_welcome_image:
+            try:
+                logging.info(f"[DESIGN][API] Получение file_id парадной картинки: {design_welcome_image}")
+                file = await callback_query.bot.get_file(design_welcome_image)
+                file_path = file.file_path
+                file_url = f"https://api.telegram.org/file/bot{callback_query.bot.token}/{file_path}"
+                logging.info(f"[DESIGN][API] Скачивание файла парадной картинки: {file_url}")
+                file_bytes = (await httpx.AsyncClient().get(file_url)).content
+                files = {"photo": ("welcome.jpg", file_bytes)}
+                logging.info(f"[DESIGN][API] Отправка setMyPhoto (парадная картинка)")
+                resp = await client.post(f"{api_url}/setMyPhoto", files=files)
+                logging.info(f"[DESIGN][API] Ответ setMyPhoto (парадная картинка): {resp.status_code} {resp.text}")
+                if resp.status_code == 200 and resp.json().get("ok"):
+                    results.append("Парадная картинка: ✅")
+                else:
+                    results.append("Парадная картинка: ❌")
+            except Exception as e:
+                logging.error(f"[DESIGN][API] Ошибка при установке парадной картинки: {e}")
+                results.append(f"Парадная картинка: ❌ ({e})")
+    text = "Результат применения оформления:\n" + "\n".join(results)
+    await callback_query.message.edit_text(text)
