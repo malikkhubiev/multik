@@ -41,11 +41,15 @@ settings_storage = MemoryStorage()
 settings_router = Router()
 settings_dp = Dispatcher(storage=settings_storage)
 settings_dp.include_router(settings_router)
-settings_dp.include_router(settings_design_router)
-settings_dp.include_router(settings_forms_router)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# === ЛОГИ ПОДКЛЮЧЕНИЯ РОУТЕРОВ ===
+logger.info("[BOOT] Подключаю settings_design_router...")
+settings_dp.include_router(settings_design_router)
+logger.info("[BOOT] Подключаю settings_forms_router...")
+settings_dp.include_router(settings_forms_router)
 
 scheduler = AsyncIOScheduler()
 

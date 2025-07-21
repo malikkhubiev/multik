@@ -46,8 +46,18 @@ async def show_design_menu(callback_or_message, state: FSMContext):
 @settings_design_router.callback_query(lambda c: c.data == "open_design")
 async def handle_project_design(callback_query: types.CallbackQuery, state: FSMContext):
     logging.info(f"[DESIGN][CLICK] Пользователь {callback_query.from_user.id} нажал кнопку 'Оформление'")
+    current_state = await state.get_state()
+    logging.info(f"[DESIGN][DEBUG] FSM state при входе: {current_state}")
+    data = await state.get_data()
+    logging.info(f"[DESIGN][DEBUG] FSM data при входе: {data}")
+    project = data.get("selected_project")
+    logging.info(f"[DESIGN][DEBUG] selected_project: {project}")
     await callback_query.answer()
-    await show_design_menu(callback_query.message, state)
+    try:
+        await show_design_menu(callback_query.message, state)
+    except Exception as e:
+        logging.error(f"[DESIGN][ERROR] Ошибка в show_design_menu: {e}")
+        await callback_query.message.answer(f"Ошибка при открытии меню оформления: {e}")
 
 @settings_design_router.callback_query(lambda c: c.data == "design_change_name")
 async def handle_design_change_name(callback_query: types.CallbackQuery, state: FSMContext):
