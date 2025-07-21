@@ -1,8 +1,10 @@
 # settings_design.py
-from aiogram import types
+from aiogram import types, Router
 from aiogram.fsm.context import FSMContext
 import logging
 from settings_states import SettingsStates
+
+settings_design_router = Router()
 
 # --- Меню оформления ---
 async def show_design_menu(callback_or_message, state: FSMContext):
