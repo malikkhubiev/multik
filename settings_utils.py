@@ -1,4 +1,5 @@
 import logging
+from functools import wraps
 
 async def log_fsm_state(message, state):
     current_state = await state.get_state()
@@ -21,4 +22,31 @@ async def handle_command_in_state(message, state) -> bool:
         else:
             await message.answer("Неизвестная команда. Используйте /help для справки.")
         return True
-    return False 
+    return False
+
+# --- Супер-декоратор для автоматической регистрации хэндлеров ---
+def auto_handler(router, handler_type, *args, **kwargs):
+    def decorator(func):
+        reg = getattr(router, handler_type)
+        reg(*args, **kwargs)(func)
+        return func
+    return decorator
+
+# --- Фабрика-декоратор для оформления и форм ---
+def make_handler(router):
+    def handler(event_key, *, state=None):
+        """
+        event_key: str — callback_data (для callback_query) или state (для message)
+        state: bool — если True, то message-хэндлер по FSM, иначе callback_query
+        """
+        def decorator(func):
+            if state:
+                # FSM message handler
+                router.message(StateFilter(event_key))(func)
+            else:
+                # Callback handler
+                router.callback_query(lambda c: c.data == event_key)(func)
+            return func
+        return decorator
+    handler.state = lambda state_name: make_handler(router)(state_name, state=True)
+    return handler 
