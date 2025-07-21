@@ -1,5 +1,6 @@
 import logging
 from functools import wraps
+from aiogram.filters import StateFilter
 
 async def log_fsm_state(message, state):
     current_state = await state.get_state()
