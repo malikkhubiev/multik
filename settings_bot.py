@@ -39,15 +39,17 @@ SETTINGS_WEBHOOK_URL = f"{SERVER_URL}{SETTINGS_WEBHOOK_PATH}"
 settings_bot = Bot(token=SETTINGS_BOT_TOKEN)
 settings_storage = MemoryStorage()
 settings_router = Router()
+
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 logger.info("[BOOT] Вкладываю settings_design_router в settings_router...")
 settings_router.include_router(settings_design_router)
 logger.info("[BOOT] Вкладываю settings_forms_router в settings_router...")
 settings_router.include_router(settings_forms_router)
 settings_dp = Dispatcher(storage=settings_storage)
 settings_dp.include_router(settings_router)
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler()
 
