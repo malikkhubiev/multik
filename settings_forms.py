@@ -1,8 +1,10 @@
 # settings_forms.py
-from aiogram import types
+from aiogram import types, Router
 from aiogram.fsm.context import FSMContext
 import logging
 from settings_states import SettingsStates
+
+settings_forms_router = Router()
 
 async def create_form(q, s):
     logging.info(f"[FORM] handle_create_form: user={q.from_user.id} (начало создания формы)")
