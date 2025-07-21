@@ -1,6 +1,7 @@
 import logging
 from functools import wraps
 from aiogram.filters import StateFilter
+import inspect
 
 async def log_fsm_state(message, state):
     current_state = await state.get_state()
@@ -33,21 +34,25 @@ def auto_handler(router, handler_type, *args, **kwargs):
         return func
     return decorator
 
-# --- Фабрика-декоратор для оформления и форм ---
-def make_handler(router):
-    def handler(event_key, *, state=None):
-        """
-        event_key: str — callback_data (для callback_query) или state (для message)
-        state: bool — если True, то message-хэндлер по FSM, иначе callback_query
-        """
-        def decorator(func):
-            if state:
-                # FSM message handler
-                router.message(StateFilter(event_key))(func)
-            else:
-                # Callback handler
-                router.callback_query(lambda c: c.data == event_key)(func)
-            return func
-        return decorator
-    handler.state = lambda state_name: make_handler(router)(state_name, state=True)
-    return handler 
+# --- Автоматическая регистрация всех функций-хэндлеров из модуля ---
+def auto_register_handlers(router, module):
+    """
+    Автоматически регистрирует все функции-хэндлеры из модуля в роутер.
+    - Если имя начинается с waiting_for_ — FSM message handler (state=SettingsStates:...)
+    - Если имя начинается с field_type_ или del_field_ — callback_query startswith
+    - Иначе — callback_query по точному совпадению имени с callback_data
+    
+    Пример вызова:
+        import settings_design
+        auto_register_handlers(settings_design_router, settings_design)
+    """
+    for name, func in inspect.getmembers(module, inspect.isfunction):
+        if name.startswith("waiting_for_"):
+            state_name = f"SettingsStates:{name}"
+            router.message(StateFilter(state_name))(func)
+        elif name.startswith("field_type_"):
+            router.callback_query(lambda c, n=name: c.data.startswith("field_type_"))(func)
+        elif name.startswith("del_field_"):
+            router.callback_query(lambda c, n=name: c.data.startswith("del_field_"))(func)
+        else:
+            router.callback_query(lambda c, n=name: c.data == n)(func) 

@@ -1,14 +1,8 @@
 # settings_design.py
-from aiogram import types, Router
+from aiogram import types
 from aiogram.fsm.context import FSMContext
-from aiogram.filters import StateFilter
 import logging
 from settings_states import SettingsStates
-from settings_utils import make_handler
-
-# Экспортируемый роутер для подключения в settings_bot.py
-settings_design_router = Router()
-design_handler = make_handler(settings_design_router)
 
 # --- Меню оформления ---
 async def show_design_menu(callback_or_message, state: FSMContext):
@@ -44,9 +38,7 @@ async def show_design_menu(callback_or_message, state: FSMContext):
     else:
         await callback_or_message.answer(text, reply_markup=keyboard)
 
-# --- Хендлеры оформления ---
-@design_handler("open_design")
-async def handle_project_design(q, s):
+async def open_design(q, s):
     logging.info(f"[DESIGN][CLICK] Пользователь {q.from_user.id} нажал кнопку 'Оформление'")
     current_state = await s.get_state()
     logging.info(f"[DESIGN][DEBUG] FSM state при входе: {current_state}")
@@ -61,15 +53,13 @@ async def handle_project_design(q, s):
         logging.error(f"[DESIGN][ERROR] Ошибка в show_design_menu: {e}")
         await q.message.answer(f"Ошибка при открытии меню оформления: {e}")
 
-@design_handler("design_change_name")
-async def handle_design_change_name(q, s):
+async def design_change_name(q, s):
     logging.info(f"[DESIGN][CLICK] Пользователь {q.from_user.id} нажал кнопку 'Изменить имя'")
     await q.answer()
     await q.message.edit_text("Введите новое имя бота:")
     await s.set_state(SettingsStates.waiting_for_design_name)
 
-@design_handler.state('SettingsStates:waiting_for_design_name')
-async def process_design_name(m, s):
+async def waiting_for_design_name(m, s):
     current_state = await s.get_state()
     logging.info(f"[FSM] process_design_name CALLED for user={m.from_user.id}, text={m.text}, state={current_state}")
     if m.text and m.text.startswith('/'):
@@ -82,15 +72,13 @@ async def process_design_name(m, s):
     await s.set_state(None)
     logging.info(f"[FSM] process_design_name END: Состояние сброшено после показа меню оформления для user={m.from_user.id}")
 
-@design_handler("design_change_avatar")
-async def handle_design_change_avatar(q, s):
+async def design_change_avatar(q, s):
     logging.info(f"[DESIGN][CLICK] Пользователь {q.from_user.id} нажал кнопку 'Изменить аватарку'")
     await q.answer()
     await q.message.edit_text("Отправьте новую аватарку (фото):")
     await s.set_state(SettingsStates.waiting_for_design_avatar)
 
-@design_handler.state('SettingsStates:waiting_for_design_avatar')
-async def process_design_avatar(m, s):
+async def waiting_for_design_avatar(m, s):
     if m.text and m.text.startswith('/'):
         await s.clear()
         await m.answer("Вышли из режима оформления.")
@@ -106,15 +94,13 @@ async def process_design_avatar(m, s):
     await show_design_menu(m, s)
     await s.set_state(None)
 
-@design_handler("design_change_welcome_text")
-async def handle_design_change_welcome_text(q, s):
+async def design_change_welcome_text(q, s):
     logging.info(f"[DESIGN][CLICK] Пользователь {q.from_user.id} нажал кнопку 'Изменить парадное описание'")
     await q.answer()
     await q.message.edit_text("Введите новое парадное описание:")
     await s.set_state(SettingsStates.waiting_for_design_welcome_text)
 
-@design_handler.state('SettingsStates:waiting_for_design_welcome_text')
-async def process_design_welcome_text(m, s):
+async def waiting_for_design_welcome_text(m, s):
     if m.text and m.text.startswith('/'):
         await s.clear()
         await m.answer("Вышли из режима оформления.")
@@ -125,15 +111,13 @@ async def process_design_welcome_text(m, s):
     await show_design_menu(m, s)
     await s.set_state(None)
 
-@design_handler("design_change_welcome_image")
-async def handle_design_change_welcome_image(q, s):
+async def design_change_welcome_image(q, s):
     logging.info(f"[DESIGN][CLICK] Пользователь {q.from_user.id} нажал кнопку 'Изменить парадную картинку'")
     await q.answer()
     await q.message.edit_text("Отправьте новую парадную картинку (фото):")
     await s.set_state(SettingsStates.waiting_for_design_welcome_image)
 
-@design_handler.state('SettingsStates:waiting_for_design_welcome_image')
-async def process_design_welcome_image(m, s):
+async def waiting_for_design_welcome_image(m, s):
     if m.text and m.text.startswith('/'):
         await s.clear()
         await m.answer("Вышли из режима оформления.")
@@ -149,15 +133,13 @@ async def process_design_welcome_image(m, s):
     await show_design_menu(m, s)
     await s.set_state(None)
 
-@design_handler("design_change_description")
-async def handle_design_change_description(q, s):
+async def design_change_description(q, s):
     logging.info(f"[DESIGN][CLICK] Пользователь {q.from_user.id} нажал кнопку 'Изменить описание'")
     await q.answer()
     await q.message.edit_text("Введите новое описание проекта:")
     await s.set_state(SettingsStates.waiting_for_design_description)
 
-@design_handler.state('SettingsStates:waiting_for_design_description')
-async def process_design_description(m, s):
+async def waiting_for_design_description(m, s):
     if m.text and m.text.startswith('/'):
         await s.clear()
         await m.answer("Вышли из режима оформления.")
@@ -168,8 +150,7 @@ async def process_design_description(m, s):
     await show_design_menu(m, s)
     await s.set_state(None)
 
-@design_handler("apply_design")
-async def handle_apply_design(q, s):
+async def apply_design(q, s):
     import httpx
     logging.info(f"[DESIGN][CLICK] Пользователь {q.from_user.id} нажал кнопку 'Применить оформление'")
     await q.answer()

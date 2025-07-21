@@ -1,17 +1,10 @@
 # settings_forms.py
-from aiogram import types, Router
+from aiogram import types
 from aiogram.fsm.context import FSMContext
-from aiogram.filters import StateFilter
 import logging
 from settings_states import SettingsStates
-from settings_utils import make_handler
 
-settings_forms_router = Router()
-forms_handler = make_handler(settings_forms_router)
-
-# --- Создание формы ---
-@forms_handler("create_form")
-async def handle_create_form(q, s):
+async def create_form(q, s):
     logging.info(f"[FORM] handle_create_form: user={q.from_user.id} (начало создания формы)")
     await s.update_data(form_draft={"fields": []})
     form_text = """
@@ -31,8 +24,7 @@ async def handle_create_form(q, s):
     logging.info(f"[FORM] handle_create_form: user={q.from_user.id} (черновик формы создан)")
     await q.message.edit_text(form_text, reply_markup=keyboard)
 
-@forms_handler("add_form_field")
-async def handle_add_form_field(q, s):
+async def add_form_field(q, s):
     await q.message.edit_text(
         "Введите название поля формы:\n\nНапример: ФИО, Телефон, Марка машины, Возраст студента и т.д.",
         reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
@@ -41,8 +33,7 @@ async def handle_add_form_field(q, s):
     )
     await s.set_state(SettingsStates.waiting_for_field_name)
 
-@forms_handler.state('SettingsStates:waiting_for_field_name')
-async def handle_field_name(m, s):
+async def waiting_for_field_name(m, s):
     current_state = await s.get_state()
     logging.info(f"[FORM] handle_field_name: user={m.from_user.id}, state={current_state}, text={m.text}")
     await s.update_data(field_name=m.text)
@@ -60,8 +51,7 @@ async def handle_field_name(m, s):
     )
     await s.set_state(SettingsStates.waiting_for_field_type)
 
-@forms_handler(lambda c: c.data.startswith("field_type_"))
-async def handle_field_type(q, s):
+async def field_type(q, s):
     field_type = q.data.replace("field_type_", "")
     data = await s.get_data()
     field_name = data.get("field_name")
@@ -91,8 +81,7 @@ async def handle_field_type(q, s):
     )
     await s.set_state(SettingsStates.form_draft_edit)
 
-@forms_handler(lambda c: c.data.startswith("del_field_"))
-async def handle_delete_field(q, s):
+async def del_field(q, s):
     idx = int(q.data.replace("del_field_", ""))
     data = await s.get_data()
     form_draft = data.get("form_draft", {"fields": []})
@@ -116,8 +105,7 @@ async def handle_delete_field(q, s):
     )
     await s.set_state(SettingsStates.form_draft_edit)
 
-@forms_handler("use_form")
-async def handle_use_form(q, s):
+async def use_form(q, s):
     data = await s.get_data()
     form_draft = data.get("form_draft")
     project_id = data.get("selected_project_id")
@@ -132,8 +120,7 @@ async def handle_use_form(q, s):
     )
     await s.set_state(SettingsStates.waiting_for_form_purpose)
 
-@forms_handler.state('SettingsStates:waiting_for_form_purpose')
-async def handle_form_purpose(m, s):
+async def waiting_for_form_purpose(m, s):
     data = await s.get_data()
     form_draft = data.get("form_draft")
     project_id = data.get("selected_project_id")
@@ -151,8 +138,7 @@ async def handle_form_purpose(m, s):
     logging.info(f"[FORM] handle_form_purpose: форма {form_id} успешно сохранена с целью '{purpose}' и готова к использованию")
     await s.clear()
 
-@forms_handler("export_form_submissions")
-async def handle_export_form_submissions(q, s):
+async def export_form_submissions(q, s):
     import pandas as pd
     import io
     from database import get_project_form, get_form_submissions

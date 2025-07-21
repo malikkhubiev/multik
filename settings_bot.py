@@ -12,7 +12,7 @@ from utils import set_webhook, delete_webhook
 from aiogram.fsm.context import FSMContext
 from settings_states import SettingsStates
 from settings_business import process_business_file_with_deepseek, clean_markdown, clean_business_text, get_text_from_message
-from settings_utils import handle_command_in_state, log_fsm_state
+from settings_utils import handle_command_in_state, log_fsm_state, auto_register_handlers
 from settings_feedback import handle_feedback_command, handle_feedback_text, handle_feedback_rating_callback, handle_feedback_change_rating
 from settings_payment import handle_pay_command, handle_pay_callback, handle_payment_check, handle_payment_check_document, handle_payment_check_document_any, handle_payment_check_photo_any
 from settings_middleware import trial_middleware, clear_asking_bot_cache
@@ -30,6 +30,8 @@ import httpx
 from aiogram.filters import StateFilter
 from settings_design import settings_design_router
 from settings_forms import settings_forms_router
+import settings_design
+import settings_forms
 
 router = APIRouter()
 
@@ -48,6 +50,11 @@ logger.info("[BOOT] Вкладываю settings_design_router в settings_router
 settings_router.include_router(settings_design_router)
 logger.info("[BOOT] Вкладываю settings_forms_router в settings_router...")
 settings_router.include_router(settings_forms_router)
+
+# --- Автоматическая регистрация хэндлеров ---
+auto_register_handlers(settings_design_router, settings_design)
+auto_register_handlers(settings_forms_router, settings_forms)
+
 settings_dp = Dispatcher(storage=settings_storage)
 settings_dp.include_router(settings_router)
 
