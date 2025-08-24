@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Тестовый файл для проверки всех импортов после очистки
+Тестовый файл для проверки всех импортов после исправления API_URL
 """
 
 def test_imports():
@@ -38,6 +38,12 @@ def test_imports():
         
         print("✅ Импортирую settings_business...")
         from settings_business import process_business_file_with_deepseek
+        
+        print("✅ Импортирую settings_payment...")
+        from settings_payment import handle_pay_command
+        
+        print("✅ Импортирую settings_middleware...")
+        from settings_middleware import trial_middleware
         
         print("🎉 Все импорты успешны!")
         return True

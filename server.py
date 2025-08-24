@@ -25,7 +25,7 @@ import plotly.io as pio
 @app.on_event("startup")
 async def startup_event():
     try:
-        logging.info(f"[ENV] SERVER_URL={SERVER_URL}, API_URL={API_URL}")
+        logging.info(f"[ENV] SERVER_URL={SERVER_URL}")
         logging.info(f"[ENV] SETTINGS_BOT_TOKEN={SETTINGS_BOT_TOKEN}, SETTINGS_WEBHOOK_URL={SETTINGS_WEBHOOK_URL}")
         
         # Устанавливаем webhook для settings бота
