@@ -208,21 +208,14 @@ async def create_project(telegram_id: str, project_name: str, business_info: str
         
         project_id = str(uuid.uuid4())
         
-        # Создаем полную ссылку на бота
-        from config import MAIN_BOT_USERNAME
-        bot_username = MAIN_BOT_USERNAME or "your_main_bot"
-        bot_link = f"https://t.me/{bot_username}?start={short_link}"
-        
-        project = Project(
+        await database.execute(insert(Project).values(
             id=project_id,
             project_name=project_name,
             business_info=business_info,
             short_link=short_link,
             telegram_id=telegram_id,
             created_at=datetime.now(timezone.utc)
-        )
-        
-        await database.execute(insert(Project), project.__dict__)
+        ))
         return project_id
     except Exception as e:
         logging.error(f"Error creating project: {e}")
