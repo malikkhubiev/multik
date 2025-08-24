@@ -245,6 +245,18 @@ async def get_project_by_id(project_id: str) -> Optional[dict]:
         logging.error(f"Error getting project by id: {e}")
     return None
 
+async def get_project_by_short_link(short_link: str) -> Optional[dict]:
+    """Получает проект по ID"""
+    try:
+    query = select(Project).where(Project.short_link == short_link)
+        result = await database.fetch_one(query)
+        if result:
+            return result
+        return None
+    except Exception as e:
+        logging.error(f"Error getting project by id: {e}")
+    return None
+
 async def get_projects_by_user(telegram_id: str) -> list:
     logging.info(f"[DB] get_projects_by_user: ищем проекты для пользователя {telegram_id}")
     query = select(Project).where(Project.telegram_id == telegram_id)
