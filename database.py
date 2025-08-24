@@ -123,6 +123,22 @@ class ResponseRating(Base):
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     project = relationship("Project")
 
+# Новая таблица для хранения истории переходов клиентов по проектам
+class ClientProjectHistory(Base):
+    __tablename__ = 'client_project_history'
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    client_telegram_id = Column(String, nullable=False)  # ID клиента
+    project_id = Column(String, ForeignKey('project.id'), nullable=False)  # ID проекта
+    first_visit = Column(DateTime, default=datetime.now(timezone.utc))  # Первый переход
+    last_visit = Column(DateTime, default=datetime.now(timezone.utc))  # Последний переход
+    visit_count = Column(Integer, default=1)  # Количество посещений
+    project = relationship("Project")
+    
+    # Уникальный индекс для комбинации клиента и проекта
+    __table_args__ = (
+        {'sqlite_autoincrement': True}
+    )
+
 # ВАЖНО: ниже используется синхронный движок только для создания таблиц!
 engine = create_engine(DATABASE_URL.replace("sqlite+aiosqlite", "sqlite"))
 Base.metadata.create_all(bind=engine)
@@ -942,3 +958,111 @@ async def check_existing_rating(telegram_id: str, message_id: str) -> bool:
     except Exception as e:
         logging.error(f"[RATING] check_existing_rating: ОШИБКА: {e}")
         return False
+
+# --- История проектов клиентов ---
+async def record_project_visit(client_telegram_id: str, project_id: str):
+    """Записывает посещение проекта клиентом"""
+    logging.info(f"[HISTORY] record_project_visit: client={client_telegram_id}, project={project_id}")
+    try:
+        # Проверяем, есть ли уже запись
+        existing_query = select(ClientProjectHistory).where(
+            and_(
+                ClientProjectHistory.client_telegram_id == client_telegram_id,
+                ClientProjectHistory.project_id == project_id
+            )
+        )
+        existing = await database.fetch_one(existing_query)
+        
+        if existing:
+            # Обновляем существующую запись
+            from sqlalchemy import update
+            update_query = update(ClientProjectHistory).where(
+                and_(
+                    ClientProjectHistory.client_telegram_id == client_telegram_id,
+                    ClientProjectHistory.project_id == project_id
+                )
+            ).values(
+                last_visit=datetime.now(timezone.utc),
+                visit_count=ClientProjectHistory.visit_count + 1
+            )
+            await database.execute(update_query)
+            logging.info(f"[HISTORY] Обновлена запись для клиента {client_telegram_id} и проекта {project_id}")
+        else:
+            # Создаем новую запись
+            query = insert(ClientProjectHistory).values(
+                client_telegram_id=client_telegram_id,
+                project_id=project_id,
+                first_visit=datetime.now(timezone.utc),
+                last_visit=datetime.now(timezone.utc),
+                visit_count=1
+            )
+            await database.execute(query)
+            logging.info(f"[HISTORY] Создана новая запись для клиента {client_telegram_id} и проекта {project_id}")
+            
+    except Exception as e:
+        logging.error(f"[HISTORY] Ошибка при записи посещения: {e}")
+
+async def get_client_projects(client_telegram_id: str) -> list:
+    """Получает список проектов, которые посещал клиент"""
+    logging.info(f"[HISTORY] get_client_projects: client={client_telegram_id}")
+    try:
+        query = select(ClientProjectHistory, Project).join(
+            Project, ClientProjectHistory.project_id == Project.id
+        ).where(
+            ClientProjectHistory.client_telegram_id == client_telegram_id
+        ).order_by(ClientProjectHistory.last_visit.desc())
+        
+        rows = await database.fetch_all(query)
+        projects = []
+        
+        for row in rows:
+            project_data = {
+                "id": row["project_id"],
+                "project_name": row["project_name"],
+                "business_info": row["business_info"],
+                "welcome_message": row["welcome_message"],
+                "bot_link": row["bot_link"],
+                "first_visit": row["first_visit"],
+                "last_visit": row["last_visit"],
+                "visit_count": row["visit_count"]
+            }
+            projects.append(project_data)
+        
+        logging.info(f"[HISTORY] Найдено {len(projects)} проектов для клиента {client_telegram_id}")
+        return projects
+        
+    except Exception as e:
+        logging.error(f"[HISTORY] Ошибка при получении проектов клиента: {e}")
+        return []
+
+async def get_client_current_project(client_telegram_id: str) -> Optional[dict]:
+    """Получает текущий активный проект клиента (последний посещенный)"""
+    logging.info(f"[HISTORY] get_client_current_project: client={client_telegram_id}")
+    try:
+        query = select(ClientProjectHistory, Project).join(
+            Project, ClientProjectHistory.project_id == Project.id
+        ).where(
+            ClientProjectHistory.client_telegram_id == client_telegram_id
+        ).order_by(ClientProjectHistory.last_visit.desc()).limit(1)
+        
+        row = await database.fetch_one(query)
+        if row:
+            project_data = {
+                "id": row["project_id"],
+                "project_name": row["project_name"],
+                "business_info": row["business_info"],
+                "welcome_message": row["welcome_message"],
+                "bot_link": row["bot_link"],
+                "first_visit": row["first_visit"],
+                "last_visit": row["last_visit"],
+                "visit_count": row["visit_count"]
+            }
+            logging.info(f"[HISTORY] Текущий проект клиента {client_telegram_id}: {project_data['project_name']}")
+            return project_data
+        
+        logging.info(f"[HISTORY] У клиента {client_telegram_id} нет истории проектов")
+        return None
+        
+    except Exception as e:
+        logging.error(f"[HISTORY] Ошибка при получении текущего проекта клиента: {e}")
+        return None

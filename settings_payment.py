@@ -1,6 +1,5 @@
 from config import PAYMENT_AMOUNT, PAYMENT_CARD_NUMBER1, PAYMENT_CARD_NUMBER2, PAYMENT_CARD_NUMBER3, MAIN_TELEGRAM_ID, PAID_PROJECTS
 from database import set_user_paid, get_user_projects, get_payments, log_payment
-from utils import set_webhook
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import logging
 import random

@@ -16,7 +16,6 @@ from settings_utils import handle_command_in_state, log_fsm_state, auto_register
 from settings_feedback import handle_feedback_command, handle_feedback_text, handle_feedback_rating_callback, handle_feedback_change_rating
 from settings_payment import handle_pay_command, handle_pay_callback, handle_payment_check, handle_payment_check_document, handle_payment_check_document_any, handle_payment_check_photo_any
 from settings_middleware import trial_middleware
-from database import log_message_stat
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -28,9 +27,7 @@ import pandas as pd
 import io
 import httpx
 from aiogram.filters import StateFilter
-from settings_design import settings_design_router
 from settings_forms import settings_forms_router
-import settings_design
 import settings_forms
 
 router = APIRouter()
@@ -46,13 +43,10 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-logger.info("[BOOT] Вкладываю settings_design_router в settings_router...")
-settings_router.include_router(settings_design_router)
 logger.info("[BOOT] Вкладываю settings_forms_router в settings_router...")
 settings_router.include_router(settings_forms_router)
 
 # --- Автоматическая регистрация хэндлеров ---
-auto_register_handlers(settings_design_router, settings_design)
 auto_register_handlers(settings_forms_router, settings_forms)
 
 settings_dp = Dispatcher(storage=settings_storage)
@@ -660,7 +654,6 @@ async def handle_project_selection(callback_query: types.CallbackQuery, state: F
                 buttons.append([types.InlineKeyboardButton(text="Создать форму", callback_data="create_form")])
             # Меню управления проектом
             buttons += [
-                [types.InlineKeyboardButton(text="Оформление бота", callback_data="open_design")],
                 [types.InlineKeyboardButton(text="Показать данные", callback_data="show_data")],
                 [
                     types.InlineKeyboardButton(text="Добавить данные", callback_data="add_data"),
@@ -684,15 +677,15 @@ async def handle_project_selection(callback_query: types.CallbackQuery, state: F
 @settings_router.callback_query(lambda c: c.data == "back_to_projects")
 async def handle_back_to_projects(callback_query: types.CallbackQuery, state: FSMContext):
     await callback_query.answer()
+    await state.clear()
     async def process():
-        """Возврат к списку проектов (использует telegram_id из состояния)"""
         data = await state.get_data()
         telegram_id = data.get("telegram_id")
         if not telegram_id:
             telegram_id = str(callback_query.from_user.id)
-        # Очищаем только выбор проекта
         await state.update_data(selected_project_id=None, selected_project=None)
         await handle_projects_command(callback_query.message, state, telegram_id=telegram_id)
+    import asyncio
     asyncio.create_task(process())
 
 @settings_router.callback_query(lambda c: c.data == "rename_project")
@@ -1460,10 +1453,6 @@ async def build_main_menu(telegram_id: str):
 async def handle_any_message(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
     logging.info(f"[DEBUG] handle_any_message: user={message.from_user.id}, state={current_state}, text={message.text}")
-    logging.info(f"[DEBUG] handle_any_message: type(state)={type(current_state)}, repr(state)={repr(current_state)}")
-    logging.info(f"[DEBUG] handle_any_message: type(SettingsStates.waiting_for_design_name)={type(SettingsStates.waiting_for_design_name)}, value={SettingsStates.waiting_for_design_name}, str={str(SettingsStates.waiting_for_design_name)}")
-    if current_state == str(SettingsStates.waiting_for_design_name):
-        logging.warning(f"[FSM][WARNING] handle_any_message: ПОЛУЧЕНО СООБЩЕНИЕ В СОСТОЯНИИ waiting_for_design_name! user={message.from_user.id}, text={message.text}")
     await trial_middleware(message, state, _handle_any_message_inner)
 
 @settings_router.callback_query(lambda c: c.data == "export_form_submissions")
@@ -1504,7 +1493,6 @@ async def handle_export_form_submissions(callback_query: types.CallbackQuery, st
 
 @settings_router.callback_query(lambda c: c.data == "back_to_projects")
 async def handle_back_to_projects(callback_query: types.CallbackQuery, state: FSMContext):
-    logging.info(f"[DESIGN][CLICK] Пользователь {callback_query.from_user.id} нажал кнопку 'Назад' в меню оформления")
     await callback_query.answer()
     await state.clear()
     async def process():

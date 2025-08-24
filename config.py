@@ -1,5 +1,4 @@
 import os
-import json
 import logging
 from dotenv import load_dotenv
 
@@ -18,8 +17,6 @@ PAYMENT_CARD_NUMBER3 = os.getenv("PAYMENT_CARD_NUMBER3")
 MAIN_TELEGRAM_ID = os.getenv("MAIN_TELEGRAM_ID", "123456789")
 PORT = os.getenv("PORT")
 SERVER_URL = os.getenv("SERVER_URL")
-API_URL = "https://api.telegram.org/bot"
-BOT_URL = os.getenv("BOT_URL")
 
 # Основной бот для ответов от имени проектов
 MAIN_BOT_TOKEN = os.getenv("MAIN_BOT_TOKEN")

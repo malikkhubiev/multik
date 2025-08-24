@@ -4,10 +4,14 @@ from functools import wraps
 from fastapi.responses import JSONResponse
 import httpx
 import logging
-from config import SETTINGS_BOT_TOKEN, API_URL, SERVER_URL
 import traceback
+import asyncio
+import tempfile
+import os
+import speech_recognition as sr
 from database import get_user
 from pydub import AudioSegment
+from pydub.silence import split_on_silence
 
 load_dotenv()
 
@@ -16,72 +20,110 @@ logging.basicConfig(level=logging.DEBUG)
 logging.getLogger('aiosqlite').setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
-async def set_webhook(token: str, project_id: str) -> dict:
-    logging.info(f"SERVER_URL={SERVER_URL}, project_id={project_id}")
-    webhook_url = f"{SERVER_URL}/webhook/{project_id}"
-    logging.info(f"webhook_url={webhook_url}")
-    url = f"{API_URL}{token}/setWebhook"
-    get_info_url = f"{API_URL}{token}/getWebhookInfo"
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        try:
-            logging.info(f"POST {url} params={{'url': {webhook_url}}}")
-            resp = await client.post(url, params={"url": webhook_url})
-            logging.info(f"setWebhook response status: {resp.status_code}, text: {resp.text}")
-            data = resp.json()
-            # Сразу после установки проверяем getWebhookInfo
-            info_resp = await client.get(get_info_url)
-            logging.info(f"getWebhookInfo response status: {info_resp.status_code}, text: {info_resp.text}")
-            info_data = info_resp.json()
-            logging.info(f"[WEBHOOK] setWebhook result: {data}")
-            logging.info(f"[WEBHOOK] getWebhookInfo: {info_data}")
-            data["webhook_info"] = info_data
-            return data
-        except Exception as e:
-            logging.error(f"[WEBHOOK] Error: {e}\n{traceback.format_exc()}")
-            return {"ok": False, "error": str(e), "trace": traceback.format_exc()}
-
-async def delete_webhook(token: str) -> dict:
-    """Отключает webhook для бота"""
-    logging.info(f"Deleting webhook for token: {token}")
-    url = f"{API_URL}{token}/deleteWebhook"
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        try:
-            logging.info(f"POST {url}")
-            resp = await client.post(url)
-            logging.info(f"deleteWebhook response status: {resp.status_code}, text: {resp.text}")
-            data = resp.json()
-            logging.info(f"[WEBHOOK] deleteWebhook result: {data}")
-            return data
-        except Exception as e:
-            logging.error(f"[WEBHOOK] Error deleting webhook: {e}\n{traceback.format_exc()}")
-            return {"ok": False, "error": str(e), "trace": traceback.format_exc()}
-
-# --- Функция "печатает" ---
-async def send_typing_action(chat_id, token):
-    logging.info(f"[TYPING] send_typing_action: начало отправки для chat_id={chat_id}, token={token[:10]}...")
+async def process_long_voice_message(bot, message):
+    """Обрабатывает длинные голосовые сообщения, разбивая их на части"""
     try:
-        url = f"https://api.telegram.org/bot{token}/sendChatAction"
-        payload = {
-            "chat_id": chat_id,
-            "action": "typing"
-        }
-        logging.info(f"[TYPING] send_typing_action: URL={url}")
-        logging.info(f"[TYPING] send_typing_action: payload={payload}")
+        # Получаем информацию о файле
+        file_info = await bot.get_file(message.voice.file_id)
+        file_path = file_info.file_path
         
-        timeout = httpx.Timeout(5.0)
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.post(url, json=payload)
-            logging.info(f"[TYPING] send_typing_action: получен ответ status_code={resp.status_code}")
-            logging.info(f"[TYPING] send_typing_action: ответ text={resp.text}")
-            
-            if resp.status_code != 200:
-                logger.error(f"Failed to send typing action: {resp.status_code} - {resp.text}")
-            else:
-                logging.info(f"[TYPING] send_typing_action: успешно отправлен typing action")
+        # Скачиваем файл
+        file_content = await bot.download_file(file_path)
+        
+        # Создаем временные файлы
+        with tempfile.NamedTemporaryFile(suffix='.ogg', delete=False) as temp_ogg:
+            temp_ogg.write(file_content.read())
+            temp_ogg_path = temp_ogg.name
+        
+        # Конвертируем в WAV
+        wav_path = temp_ogg_path.replace('.ogg', '.wav')
+        audio = AudioSegment.from_file(temp_ogg_path)
+        audio.export(wav_path, format='wav')
+        
+        # Инициализируем распознаватель
+        recognizer = sr.Recognizer()
+        
+        # Обрабатываем длинное аудио по частям
+        text_content = await process_long_audio(wav_path, recognizer)
+        
+        # Удаляем временные файлы
+        os.unlink(temp_ogg_path)
+        os.unlink(wav_path)
+        
+        return text_content
+        
     except Exception as e:
-        logger.error(f"Failed to send typing action: {e}")
-        import traceback
-        logger.error(f"[TYPING] send_typing_action: полный traceback: {traceback.format_exc()}")
+        # Очистка временных файлов в случае ошибки
+        if 'temp_ogg_path' in locals() and os.path.exists(temp_ogg_path):
+            os.unlink(temp_ogg_path)
+        if 'wav_path' in locals() and os.path.exists(wav_path):
+            os.unlink(wav_path)
+        raise e
+
+async def process_long_audio(wav_path, recognizer, chunk_length_ms=30000):
+    """Обрабатывает длинное аудио по частям"""
+    full_text = []
+    
+    # Загружаем аудио
+    audio = AudioSegment.from_wav(wav_path)
+    
+    # Разбиваем на чанки по времени
+    chunks = [audio[i:i + chunk_length_ms] for i in range(0, len(audio), chunk_length_ms)]
+    
+    for i, chunk in enumerate(chunks):
+        try:
+            # Сохраняем чанк во временный файл
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_chunk:
+                chunk.export(temp_chunk.name, format='wav')
+                chunk_path = temp_chunk.name
+            
+            # Распознаем чанк
+            with sr.AudioFile(chunk_path) as source:
+                audio_data = recognizer.record(source)
+                text = recognizer.recognize_google(audio_data, language='ru-RU')
+                full_text.append(text)
+            
+            # Удаляем временный файл чанка
+            os.unlink(chunk_path)
+            
+            # Добавляем небольшую задержку между запросами
+            await asyncio.sleep(0.1)
+            
+        except Exception as e:
+            logging.error(f"Ошибка при обработке чанка {i}: {e}")
+            continue
+    
+    return " ".join(full_text)
+
+def process_by_silence(wav_path, recognizer):
+    """Разбивает аудио на части по тишине"""
+    audio = AudioSegment.from_wav(wav_path)
+    
+    # Настройки для обнаружения тишины
+    chunks = split_on_silence(
+        audio,
+        min_silence_len=500,
+        silence_thresh=-40,
+        keep_silence=200
+    )
+    
+    full_text = []
+    
+    for i, chunk in enumerate(chunks):
+        try:
+            with tempfile.NamedTemporaryFile(suffix='.wav') as temp_chunk:
+                chunk.export(temp_chunk.name, format='wav')
+                
+                with sr.AudioFile(temp_chunk.name) as source:
+                    audio_data = recognizer.record(source)
+                    text = recognizer.recognize_google(audio_data, language='ru-RU')
+                    full_text.append(text)
+                    
+        except Exception as e:
+            logging.error(f"Ошибка в чанке {i}: {e}")
+            continue
+    
+    return " ".join(full_text)
 
 # Универсальная функция для получения текста из текстового или голосового сообщения
 async def recognize_message_text(message, bot, language='ru-RU'):
@@ -89,25 +131,34 @@ async def recognize_message_text(message, bot, language='ru-RU'):
         return message.text
     elif message.voice:
         try:
-            file_info = await bot.get_file(message.voice.file_id)
-            file_path = file_info.file_path
-            file_content = await bot.download_file(file_path)
-            import speech_recognition as sr
-            import tempfile
-            recognizer = sr.Recognizer()
-            with tempfile.NamedTemporaryFile(suffix='.ogg') as temp_ogg, tempfile.NamedTemporaryFile(suffix='.wav') as temp_wav:
-                temp_ogg.write(file_content.read())
-                temp_ogg.flush()
-                audio = AudioSegment.from_file(temp_ogg.name)
-                audio.export(temp_wav.name, format='wav')
-                temp_wav.flush()
-                with sr.AudioFile(temp_wav.name) as source:
-                    audio_data = recognizer.record(source)
-                text_content = recognizer.recognize_google(audio_data, language=language)
-            logging.info(f"[VOICE] Распознанный текст из голосового сообщения: {text_content}")
-            return text_content
+            # Проверяем длительность голосового сообщения
+            duration = message.voice.duration
+            
+            # Если сообщение длиннее 30 секунд, используем обработку длинных сообщений
+            if duration > 30:
+                logging.info(f"[VOICE] Длинное голосовое сообщение ({duration}с), используем обработку по частям")
+                return await process_long_voice_message(bot, message)
+            else:
+                # Для коротких сообщений используем стандартную обработку
+                file_info = await bot.get_file(message.voice.file_id)
+                file_path = file_info.file_path
+                file_content = await bot.download_file(file_path)
+                import speech_recognition as sr
+                import tempfile
+                recognizer = sr.Recognizer()
+                with tempfile.NamedTemporaryFile(suffix='.ogg') as temp_ogg, tempfile.NamedTemporaryFile(suffix='.wav') as temp_wav:
+                    temp_ogg.write(file_content.read())
+                    temp_ogg.flush()
+                    audio = AudioSegment.from_file(temp_ogg.name)
+                    audio.export(temp_wav.name, format='wav')
+                    temp_wav.flush()
+                    with sr.AudioFile(temp_wav.name) as source:
+                        audio_data = recognizer.record(source)
+                    text_content = recognizer.recognize_google(audio_data, language=language)
+                logging.info(f"[VOICE] Распознанный текст из голосового сообщения: {text_content}")
+                return text_content
         except Exception as e:
-            logging.error(f"Ошибка при распознавании голоса: {e}")
-            return None
+            logging.error(f"Failed to recognize voice message: {e}")
+            raise RuntimeError(f"Ошибка при распознавании голоса: {e}")
     else:
-        return None
+        raise RuntimeError("Пожалуйста, отправьте текстовое или голосовое сообщение.")

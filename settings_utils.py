@@ -43,8 +43,8 @@ def auto_register_handlers(router, module):
     - Иначе — callback_query по точному совпадению имени с callback_data
     
     Пример вызова:
-        import settings_design
-        auto_register_handlers(settings_design_router, settings_design)
+        import settings_forms
+        auto_register_handlers(settings_forms_router, settings_forms)
     """
     for name, func in inspect.getmembers(module, inspect.isfunction):
         if name.startswith("waiting_for_"):

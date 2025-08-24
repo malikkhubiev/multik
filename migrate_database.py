@@ -94,6 +94,25 @@ async def migrate_database():
         cursor.execute("CREATE INDEX idx_project_telegram_id ON project(telegram_id)")
         cursor.execute("CREATE INDEX idx_project_bot_link ON project(bot_link)")
         
+        # Создаем таблицу для истории проектов клиентов
+        print("🔧 Создаю таблицу ClientProjectHistory...")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS client_project_history (
+                id TEXT PRIMARY KEY,
+                client_telegram_id TEXT NOT NULL,
+                project_id TEXT NOT NULL,
+                first_visit DATETIME NOT NULL,
+                last_visit DATETIME NOT NULL,
+                visit_count INTEGER DEFAULT 1,
+                FOREIGN KEY (project_id) REFERENCES project (id)
+            )
+        """)
+        
+        # Создаем индексы для истории
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_client_history_client ON client_project_history(client_telegram_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_client_history_project ON client_project_history(project_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_client_history_last_visit ON client_project_history(last_visit)")
+        
         # Сохраняем изменения
         conn.commit()
         print("✅ Миграция успешно завершена!")

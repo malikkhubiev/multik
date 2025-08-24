@@ -1,13 +1,11 @@
 from base import app
 from fastapi.responses import JSONResponse, HTMLResponse
-from fastapi import Request, APIRouter
-from config import PORT, SERVER_URL, API_URL
+from fastapi import Request
+from config import PORT, SERVER_URL
 from database import database, get_feedbacks, get_payments, get_user_by_id, get_users_with_expired_trial, get_projects_by_user, get_user_projects, log_message_stat, add_feedback, MessageStat, User, Payment, get_response_ratings_stats
 from sqlalchemy.sql import func
 from datetime import datetime, timedelta, timezone
 import uvicorn
-from base import *
-from utils import *
 from settings_bot import (
     set_settings_webhook,
     router as settings_router,
@@ -19,7 +17,6 @@ from main_bot import (
     remove_main_bot_webhook,
     router as main_bot_router
 )
-import asyncio
 import logging
 from sqlalchemy import select
 import plotly.graph_objs as go

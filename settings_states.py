@@ -10,7 +10,7 @@ class SettingsStates(StatesGroup):
     waiting_for_delete_confirmation = State()
     waiting_for_feedback_rating = State()
     waiting_for_feedback_text = State()
-    waiting_for_welcome_message = State()  # <--- новое состояние для настройки приветственного сообщения
+    waiting_for_welcome_message = State()  # Настройка приветственного сообщения
     waiting_for_payment_check = State()
     
     # Состояния для работы с формами
@@ -20,13 +20,6 @@ class SettingsStates(StatesGroup):
     waiting_for_form_edit = State()
     waiting_for_form_purpose = State()
     form_draft_edit = State()
-
-    # Состояния для оформления проекта
-    waiting_for_design_name = State()
-    waiting_for_design_avatar = State()
-    waiting_for_design_welcome_text = State()
-    waiting_for_design_welcome_image = State()
-    waiting_for_design_description = State()
 
 class ExtendedSettingsStates(StatesGroup):
     waiting_for_payment_confirmation = State() 

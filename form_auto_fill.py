@@ -1,7 +1,6 @@
 import logging
 import re
-from typing import Dict, List, Optional, Tuple
-from aiogram import types
+from typing import Dict, List, Optional
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 logger = logging.getLogger(__name__)
