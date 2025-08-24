@@ -245,6 +245,23 @@ async def get_project_by_id(project_id: str) -> Optional[dict]:
         logging.error(f"Error getting project by id: {e}")
     return None
 
+async def get_project_by_short_link(short_link: str) -> Optional[dict]:
+    """Получает проект по ссылке"""
+    try:
+        query = select(Project).where(Project.short_link == short_link)
+        result = await database.fetch_one(query)
+        if result:
+            project_dict = dict(result)
+            # Генерируем полную ссылку на бота
+            from config import MAIN_BOT_USERNAME
+            bot_username = MAIN_BOT_USERNAME or "your_main_bot"
+            project_dict['bot_link'] = f"https://t.me/{bot_username}?start={project_dict['short_link']}"
+            return project_dict
+        return None
+    except Exception as e:
+        logging.error(f"Error getting project by id: {e}")
+    return None
+
 async def get_projects_by_user(telegram_id: str) -> list:
     logging.info(f"[DB] get_projects_by_user: ищем проекты для пользователя {telegram_id}")
     query = select(Project).where(Project.telegram_id == telegram_id)
