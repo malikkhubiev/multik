@@ -28,7 +28,9 @@ import io
 import httpx
 from aiogram.filters import StateFilter
 from settings_forms import settings_forms_router
+from settings_states import ExtendedSettingsStates
 import settings_forms
+from database import get_payments
 
 router = APIRouter()
 
@@ -1299,7 +1301,6 @@ async def handle_projects_command(message: types.Message, state: FSMContext, tel
 
 @settings_router.callback_query(lambda c: c.data == "pay_subscription")
 async def handle_pay_subscription(callback_query: types.CallbackQuery, state: FSMContext):
-    from database import get_payments
     from config import DISCOUNT_PAYMENT_AMOUNT, PAYMENT_AMOUNT
     telegram_id = str(callback_query.from_user.id)
     payments = await get_payments()
