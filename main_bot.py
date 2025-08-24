@@ -148,80 +148,51 @@ async def send_daily_insights_to_owner(project_id: str):
 async def check_project_accessibility(project: dict) -> bool:
     """Проверяет доступность проекта (trial/paid период)"""
     try:
-        logging.info(f"[MAIN_BOT] Checking accessibility for project {project['id']} ({project['project_name']})")
-        
-        # Получаем владельца проекта
         user = await get_user_by_id(project["telegram_id"])
-        logging.info(f"[MAIN_BOT] Project owner user: {user}")
-        
         if not user:
-            logging.warning(f"[MAIN_BOT] Project owner not found for telegram_id: {project['telegram_id']}")
             return False
         
-        # Проверяем, оплачен ли пользователь
-        logging.info(f"[MAIN_BOT] User paid status: {user['paid']}")
+        current_time = datetime.now(timezone.utc)
         
         if user["paid"]:
-            # Для оплаченных пользователей проверяем, не истек ли месяц
-            from config import TRIAL_DAYS
-            from datetime import datetime, timezone, timedelta
-            
-            # Получаем последний платеж
+            # Для оплаченных пользователей
             payments = await get_payments()
             user_payments = [p for p in payments if str(p['telegram_id']) == project["telegram_id"] and p['status'] == 'confirmed']
-            logging.info(f"[MAIN_BOT] User payments found: {len(user_payments)}")
             
-            if user_payments:
-                last_payment = max(user_payments, key=lambda x: x['paid_at'])
-                logging.info(f"[MAIN_BOT] Last payment date: {last_payment['paid_at']}")
-                
-                if isinstance(last_payment['paid_at'], str):
-                    last_payment_date = datetime.fromisoformat(last_payment['paid_at'].replace('Z', '+00:00'))
-                else:
-                    last_payment_date = last_payment['paid_at']
-                
-                # Проверяем, не истек ли месяц с последнего платежа
-                days_since_payment = (datetime.now(timezone.utc) - last_payment_date).days
-                logging.info(f"[MAIN_BOT] Days since last payment: {days_since_payment}")
-                
-                if days_since_payment > 30:
-                    logging.warning(f"[MAIN_BOT] Payment expired, days since payment: {days_since_payment}")
-                    return False
-                else:
-                    logging.info(f"[MAIN_BOT] Payment still valid, days since payment: {days_since_payment}")
-                    return True
-            else:
-                logging.warning(f"[MAIN_BOT] No confirmed payments found for user")
+            if not user_payments:
                 return False
+                
+            last_payment = max(user_payments, key=lambda x: x['paid_at'])
+            
+            # Преобразуем дату платежа
+            paid_at = last_payment['paid_at']
+            if isinstance(paid_at, str):
+                paid_at = paid_at.replace('Z', '+00:00') if 'Z' in paid_at else paid_at
+                last_payment_date = datetime.fromisoformat(paid_at)
+            else:
+                last_payment_date = paid_at
+            
+            # Делаем оба datetime aware
+            if last_payment_date.tzinfo is None:
+                last_payment_date = last_payment_date.replace(tzinfo=timezone.utc)
+            
+            return (current_time - last_payment_date).days <= 30
+            
         else:
-            # Для неоплаченных пользователей проверяем trial период
-            from config import TRIAL_DAYS
-            from datetime import datetime, timezone, timedelta
-            
-            logging.info(f"[MAIN_BOT] User is not paid, checking trial period. TRIAL_DAYS: {TRIAL_DAYS}")
-            logging.info(f"[MAIN_BOT] User start_date: {user.get('start_date')}")
-            
+            # Для trial пользователей
             if not user.get('start_date'):
-                logging.warning(f"[MAIN_BOT] User has no start_date, cannot check trial period")
                 return False
                 
-            if isinstance(user["start_date"], str):
-                start_date = datetime.fromisoformat(user["start_date"].replace('Z', '+00:00'))
-            else:
-                start_date = user["start_date"]
+            start_date = user["start_date"]
+            if isinstance(start_date, str):
+                start_date = start_date.replace('Z', '+00:00') if 'Z' in start_date else start_date
+                start_date = datetime.fromisoformat(start_date)
+            
+            if start_date.tzinfo is None:
+                start_date = start_date.replace(tzinfo=timezone.utc)
             
             trial_end = start_date + timedelta(days=TRIAL_DAYS)
-            current_time = datetime.now(timezone.utc)
-            
-            logging.info(f"[MAIN_BOT] Start date: {start_date}")
-            logging.info(f"[MAIN_BOT] Trial end: {trial_end}")
-            logging.info(f"[MAIN_BOT] Current time: {current_time}")
-            logging.info(f"[MAIN_BOT] Days until trial end: {(trial_end - current_time).days}")
-            
-            is_trial_valid = current_time < trial_end
-            logging.info(f"[MAIN_BOT] Trial is valid: {is_trial_valid}")
-            
-            return is_trial_valid
+            return current_time < trial_end
             
     except Exception as e:
         logging.error(f"[MAIN_BOT] Error checking project accessibility: {e}")
