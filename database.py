@@ -5,10 +5,10 @@ from sqlalchemy.orm import relationship
 from datetime import datetime, timezone, timedelta
 import databases
 from sqlalchemy.sql import select
-from typing import Optional
+from typing import Optional, Dict
 import logging
 from pathlib import Path
-from config import TRIAL_DAYS
+from config import TRIAL_DAYS, generate_short_link
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +38,9 @@ class Project(Base):
     project_name = Column(String, nullable=False)
     business_info = Column(String, nullable=False)
     welcome_message = Column(String, nullable=True)  # Приветственное сообщение бота
-    bot_link = Column(String, nullable=False)  # Уникальная ссылка на бота с projectId
+    short_link = Column(String, nullable=False, unique=True)  # Короткая ссылка из 5 букв
     telegram_id = Column(String, ForeignKey('user.telegram_id'))
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
     user = relationship("User", back_populates="projects")
     forms = relationship("Form", back_populates="project")
     
@@ -195,46 +196,54 @@ async def get_user(telegram_id: str) -> Optional[dict]:
     return None
 
 # CRUD для project
-async def create_project(telegram_id: str, project_name: str, business_info: str, welcome_message: str = None) -> str:
-    logging.info(f"[METRIC] create_project: telegram_id={telegram_id}, project_name={project_name}")
-    if await check_project_name_exists(telegram_id, project_name):
-        logging.warning(f"[DB] create_project: project with name '{project_name}' already exists for user {telegram_id}")
-        raise ValueError(f"Проект с именем '{project_name}' уже существует у этого пользователя")
-    
-    project_id = str(uuid.uuid4())
-    # Генерируем уникальную ссылку на бота с projectId
-    from config import MAIN_BOT_USERNAME
-    bot_username = MAIN_BOT_USERNAME or "your_main_bot"
-    bot_link = f"https://t.me/{bot_username}?start=proj{project_id}"
-    
-    query = insert(Project).values(
-        id=project_id, 
-        project_name=project_name, 
-        business_info=business_info, 
-        welcome_message=welcome_message,
-        bot_link=bot_link,
-        telegram_id=telegram_id
-    )
-    await database.execute(query)
-    logging.info(f"[DB] create_project: created project {project_id} with bot_link={bot_link}")
-    return project_id
+async def create_project(telegram_id: str, project_name: str, business_info: str) -> str:
+    """Создает новый проект"""
+    try:
+        # Генерируем уникальную короткую ссылку
+        short_link = generate_short_link()
+        
+        # Проверяем уникальность ссылки
+        while await get_project_by_short_link(short_link):
+            short_link = generate_short_link()
+        
+        project_id = str(uuid.uuid4())
+        
+        # Создаем полную ссылку на бота
+        from config import MAIN_BOT_USERNAME
+        bot_username = MAIN_BOT_USERNAME or "your_main_bot"
+        bot_link = f"https://t.me/{bot_username}?start={short_link}"
+        
+        project = Project(
+            id=project_id,
+            project_name=project_name,
+            business_info=business_info,
+            short_link=short_link,
+            telegram_id=telegram_id,
+            created_at=datetime.now(timezone.utc)
+        )
+        
+        await database.execute(insert(Project), project.__dict__)
+        return project_id
+    except Exception as e:
+        logging.error(f"Error creating project: {e}")
+        raise
 
 async def get_project_by_id(project_id: str) -> Optional[dict]:
-    logging.info(f"[DB] get_project_by_id: project_id={project_id}")
-    query = select(Project).where(Project.id == project_id)
-    row = await database.fetch_one(query)
-    if row:
-        logging.info(f"[DB] get_project_by_id: found {row}")
-        return {
-            "id": row["id"], 
-            "project_name": row["project_name"], 
-            "business_info": row["business_info"], 
-            "welcome_message": row["welcome_message"],
-            "bot_link": row["bot_link"],
-            "telegram_id": row["telegram_id"]
-        }
-    logging.info(f"[DB] get_project_by_id: not found")
-    return None
+    """Получает проект по ID"""
+    try:
+        query = select(Project).where(Project.id == project_id)
+        result = await database.fetch_one(query)
+        if result:
+            project_dict = dict(result)
+            # Генерируем полную ссылку на бота
+            from config import MAIN_BOT_USERNAME
+            bot_username = MAIN_BOT_USERNAME or "your_main_bot"
+            project_dict['bot_link'] = f"https://t.me/{bot_username}?start={project_dict['short_link']}"
+            return project_dict
+        return None
+    except Exception as e:
+        logging.error(f"Error getting project by id: {e}")
+        return None
 
 async def get_projects_by_user(telegram_id: str) -> list:
     logging.info(f"[DB] get_projects_by_user: ищем проекты для пользователя {telegram_id}")
@@ -1016,12 +1025,17 @@ async def get_client_projects(client_telegram_id: str) -> list:
         projects = []
         
         for row in rows:
+            # Генерируем полную ссылку на бота
+            from config import MAIN_BOT_USERNAME
+            bot_username = MAIN_BOT_USERNAME or "your_main_bot"
+            bot_link = f"https://t.me/{bot_username}?start={row['short_link']}"
+            
             project_data = {
                 "id": row["project_id"],
                 "project_name": row["project_name"],
                 "business_info": row["business_info"],
                 "welcome_message": row["welcome_message"],
-                "bot_link": row["bot_link"],
+                "bot_link": bot_link,
                 "first_visit": row["first_visit"],
                 "last_visit": row["last_visit"],
                 "visit_count": row["visit_count"]
@@ -1047,12 +1061,17 @@ async def get_client_current_project(client_telegram_id: str) -> Optional[dict]:
         
         row = await database.fetch_one(query)
         if row:
+            # Генерируем полную ссылку на бота
+            from config import MAIN_BOT_USERNAME
+            bot_username = MAIN_BOT_USERNAME or "your_main_bot"
+            bot_link = f"https://t.me/{bot_username}?start={row['short_link']}"
+            
             project_data = {
                 "id": row["project_id"],
                 "project_name": row["project_name"],
                 "business_info": row["business_info"],
                 "welcome_message": row["welcome_message"],
-                "bot_link": row["bot_link"],
+                "bot_link": bot_link,
                 "first_visit": row["first_visit"],
                 "last_visit": row["last_visit"],
                 "visit_count": row["visit_count"]

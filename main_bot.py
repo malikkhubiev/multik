@@ -4,7 +4,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram import Router, Dispatcher
 from database import (
     get_project_by_start_param, log_message_stat, get_user_by_id, get_project_form, 
-    record_project_visit, get_client_projects, get_client_current_project, get_project_by_id, get_payments
+    record_project_visit, get_client_projects, get_client_current_project, get_project_by_id, get_payments, get_project_by_short_link
 )
 from aiogram.filters import Command
 import logging
@@ -57,91 +57,95 @@ def create_projects_keyboard(client_projects: list) -> types.InlineKeyboardMarku
     
     return types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-async def check_project_accessibility(project_id: str) -> bool:
-    """Проверяет, доступен ли проект (не истек ли пробный/оплаченный период)"""
-    
-    project = await get_project_by_id(project_id)
-    if not project:
-        return False
-    
-    user = await get_user_by_id(project["telegram_id"])
-    if not user:
-        return False
-    
-    # Проверяем, оплачен ли пользователь или не истек пробный период
-    
-    if user["paid"]:
-        # Для оплаченных пользователей проверяем, не истек ли месяц
-        payments = await get_payments()
-        user_payments = [p for p in payments if p["telegram_id"] == project["telegram_id"] and p["status"] == "confirmed"]
-        
-        if user_payments:
-            last_payment = max(user_payments, key=lambda x: x["paid_at"])
-            if datetime.now(timezone.utc) - last_payment["paid_at"] > timedelta(days=30):
-                return False
-    else:
-        # Для неоплаченных пользователей проверяем пробный период
-        trial_end = user["start_date"] + timedelta(days=TRIAL_DAYS)
-        if datetime.now(timezone.utc) > trial_end:
+async def check_project_accessibility(project: dict) -> bool:
+    """Проверяет доступность проекта (trial/paid период)"""
+    try:
+        # Получаем владельца проекта
+        user = await get_user_by_id(project["telegram_id"])
+        if not user:
             return False
-    
-    return True
+        
+        # Проверяем, оплачен ли пользователь
+        if user["paid"]:
+            # Для оплаченных пользователей проверяем, не истек ли месяц
+            from config import TRIAL_DAYS
+            from datetime import datetime, timezone, timedelta
+            
+            # Получаем последний платеж
+            payments = await get_payments()
+            user_payments = [p for p in payments if str(p['telegram_id']) == project["telegram_id"] and p['status'] == 'confirmed']
+            
+            if user_payments:
+                last_payment = max(user_payments, key=lambda x: x['paid_at'])
+                if isinstance(last_payment['paid_at'], str):
+                    last_payment_date = datetime.fromisoformat(last_payment['paid_at'].replace('Z', '+00:00'))
+                else:
+                    last_payment_date = last_payment['paid_at']
+                
+                # Проверяем, не истек ли месяц с последнего платежа
+                if datetime.now(timezone.utc) - last_payment_date > timedelta(days=30):
+                    return False
+            return True
+        else:
+            # Для неоплаченных пользователей проверяем trial период
+            from config import TRIAL_DAYS
+            from datetime import datetime, timezone, timedelta
+            
+            if isinstance(user["start_date"], str):
+                start_date = datetime.fromisoformat(user["start_date"].replace('Z', '+00:00'))
+            else:
+                start_date = user["start_date"]
+            
+            trial_end = start_date + timedelta(days=TRIAL_DAYS)
+            return datetime.now(timezone.utc) < trial_end
+            
+    except Exception as e:
+        logging.error(f"[MAIN_BOT] Error checking project accessibility: {e}")
+        return False
 
 @main_dispatcher.message(Command("start"))
 async def start_command(message: types.Message):
-    """Обработчик команды /start с projectId"""
+    """Обрабатывает команду /start с параметром проекта"""
     logging.info(f"[MAIN_BOT] /start command from user {message.from_user.id}")
     
     # Получаем параметр start
-    start_param = message.get_args()
+    start_param = message.text.split()[1] if len(message.text.split()) > 1 else None
+    
     if not start_param:
-        await message.answer("❌ Ошибка: не указан ID проекта")
+        await message.answer("👋 Добро пожаловать! Перейдите по ссылке на конкретный проект для начала работы.")
         return
     
-    # Получаем проект по параметру
-    project = await get_project_by_start_param(start_param)
-    if not project:
-        await message.answer("❌ Проект не найден или недоступен")
-        return
-    
-    # Проверяем доступность проекта
-    if not await check_project_accessibility(project["id"]):
-        await message.answer("❌ Проект временно недоступен. Свяжитесь с владельцем для продления подписки.")
-        return
-    
-    # Записываем посещение проекта
-    await record_project_visit(str(message.from_user.id), project["id"])
-    
-    # Сохраняем информацию о проекте в контексте пользователя
-    await storage.set_data(
-        bot=main_bot,
-        key=types.Chat(id=message.chat.id, type="private"),
-        data={"current_project": project}
-    )
-    
-    # Отправляем приветственное сообщение
-    welcome_msg = project.get("welcome_message") or f"👋 Добро пожаловать в {project['project_name']}!\n\nЯ готов помочь вам с любыми вопросами о нашем бизнесе."
-    
-    # Проверяем, есть ли форма у проекта
-    form = await get_project_form(project["id"])
-    if form:
-        welcome_msg += "\n\n📝 Также вы можете оформить заявку через нашу форму."
-        keyboard = create_form_preview_keyboard()
-        await message.answer(welcome_msg, reply_markup=keyboard)
-    else:
-        await message.answer(welcome_msg)
-    
-    # Логируем статистику
-    user = await get_user_by_id(project["telegram_id"])
-    await log_message_stat(
-        telegram_id=message.from_user.id,
-        is_command=True,
-        is_reply=False,
-        response_time=0,
-        project_id=project["id"],
-        is_trial=not user["paid"] if user else True,
-        is_paid=user["paid"] if user else False
-    )
+    try:
+        # Получаем проект по короткой ссылке
+        project = await get_project_by_short_link(start_param)
+        
+        if not project:
+            await message.answer("❌ Проект не найден. Проверьте ссылку.")
+            return
+        
+        # Проверяем доступность проекта
+        if not await check_project_accessibility(project):
+            await message.answer("❌ Проект временно недоступен. Обратитесь к владельцу проекта.")
+            return
+        
+        # Записываем посещение проекта
+        await record_project_visit(str(message.from_user.id), project["id"])
+        
+        # Сохраняем информацию о проекте в контексте пользователя
+        await storage.set_data(
+            bot=main_bot,
+            key=f"user:{message.from_user.id}",
+            data={"current_project": project}
+        )
+        
+        # Отправляем приветственное сообщение
+        welcome_message = project.get("welcome_message") or f"👋 Добро пожаловать в проект **{project['project_name']}**!\n\nЯ готов ответить на ваши вопросы о бизнесе."
+        
+        await message.answer(welcome_message, parse_mode="Markdown")
+        
+    except Exception as e:
+        logging.error(f"[MAIN_BOT] Error in start_command: {e}")
+        await message.answer("❌ Произошла ошибка при запуске проекта. Попробуйте позже.")
 
 @main_dispatcher.message(Command("projects"))
 async def projects_command(message: types.Message):
@@ -202,7 +206,7 @@ async def handle_message(message: types.Message):
             return
     
     # Проверяем доступность проекта
-    if not await check_project_accessibility(current_project["id"]):
+    if not await check_project_accessibility(current_project):
         await message.answer("❌ Проект временно недоступен. Свяжитесь с владельцем для продления подписки.")
         return
     
@@ -300,7 +304,7 @@ async def handle_callback(callback: types.CallbackQuery):
             return
         
         # Проверяем доступность проекта
-        if not await check_project_accessibility(project["id"]):
+        if not await check_project_accessibility(project):
             await callback.answer("❌ Проект временно недоступен")
             return
         

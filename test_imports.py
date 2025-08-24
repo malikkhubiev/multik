@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Тестовый файл для проверки всех импортов после исправления API_URL
+Тестовый файл для проверки всех импортов после обновления на короткие ссылки
 """
 
 def test_imports():
@@ -10,10 +10,10 @@ def test_imports():
         
         # Тест базовых модулей
         print("✅ Импортирую config...")
-        from config import MAIN_BOT_TOKEN, SETTINGS_BOT_TOKEN, SERVER_URL
+        from config import MAIN_BOT_TOKEN, SETTINGS_BOT_TOKEN, SERVER_URL, generate_short_link
         
         print("✅ Импортирую database...")
-        from database import database, get_project_by_id, create_project
+        from database import database, get_project_by_id, create_project, get_project_by_short_link
         
         print("✅ Импортирую main_bot...")
         from main_bot import router as main_bot_router
@@ -44,6 +44,14 @@ def test_imports():
         
         print("✅ Импортирую settings_middleware...")
         from settings_middleware import trial_middleware
+        
+        # Тест генерации коротких ссылок
+        print("✅ Тестирую генерацию коротких ссылок...")
+        short_link = generate_short_link()
+        print(f"   Сгенерированная ссылка: {short_link}")
+        assert len(short_link) == 5
+        assert short_link.isalpha()
+        assert short_link.islower()
         
         print("🎉 Все импорты успешны!")
         return True

@@ -1,8 +1,14 @@
 import os
 import logging
+import random
+import string
 from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+
+def generate_short_link():
+    """Генерирует короткую ссылку из 5 английских букв"""
+    return ''.join(random.choices(string.ascii_lowercase, k=5))
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///bot_database.db")
 

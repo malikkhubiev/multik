@@ -6,7 +6,7 @@ from aiogram.filters import Command
 import random
 import os
 from config import SETTINGS_BOT_TOKEN, SERVER_URL, DEEPSEEK_API_KEY, TRIAL_DAYS, TRIAL_PROJECTS, PAID_PROJECTS, PAYMENT_AMOUNT, MAIN_TELEGRAM_ID, DISCOUNT_PAYMENT_AMOUNT, PAYMENT_CARD_NUMBER1, PAYMENT_CARD_NUMBER2, PAYMENT_CARD_NUMBER3
-from database import create_project, get_project_by_id, create_user, get_projects_by_user, update_project_name, update_project_business_info, append_project_business_info, delete_project, check_project_name_exists, get_user_by_id, get_users_with_expired_trial, delete_all_projects_for_user, set_user_paid, get_user_projects, log_message_stat, add_feedback, get_users_with_expired_paid_month, set_trial_expired_notified, log_payment, has_feedback
+from database import create_project, get_project_by_id, create_user, get_projects_by_user, update_project_name, update_project_business_info, append_project_business_info, delete_project, check_project_name_exists, get_user_by_id, get_users_with_expired_trial, delete_all_projects_for_user, set_user_paid, get_user_projects, log_message_stat, add_feedback, get_users_with_expired_paid_month, set_trial_expired_notified, log_payment, has_feedback, update_project_welcome_message
 from analytics import log_project_created, log_form_created
 
 from aiogram.fsm.context import FSMContext
@@ -581,7 +581,6 @@ async def handle_business_file(message: types.Message, state: FSMContext):
             f"📋 Название: {project_name}\n"
             f"🔗 Ссылка на бота: {project['bot_link']}\n\n"
             f"📝 Отправьте эту ссылку вашим клиентам, чтобы они могли общаться с ботом от имени вашего бизнеса.\n\n"
-            f"⚙️ Для настройки приветственного сообщения используйте команду /settings"
         )
     else:
         await message.answer("❌ Проект создан, но произошла ошибка при получении ссылки.")
@@ -676,17 +675,13 @@ async def handle_project_selection(callback_query: types.CallbackQuery, state: F
 
 @settings_router.callback_query(lambda c: c.data == "back_to_projects")
 async def handle_back_to_projects(callback_query: types.CallbackQuery, state: FSMContext):
-    await callback_query.answer()
-    await state.clear()
-    async def process():
-        data = await state.get_data()
-        telegram_id = data.get("telegram_id")
-        if not telegram_id:
-            telegram_id = str(callback_query.from_user.id)
-        await state.update_data(selected_project_id=None, selected_project=None)
-        await handle_projects_command(callback_query.message, state, telegram_id=telegram_id)
-    import asyncio
-    asyncio.create_task(process())
+    """Возвращает к списку проектов для настройки"""
+    try:
+        await state.clear()
+        await settings_command(callback_query.message, state)
+    except Exception as e:
+        logging.error(f"[SETTINGS] Error in handle_back_to_projects: {e}")
+        await callback_query.answer("❌ Произошла ошибка")
 
 @settings_router.callback_query(lambda c: c.data == "rename_project")
 async def handle_rename_project(callback_query: types.CallbackQuery, state: FSMContext):
@@ -1493,21 +1488,185 @@ async def handle_export_form_submissions(callback_query: types.CallbackQuery, st
 
 @settings_router.callback_query(lambda c: c.data == "back_to_projects")
 async def handle_back_to_projects(callback_query: types.CallbackQuery, state: FSMContext):
-    await callback_query.answer()
-    await state.clear()
-    async def process():
-        data = await state.get_data()
-        telegram_id = data.get("telegram_id")
-        if not telegram_id:
-            telegram_id = str(callback_query.from_user.id)
-        await state.update_data(selected_project_id=None, selected_project=None)
-        await handle_projects_command(callback_query.message, state, telegram_id=telegram_id)
-    import asyncio
-    asyncio.create_task(process())
+    """Возвращает к списку проектов для настройки"""
+    try:
+        await state.clear()
+        await settings_command(callback_query.message, state)
+    except Exception as e:
+        logging.error(f"[SETTINGS] Error in handle_back_to_projects: {e}")
+        await callback_query.answer("❌ Произошла ошибка")
 
 @settings_router.callback_query()
 async def handle_any_callback_query(callback_query: types.CallbackQuery, state: FSMContext):
     logging.warning(f"[CALLBACK][CATCH-ALL] Пользователь {callback_query.from_user.id} нажал callback: {callback_query.data}")
     await callback_query.answer("Неизвестная кнопка или действие. Пожалуйста, попробуйте ещё раз.", show_alert=True)
+
+@settings_router.message(Command("settings"))
+async def settings_command(message: types.Message, state: FSMContext):
+    """Показывает настройки проекта"""
+    try:
+        # Получаем проекты пользователя
+        projects = await get_projects_by_user(str(message.from_user.id))
+        
+        if not projects:
+            await message.answer("❌ У вас пока нет проектов. Создайте проект командой /create")
+            return
+        
+        # Создаем клавиатуру с проектами для настройки
+        keyboard = []
+        for project in projects:
+            keyboard.append([InlineKeyboardButton(
+                text=f"⚙️ {project['project_name']}",
+                callback_data=f"settings_project_{project['id']}"
+            )])
+        
+        reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+        await message.answer(
+            "⚙️ **Настройки проектов**\n\nВыберите проект для настройки:",
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
+        )
+        
+    except Exception as e:
+        logging.error(f"[SETTINGS] Error in settings_command: {e}")
+        await message.answer("❌ Произошла ошибка при загрузке настроек. Попробуйте позже.")
+
+@settings_router.callback_query(lambda c: c.data.startswith("settings_project_"))
+async def handle_project_settings(callback_query: types.CallbackQuery, state: FSMContext):
+    """Обрабатывает выбор проекта для настройки"""
+    try:
+        project_id = callback_query.data.split("_")[2]
+        project = await get_project_by_id(project_id)
+        
+        if not project:
+            await callback_query.answer("❌ Проект не найден")
+            return
+        
+        # Сохраняем ID проекта в состоянии
+        await state.update_data(project_id=project_id)
+        
+        # Показываем текущие настройки проекта
+        current_welcome = project.get("welcome_message") or "Не настроено"
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✏️ Изменить приветствие", callback_data="edit_welcome")],
+            [InlineKeyboardButton(text="🔙 Назад к проектам", callback_data="back_to_projects")]
+        ])
+        
+        await callback_query.message.edit_text(
+            f"⚙️ **Настройки проекта: {project['project_name']}**\n\n"
+            f"🔗 Ссылка: {project['bot_link']}\n"
+            f"📝 Приветственное сообщение:\n{current_welcome}\n\n"
+            f"Выберите, что хотите настроить:",
+            reply_markup=keyboard,
+            parse_mode="Markdown"
+        )
+        
+    except Exception as e:
+        logging.error(f"[SETTINGS] Error in handle_project_settings: {e}")
+        await callback_query.answer("❌ Произошла ошибка")
+
+@settings_router.callback_query(lambda c: c.data == "edit_welcome")
+async def handle_edit_welcome(callback_query: types.CallbackQuery, state: FSMContext):
+    """Обрабатывает редактирование приветственного сообщения"""
+    try:
+        await state.set_state(SettingsStates.waiting_for_welcome_message)
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Отмена", callback_data="cancel_edit")]
+        ])
+        
+        await callback_query.message.edit_text(
+            "✏️ **Редактирование приветственного сообщения**\n\n"
+            "Отправьте новое приветственное сообщение для вашего бота.\n"
+            "Это сообщение будет показываться клиентам при первом запуске.\n\n"
+            "💡 Поддерживается Markdown разметка (жирный текст, курсив и т.д.)",
+            reply_markup=keyboard,
+            parse_mode="Markdown"
+        )
+        
+    except Exception as e:
+        logging.error(f"[SETTINGS] Error in handle_edit_welcome: {e}")
+        await callback_query.answer("❌ Произошла ошибка")
+
+@settings_router.message(StateFilter(SettingsStates.waiting_for_welcome_message))
+async def handle_welcome_message_input(message: types.Message, state: FSMContext):
+    """Обрабатывает ввод нового приветственного сообщения"""
+    try:
+        # Получаем ID проекта из состояния
+        data = await state.get_data()
+        project_id = data.get("project_id")
+        
+        if not project_id:
+            await message.answer("❌ Ошибка: проект не найден. Попробуйте снова.")
+            await state.clear()
+            return
+        
+        # Обновляем приветственное сообщение в базе
+        await update_project_welcome_message(project_id, message.text)
+        
+        # Получаем обновленный проект
+        project = await get_project_by_id(project_id)
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Готово", callback_data="welcome_updated")],
+            [InlineKeyboardButton(text="🔙 Назад к настройкам", callback_data=f"settings_project_{project_id}")]
+        ])
+        
+        await message.answer(
+            "✅ **Приветственное сообщение обновлено!**\n\n"
+            f"📝 Новое сообщение:\n{message.text}\n\n"
+            f"Теперь клиенты будут видеть это сообщение при запуске бота.",
+            reply_markup=keyboard,
+            parse_mode="Markdown"
+        )
+        
+        await state.clear()
+        
+    except Exception as e:
+        logging.error(f"[SETTINGS] Error in handle_welcome_message_input: {e}")
+        await message.answer("❌ Произошла ошибка при обновлении сообщения. Попробуйте позже.")
+        await state.clear()
+
+@settings_router.callback_query(lambda c: c.data == "cancel_edit")
+async def handle_cancel_edit(callback_query: types.CallbackQuery, state: FSMContext):
+    """Отменяет редактирование и возвращает к настройкам проекта"""
+    try:
+        data = await state.get_data()
+        project_id = data.get("project_id")
+        
+        if project_id:
+            # Возвращаемся к настройкам проекта
+            await handle_project_settings(callback_query, state)
+        else:
+            await callback_query.answer("Редактирование отменено")
+            await state.clear()
+            
+    except Exception as e:
+        logging.error(f"[SETTINGS] Error in handle_cancel_edit: {e}")
+        await callback_query.answer("❌ Произошла ошибка")
+
+@settings_router.callback_query(lambda c: c.data == "welcome_updated")
+async def handle_welcome_updated(callback_query: types.CallbackQuery, state: FSMContext):
+    """Обрабатывает подтверждение обновления приветственного сообщения"""
+    try:
+        await callback_query.answer("✅ Приветственное сообщение успешно обновлено!")
+        
+        # Возвращаемся к главному меню
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+        ])
+        
+        await callback_query.message.edit_text(
+            "🎉 **Настройка завершена!**\n\n"
+            "Ваше приветственное сообщение успешно обновлено.\n"
+            "Клиенты теперь будут видеть новое сообщение при запуске бота.",
+            reply_markup=keyboard,
+            parse_mode="Markdown"
+        )
+        
+    except Exception as e:
+        logging.error(f"[SETTINGS] Error in handle_welcome_updated: {e}")
+        await callback_query.answer("❌ Произошла ошибка")
 
 __all__ = ["router", "settings_router"]
