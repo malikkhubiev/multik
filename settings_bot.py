@@ -1490,7 +1490,7 @@ async def handle_export_form_submissions(callback_query: types.CallbackQuery, st
 async def handle_back_to_projects(callback_query: types.CallbackQuery, state: FSMContext):
     """Возвращает к списку проектов для настройки"""
     try:
-    await state.clear()
+        await state.clear()
         await settings_command(callback_query.message, state)
     except Exception as e:
         logging.error(f"[SETTINGS] Error in handle_back_to_projects: {e}")
