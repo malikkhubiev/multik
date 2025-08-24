@@ -12,7 +12,9 @@ import httpx
 from config import DEEPSEEK_API_KEY, MAIN_BOT_TOKEN, TRIAL_DAYS
 import time
 from datetime import datetime, timezone, timedelta
-from form_auto_fill import create_form_preview_keyboard, create_form_preview_message
+from form_auto_fill import create_form_preview_keyboard, create_form_preview_message, create_form_fill_keyboard, create_form_submission_summary
+from typing import Optional
+import re
 
 router = APIRouter()
 
@@ -43,6 +45,21 @@ role_base = """
 - Сначала ответь на вопрос пользователя максимально полезно
 - Если в данных есть ссылки на товары, после ответа начни продвигать эти товары, объясни их преимущества и недостатки и призови купить
 - Если у проекта есть форма, обязательно предложи оформить заявку и объясни зачем это нужно
+
+В КОНЦЕ ОТВЕТА ОБЯЗАТЕЛЬНО добавь блок:
+[АНАЛИТИКА:краткая_тема_запроса]
+
+Примеры тем:
+- цена_и_стоимость
+- доставка_и_сроки  
+- гарантия_и_возврат
+- технические_характеристики
+- сравнение_с_конкурентами
+- акции_и_скидки
+- отзывы_клиентов
+- оформление_заказа
+- общие_вопросы
+- жалобы_и_проблемы
 """
 
 def create_projects_keyboard(client_projects: list) -> types.InlineKeyboardMarkup:
@@ -61,15 +78,89 @@ def create_projects_keyboard(client_projects: list) -> types.InlineKeyboardMarku
     
     return types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
+def extract_theme_from_response(response_text: str) -> Optional[str]:
+    """Извлекает тему из ответа AI"""
+    match = re.search(r'\[АНАЛИТИКА:(.+?)\]', response_text)
+    return match.group(1) if match else None
+
+async def save_query_statistics(project_id: str, user_id: int, original_query: str, theme: str, timestamp: datetime):
+    """Сохраняет статистику запроса для аналитики"""
+    try:
+        from database import save_query_theme
+        await save_query_theme(
+            project_id=project_id,
+            user_id=str(user_id),
+            original_query=original_query,
+            theme=theme,
+            timestamp=timestamp
+        )
+        logging.info(f"[STATS] Сохранена статистика: project={project_id}, user={user_id}, theme={theme}")
+    except Exception as e:
+        logging.error(f"[STATS] Ошибка сохранения статистики: {e}")
+
+async def send_daily_insights_to_owner(project_id: str):
+    """Отправляет ежедневные инсайты владельцу проекта"""
+    try:
+        from database import get_project_by_id, get_daily_themes
+        from settings_bot import settings_bot
+        
+        # Получаем информацию о проекте
+        project = await get_project_by_id(project_id)
+        if not project:
+            return
+        
+        # Получаем темы за последние 24 часа
+        themes = await get_daily_themes(project_id)
+        
+        if not themes:
+            return
+        
+        # Анализируем локально
+        theme_counts = {}
+        for theme in themes:
+            theme_counts[theme['theme']] = theme_counts.get(theme['theme'], 0) + 1
+        
+        # Сортируем по популярности
+        sorted_themes = sorted(theme_counts.items(), key=lambda x: x[1], reverse=True)
+        
+        # Формируем отчет
+        report = f"📊 **Ежедневная статистика проекта {project['project_name']}:**\n\n"
+        for theme, count in sorted_themes[:5]:  # Только топ-5
+            theme_display = theme.replace('_', ' ').title()
+            report += f"• {theme_display}: {count} запросов\n"
+        
+        report += f"\n📈 Всего запросов: {len(themes)}"
+        report += f"\n🕐 Период: последние 24 часа"
+        
+        # Отправляем владельцу проекта
+        owner_telegram_id = project['telegram_id']
+        await settings_bot.send_message(
+            chat_id=owner_telegram_id,
+            text=report,
+            parse_mode="Markdown"
+        )
+        
+        logging.info(f"[INSIGHTS] Отправлены инсайты владельцу проекта {project_id}")
+        
+    except Exception as e:
+        logging.error(f"[INSIGHTS] Ошибка отправки инсайтов: {e}")
+
 async def check_project_accessibility(project: dict) -> bool:
     """Проверяет доступность проекта (trial/paid период)"""
     try:
+        logging.info(f"[MAIN_BOT] Checking accessibility for project {project['id']} ({project['project_name']})")
+        
         # Получаем владельца проекта
         user = await get_user_by_id(project["telegram_id"])
+        logging.info(f"[MAIN_BOT] Project owner user: {user}")
+        
         if not user:
+            logging.warning(f"[MAIN_BOT] Project owner not found for telegram_id: {project['telegram_id']}")
             return False
         
         # Проверяем, оплачен ли пользователь
+        logging.info(f"[MAIN_BOT] User paid status: {user['paid']}")
+        
         if user["paid"]:
             # Для оплаченных пользователей проверяем, не истек ли месяц
             from config import TRIAL_DAYS
@@ -78,30 +169,59 @@ async def check_project_accessibility(project: dict) -> bool:
             # Получаем последний платеж
             payments = await get_payments()
             user_payments = [p for p in payments if str(p['telegram_id']) == project["telegram_id"] and p['status'] == 'confirmed']
+            logging.info(f"[MAIN_BOT] User payments found: {len(user_payments)}")
             
             if user_payments:
                 last_payment = max(user_payments, key=lambda x: x['paid_at'])
+                logging.info(f"[MAIN_BOT] Last payment date: {last_payment['paid_at']}")
+                
                 if isinstance(last_payment['paid_at'], str):
                     last_payment_date = datetime.fromisoformat(last_payment['paid_at'].replace('Z', '+00:00'))
                 else:
                     last_payment_date = last_payment['paid_at']
                 
                 # Проверяем, не истек ли месяц с последнего платежа
-                if datetime.now(timezone.utc) - last_payment_date > timedelta(days=30):
+                days_since_payment = (datetime.now(timezone.utc) - last_payment_date).days
+                logging.info(f"[MAIN_BOT] Days since last payment: {days_since_payment}")
+                
+                if days_since_payment > 30:
+                    logging.warning(f"[MAIN_BOT] Payment expired, days since payment: {days_since_payment}")
                     return False
-            return True
+                else:
+                    logging.info(f"[MAIN_BOT] Payment still valid, days since payment: {days_since_payment}")
+                    return True
+            else:
+                logging.warning(f"[MAIN_BOT] No confirmed payments found for user")
+                return False
         else:
             # Для неоплаченных пользователей проверяем trial период
             from config import TRIAL_DAYS
             from datetime import datetime, timezone, timedelta
             
+            logging.info(f"[MAIN_BOT] User is not paid, checking trial period. TRIAL_DAYS: {TRIAL_DAYS}")
+            logging.info(f"[MAIN_BOT] User start_date: {user.get('start_date')}")
+            
+            if not user.get('start_date'):
+                logging.warning(f"[MAIN_BOT] User has no start_date, cannot check trial period")
+                return False
+                
             if isinstance(user["start_date"], str):
                 start_date = datetime.fromisoformat(user["start_date"].replace('Z', '+00:00'))
             else:
                 start_date = user["start_date"]
             
             trial_end = start_date + timedelta(days=TRIAL_DAYS)
-            return datetime.now(timezone.utc) < trial_end
+            current_time = datetime.now(timezone.utc)
+            
+            logging.info(f"[MAIN_BOT] Start date: {start_date}")
+            logging.info(f"[MAIN_BOT] Trial end: {trial_end}")
+            logging.info(f"[MAIN_BOT] Current time: {current_time}")
+            logging.info(f"[MAIN_BOT] Days until trial end: {(trial_end - current_time).days}")
+            
+            is_trial_valid = current_time < trial_end
+            logging.info(f"[MAIN_BOT] Trial is valid: {is_trial_valid}")
+            
+            return is_trial_valid
             
     except Exception as e:
         logging.error(f"[MAIN_BOT] Error checking project accessibility: {e}")
@@ -118,7 +238,26 @@ async def start_command(message: types.Message):
     logging.info(f"[MAIN_BOT] Start param: {start_param}")
     
     if not start_param:
-        await message.answer("👋 Добро пожаловать! Перейдите по ссылке на конкретный проект для начала работы.")
+        # Если нет параметра, показываем список проектов клиента
+        client_telegram_id = str(message.from_user.id)
+        client_projects = await get_client_projects(client_telegram_id)
+        
+        if client_projects:
+            # У клиента есть проекты, показываем их
+            message_text = "👋 Добро пожаловать! Выберите проект для работы:\n\n"
+            for i, project in enumerate(client_projects, 1):
+                message_text += f"🏢 **{i}. {project['project_name']}**\n"
+                message_text += f"   📅 Посещений: {project['visit_count']}\n"
+                message_text += f"   🕐 Последний раз: {project['last_visit'].strftime('%d.%m.%Y %H:%M')}\n\n"
+            
+            message_text += "💡 Используйте кнопки ниже для выбора проекта:"
+            
+            # Создаем клавиатуру с проектами
+            keyboard = create_projects_keyboard(client_projects)
+            await message.answer(message_text, reply_markup=keyboard, parse_mode="Markdown")
+        else:
+            # У клиента нет проектов
+            await message.answer("👋 Добро пожаловать! Перейдите по ссылке на любой проект, чтобы начать работу.")
         return
     
     try:
@@ -252,6 +391,14 @@ async def handle_message(message: types.Message):
             
             if response.status_code == 200:
                 ai_response = response.json()["choices"][0]["message"]["content"]
+                
+                # Извлекаем тему из ответа AI
+                theme = extract_theme_from_response(ai_response)
+                if theme:
+                    await save_query_statistics(current_project["id"], message.from_user.id, message.text, theme, datetime.now(timezone.utc))
+                    logging.info(f"[MAIN_BOT] Theme extracted: {theme}")
+                    # Убираем аналитический блок из ответа пользователю
+                    ai_response = ai_response.split('[АНАЛИТИКА:')[0].strip()
                 
                 # Проверяем, есть ли форма у проекта
                 form = await get_project_form(current_project["id"])

@@ -98,4 +98,80 @@ async def log_response_rating(user_id: str, project_id: Optional[str] = None, ra
 async def log_form_filled(user_id: str, project_id: Optional[str] = None, form_data: Optional[Dict] = None):
     """Логирует заполнение формы"""
     additional_data = {"form_data": form_data} if form_data else None
-    await analytics.log_user_action(user_id, "filled_form", project_id, additional_data) 
+    await analytics.log_user_action(user_id, "filled_form", project_id, additional_data)
+
+async def send_daily_insights_to_project_owners():
+    """Отправляет ежедневные инсайты всем владельцам проектов"""
+    logging.info("[ANALYTICS] Starting daily insights distribution")
+    try:
+        from database import get_daily_themes, get_project_by_id
+        from settings_bot import settings_bot
+        
+        # Получаем все проекты с темами за последние 24 часа
+        from datetime import datetime, timezone, timedelta
+        day_ago = datetime.now(timezone.utc) - timedelta(hours=24)
+        
+        # Группируем темы по проектам
+        project_themes = {}
+        
+        # Получаем все темы за последние 24 часа
+        from database import database, QueryTheme
+        from sqlalchemy import select, and_
+        
+        query = select(QueryTheme).where(QueryTheme.timestamp >= day_ago)
+        themes = await database.fetch_all(query)
+        
+        for theme in themes:
+            project_id = theme['project_id']
+            if project_id not in project_themes:
+                project_themes[project_id] = []
+            project_themes[project_id].append(theme['theme'])
+        
+        # Отправляем инсайты каждому владельцу проекта
+        for project_id, themes_list in project_themes.items():
+            if not themes_list:
+                continue
+                
+            try:
+                # Получаем информацию о проекте
+                project = await get_project_by_id(project_id)
+                if not project:
+                    continue
+                
+                # Анализируем темы
+                theme_counts = {}
+                for theme in themes_list:
+                    theme_counts[theme] = theme_counts.get(theme, 0) + 1
+                
+                # Сортируем по популярности
+                sorted_themes = sorted(theme_counts.items(), key=lambda x: x[1], reverse=True)
+                
+                # Формируем отчет
+                report = f"📊 **Ежедневная статистика проекта {project['project_name']}:**\n\n"
+                for theme, count in sorted_themes[:5]:  # Только топ-5
+                    theme_display = theme.replace('_', ' ').title()
+                    report += f"• {theme_display}: {count} запросов\n"
+                
+                report += f"\n📈 Всего запросов: {len(themes_list)}"
+                report += f"\n🕐 Период: последние 24 часа"
+                
+                # Отправляем владельцу проекта
+                owner_telegram_id = project['telegram_id']
+                await settings_bot.send_message(
+                    chat_id=owner_telegram_id,
+                    text=report,
+                    parse_mode="Markdown"
+                )
+                
+                logging.info(f"[ANALYTICS] Sent daily insights to project owner {owner_telegram_id}")
+                
+            except Exception as e:
+                logging.error(f"[ANALYTICS] Error sending insights for project {project_id}: {e}")
+                continue
+        
+        logging.info(f"[ANALYTICS] Daily insights distribution completed for {len(project_themes)} projects")
+        
+    except Exception as e:
+        logging.error(f"[ANALYTICS] Error in daily insights distribution: {e}")
+        import traceback
+        logging.error(f"[ANALYTICS] Full traceback: {traceback.format_exc()}") 

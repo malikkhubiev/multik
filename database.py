@@ -39,6 +39,7 @@ class Project(Base):
     business_info = Column(String, nullable=False)
     welcome_message = Column(String, nullable=True)  # Приветственное сообщение бота
     short_link = Column(String, nullable=False, unique=True)  # Короткая ссылка из 5 букв
+    bot_link = Column(String, nullable=True)  # Ссылка на бота
     telegram_id = Column(String, ForeignKey('user.telegram_id'))
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     user = relationship("User", back_populates="projects")
@@ -136,6 +137,22 @@ class ClientProjectHistory(Base):
     project = relationship("Project")
     
     # Уникальный индекс для комбинации клиента и проекта
+    __table_args__ = (
+        {'sqlite_autoincrement': True}
+    )
+
+# Новая таблица для статистики запросов
+class QueryTheme(Base):
+    __tablename__ = 'query_theme'
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    project_id = Column(String, ForeignKey('project.id'), nullable=False)  # ID проекта
+    user_id = Column(String, nullable=False)  # ID пользователя
+    original_query = Column(String, nullable=False)  # Оригинальный запрос
+    theme = Column(String, nullable=False)  # Тема запроса
+    timestamp = Column(DateTime, default=datetime.now(timezone.utc))  # Время запроса
+    project = relationship("Project")
+    
+    # Индексы для быстрого поиска
     __table_args__ = (
         {'sqlite_autoincrement': True}
     )
@@ -252,8 +269,8 @@ async def get_project_by_short_link(short_link: str) -> Optional[dict]:
             return project_dict
         return None
     except Exception as e:
-        logging.error(f"Error getting project by id: {e}")
-    return None
+        logging.error(f"Error getting project by short_link: {e}")
+        return None
 
 async def get_projects_by_user(telegram_id: str) -> list:
     logging.info(f"[DB] get_projects_by_user: ищем проекты для пользователя {telegram_id}")
@@ -262,14 +279,22 @@ async def get_projects_by_user(telegram_id: str) -> list:
     rows = await database.fetch_all(query)
     logging.info(f"[DB] get_projects_by_user: найдено {len(rows)} проектов для пользователя {telegram_id}")
     
-    result = [{
-        "id": r["id"], 
-        "project_name": r["project_name"], 
-        "business_info": r["business_info"], 
-        "welcome_message": r["welcome_message"],
-        "bot_link": r["bot_link"],
-        "telegram_id": r["telegram_id"]
-    } for r in rows]
+    result = []
+    for r in rows:
+        project_dict = {
+            "id": r["id"], 
+            "project_name": r["project_name"], 
+            "business_info": r["business_info"], 
+            "welcome_message": r["welcome_message"],
+            "telegram_id": r["telegram_id"]
+        }
+        
+        # Генерируем bot_link на основе short_link
+        from config import MAIN_BOT_USERNAME
+        bot_username = MAIN_BOT_USERNAME or "your_main_bot"
+        project_dict["bot_link"] = f"https://t.me/{bot_username}?start={r['short_link']}"
+        
+        result.append(project_dict)
     
     for i, project in enumerate(result):
         logging.info(f"[DB] get_projects_by_user: проект {i+1}: id={project['id']}, name={project['project_name']}, bot_link={project['bot_link']}")
@@ -292,7 +317,7 @@ async def get_project_by_start_param(start_param: str) -> Optional[dict]:
     
     if not start_param.startswith("proj"):
         logging.warning(f"[DB] get_project_by_start_param: invalid start_param format: {start_param}")
-    return None
+        return None
     
     project_id = start_param[4:]  # Убираем "proj" из начала
     logging.info(f"[DB] get_project_by_start_param: extracted project_id={project_id}")
@@ -693,8 +718,8 @@ async def get_referrer_info(telegram_id: str):
 
 async def get_referral_link(telegram_id: str) -> str:
     """Генерирует реферальную ссылку для пользователя"""
-    from config import BOT_USERNAME
-    username = BOT_USERNAME or "your_bot_username"
+    from config import MAIN_BOT_USERNAME
+    username = MAIN_BOT_USERNAME or "your_bot_username"
     return f"https://t.me/{username}?start=ref{telegram_id}"
 
 async def process_referral_payment(paid_user_id: str, paid_user_username: str = None):
@@ -1095,3 +1120,119 @@ async def get_client_current_project(client_telegram_id: str) -> Optional[dict]:
     except Exception as e:
         logging.error(f"[HISTORY] Ошибка при получении текущего проекта клиента: {e}")
         return None
+
+async def save_query_theme(project_id: str, user_id: str, original_query: str, theme: str, timestamp: datetime):
+    """Сохраняет тему запроса для аналитики"""
+    logging.info(f"[STATS] save_query_theme: project={project_id}, user={user_id}, theme={theme}")
+    try:
+        query = insert(QueryTheme).values(
+            id=str(uuid.uuid4()),
+            project_id=project_id,
+            user_id=user_id,
+            original_query=original_query,
+            theme=theme,
+            timestamp=timestamp
+        )
+        await database.execute(query)
+        logging.info(f"[STATS] Тема запроса сохранена: {theme}")
+        return True
+    except Exception as e:
+        logging.error(f"[STATS] Ошибка сохранения темы запроса: {e}")
+        return False
+
+async def get_daily_themes(project_id: str) -> list:
+    """Получает темы запросов за последние 24 часа для проекта"""
+    logging.info(f"[STATS] get_daily_themes: project={project_id}")
+    try:
+        from datetime import datetime, timezone, timedelta
+        
+        # Время 24 часа назад
+        day_ago = datetime.now(timezone.utc) - timedelta(hours=24)
+        
+        query = select(QueryTheme).where(
+            and_(
+                QueryTheme.project_id == project_id,
+                QueryTheme.timestamp >= day_ago
+            )
+        ).order_by(QueryTheme.timestamp.desc())
+        
+        rows = await database.fetch_all(query)
+        result = [dict(r) for r in rows]
+        
+        logging.info(f"[STATS] Найдено {len(result)} тем за последние 24 часа")
+        return result
+        
+    except Exception as e:
+        logging.error(f"[STATS] Ошибка получения тем: {e}")
+        return []
+
+async def get_project_query_statistics(project_id: str, days: int = 7) -> dict:
+    """Получает статистику запросов проекта за указанное количество дней"""
+    logging.info(f"[STATS] get_project_query_statistics: project={project_id}, days={days}")
+    try:
+        from datetime import datetime, timezone, timedelta
+        
+        # Время N дней назад
+        days_ago = datetime.now(timezone.utc) - timedelta(days=days)
+        
+        query = select(QueryTheme).where(
+            and_(
+                QueryTheme.project_id == project_id,
+                QueryTheme.timestamp >= days_ago
+            )
+        ).order_by(QueryTheme.timestamp.desc())
+        
+        rows = await database.fetch_all(query)
+        
+        # Анализируем статистику
+        theme_counts = {}
+        total_queries = len(rows)
+        
+        for row in rows:
+            theme = row['theme']
+            theme_counts[theme] = theme_counts.get(theme, 0) + 1
+        
+        # Сортируем по популярности
+        sorted_themes = sorted(theme_counts.items(), key=lambda x: x[1], reverse=True)
+        
+        result = {
+            "total_queries": total_queries,
+            "unique_themes": len(theme_counts),
+            "top_themes": sorted_themes[:10],  # Топ-10 тем
+            "period_days": days
+        }
+        
+        logging.info(f"[STATS] Статистика: {total_queries} запросов, {len(theme_counts)} уникальных тем")
+        return result
+        
+    except Exception as e:
+        logging.error(f"[STATS] Ошибка получения статистики: {e}")
+        return {
+            "total_queries": 0,
+            "unique_themes": 0,
+            "top_themes": [],
+            "period_days": days
+        }
+
+async def create_client_if_not_exists(client_telegram_id: str) -> bool:
+    """Создает клиента в базе данных, если его нет"""
+    logging.info(f"[CLIENT] create_client_if_not_exists: client={client_telegram_id}")
+    try:
+        # Проверяем, есть ли уже клиент
+        existing_query = select(ClientProjectHistory).where(
+            ClientProjectHistory.client_telegram_id == client_telegram_id
+        ).limit(1)
+        
+        existing = await database.fetch_one(existing_query)
+        if existing:
+            logging.info(f"[CLIENT] Client {client_telegram_id} already exists")
+            return True
+        
+        # Клиента нет, но мы не создаем запись здесь
+        # Запись будет создана при первом посещении проекта
+        logging.info(f"[CLIENT] Client {client_telegram_id} will be created on first project visit")
+        return True
+        
+    except Exception as e:
+        logging.error(f"[CLIENT] Error checking client existence: {e}")
+        return False

@@ -101,6 +101,21 @@ def create_form_preview_keyboard() -> InlineKeyboardMarkup:
     
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
+def create_form_fill_keyboard(form: dict) -> InlineKeyboardMarkup:
+    """Создает клавиатуру для заполнения формы"""
+    keyboard = []
+    
+    # Кнопка для начала заполнения
+    keyboard.append([InlineKeyboardButton(text="📝 Заполнить форму", callback_data="start_form_fill")])
+    
+    # Кнопка для просмотра полей
+    keyboard.append([InlineKeyboardButton(text="👁️ Посмотреть поля", callback_data="view_form_fields")])
+    
+    # Кнопка для отмены
+    keyboard.append([InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_form")])
+    
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
 def create_form_preview_message(form: Dict) -> str:
     """Создает сообщение с описанием формы"""
     message = f"📋 **Форма: {form['name']}**\n\n"
@@ -118,6 +133,19 @@ def create_form_preview_message(form: Dict) -> str:
     message += "\n💡 Для заполнения формы просто напишите мне сообщение с нужной информацией."
     
     return message
+
+def create_form_submission_summary(form_data: dict, user_data: dict) -> str:
+    """Создает сводку по заполненной форме"""
+    summary = f"📝 **Заявка по форме: {form_data['name']}**\n\n"
+    
+    for field in form_data['fields']:
+        field_name = field['name']
+        field_value = user_data.get(field['id'], 'Не заполнено')
+        required_marker = " *" if field['required'] else ""
+        summary += f"**{field_name}{required_marker}:** {field_value}\n"
+    
+    summary += f"\n✅ Заявка успешно отправлена!"
+    return summary
 
 # Глобальный экземпляр автозаполнителя
 form_auto_filler = FormAutoFiller() 
