@@ -1,7 +1,7 @@
 from base import app
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi import Request
-from config import PORT, SERVER_URL
+from config import PORT, SERVER_URL, MAIN_BOT_TOKEN
 from database import database, get_feedbacks, get_payments, get_user_by_id, get_users_with_expired_trial, get_projects_by_user, get_user_projects, log_message_stat, add_feedback, MessageStat, User, Payment, get_response_ratings_stats
 from sqlalchemy.sql import func
 from datetime import datetime, timedelta, timezone
@@ -27,27 +27,35 @@ async def startup_event():
     try:
         logging.info(f"[ENV] SERVER_URL={SERVER_URL}")
         logging.info(f"[ENV] SETTINGS_BOT_TOKEN={SETTINGS_BOT_TOKEN}, SETTINGS_WEBHOOK_URL={SETTINGS_WEBHOOK_URL}")
+        logging.info(f"[ENV] MAIN_BOT_TOKEN={'Настроен' if MAIN_BOT_TOKEN else 'НЕ НАСТРОЕН'}")
         
         # Устанавливаем webhook для settings бота
+        logging.info("[STARTUP] Setting settings bot webhook...")
         await set_settings_webhook()
         print("[STARTUP] Settings bot webhook set!")
         
         # Устанавливаем webhook для основного бота
+        logging.info("[STARTUP] Setting main bot webhook...")
         await set_main_bot_webhook()
         print("[STARTUP] Main bot webhook set!")
         
+        logging.info("[STARTUP] All webhooks set successfully!")
+        
     except Exception as e:
         print(f"[STARTUP] Failed to set webhooks: {e}")
+        logging.error(f"[STARTUP] Failed to set webhooks: {e}")
+        raise
 
 @app.middleware("http")
 async def db_session_middleware(request: Request, call_next):
+    logging.info(f"[MIDDLEWARE] {request.method} {request.url.path} from {request.client.host if request.client else 'unknown'}")
     logging.info("[MIDDLEWARE] Перед database.connect()")
     await database.connect()
     logging.info("[MIDDLEWARE] После database.connect()")
     request.state.db = database
     logging.info("[MIDDLEWARE] Перед call_next")
     response = await call_next(request)
-    logging.info("[MIDDLEWARE] После call_next")
+    logging.info(f"[MIDDLEWARE] После call_next, статус: {response.status_code}")
     logging.info("[MIDDLEWARE] Перед database.disconnect()")
     await database.disconnect()
     logging.info("[MIDDLEWARE] После database.disconnect()")

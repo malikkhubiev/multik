@@ -25,6 +25,10 @@ main_bot = Bot(token=MAIN_BOT_TOKEN)
 storage = MemoryStorage()
 main_dispatcher = Dispatcher(storage=storage)
 
+# Создаем router для обработчиков
+main_router = Router()
+main_dispatcher.include_router(main_router)
+
 # Базовый промпт для роли
 role_base = """
 Ты - самый npl-прокаченный менеджер по продажам.
@@ -103,13 +107,15 @@ async def check_project_accessibility(project: dict) -> bool:
         logging.error(f"[MAIN_BOT] Error checking project accessibility: {e}")
         return False
 
-@main_dispatcher.message(Command("start"))
+@main_router.message(Command("start"))
 async def start_command(message: types.Message):
     """Обрабатывает команду /start с параметром проекта"""
     logging.info(f"[MAIN_BOT] /start command from user {message.from_user.id}")
+    logging.info(f"[MAIN_BOT] Full message text: {message.text}")
     
     # Получаем параметр start
     start_param = message.text.split()[1] if len(message.text.split()) > 1 else None
+    logging.info(f"[MAIN_BOT] Start param: {start_param}")
     
     if not start_param:
         await message.answer("👋 Добро пожаловать! Перейдите по ссылке на конкретный проект для начала работы.")
@@ -117,19 +123,27 @@ async def start_command(message: types.Message):
     
     try:
         # Получаем проект по короткой ссылке
+        logging.info(f"[MAIN_BOT] Looking for project with short link: {start_param}")
         project = await get_project_by_short_link(start_param)
         
         if not project:
+            logging.warning(f"[MAIN_BOT] Project not found for short link: {start_param}")
             await message.answer("❌ Проект не найден. Проверьте ссылку.")
             return
         
+        logging.info(f"[MAIN_BOT] Project found: {project['project_name']} (ID: {project['id']})")
+        
         # Проверяем доступность проекта
-        if not await check_project_accessibility(project):
+        accessibility = await check_project_accessibility(project)
+        logging.info(f"[MAIN_BOT] Project accessibility: {accessibility}")
+        
+        if not accessibility:
             await message.answer("❌ Проект временно недоступен. Обратитесь к владельцу проекта.")
             return
         
         # Записываем посещение проекта
         await record_project_visit(str(message.from_user.id), project["id"])
+        logging.info(f"[MAIN_BOT] Project visit recorded for user {message.from_user.id}")
         
         # Сохраняем информацию о проекте в контексте пользователя
         await storage.set_data(
@@ -137,17 +151,19 @@ async def start_command(message: types.Message):
             key=f"user:{message.from_user.id}",
             data={"current_project": project}
         )
+        logging.info(f"[MAIN_BOT] Project data saved to storage for user {message.from_user.id}")
         
         # Отправляем приветственное сообщение
         welcome_message = project.get("welcome_message") or f"👋 Добро пожаловать в проект **{project['project_name']}**!\n\nЯ готов ответить на ваши вопросы о бизнесе."
         
         await message.answer(welcome_message, parse_mode="Markdown")
+        logging.info(f"[MAIN_BOT] Welcome message sent to user {message.from_user.id}")
         
     except Exception as e:
         logging.error(f"[MAIN_BOT] Error in start_command: {e}")
         await message.answer("❌ Произошла ошибка при запуске проекта. Попробуйте позже.")
 
-@main_dispatcher.message(Command("projects"))
+@main_router.message(Command("projects"))
 async def projects_command(message: types.Message):
     """Показывает список проектов, которые посещал клиент"""
     logging.info(f"[MAIN_BOT] /projects command from user {message.from_user.id}")
@@ -177,7 +193,7 @@ async def projects_command(message: types.Message):
     keyboard = create_projects_keyboard(client_projects)
     await message.answer(message_text, reply_markup=keyboard)
 
-@main_dispatcher.message()
+@main_router.message()
 async def handle_message(message: types.Message):
     """Обработчик всех сообщений"""
     logging.info(f"[MAIN_BOT] Message from user {message.from_user.id}: {message.text}")
@@ -185,7 +201,7 @@ async def handle_message(message: types.Message):
     # Получаем текущий проект из контекста
     chat_data = await storage.get_data(
         bot=main_bot,
-        key=types.Chat(id=message.chat.id, type="private")
+        key=f"user:{message.from_user.id}"
     )
     
     current_project = chat_data.get("current_project")
@@ -198,7 +214,7 @@ async def handle_message(message: types.Message):
             # Сохраняем в контекст
             await storage.set_data(
                 bot=main_bot,
-                key=types.Chat(id=message.chat.id, type="private"),
+                key=f"user:{message.from_user.id}",
                 data={"current_project": current_project}
             )
         else:
@@ -267,7 +283,7 @@ async def handle_message(message: types.Message):
         logging.error(f"[MAIN_BOT] Error processing message: {e}")
 
 # Обработчики для форм
-@main_dispatcher.callback_query()
+@main_router.callback_query()
 async def handle_callback(callback: types.CallbackQuery):
     """Обработчик callback запросов"""
     logging.info(f"[MAIN_BOT] Callback from user {callback.from_user.id}: {callback.data}")
@@ -314,7 +330,7 @@ async def handle_callback(callback: types.CallbackQuery):
         # Обновляем контекст пользователя
         await storage.set_data(
             bot=main_bot,
-            key=types.Chat(id=callback.message.chat.id, type="private"),
+            key=f"user:{callback.from_user.id}",
             data={"current_project": project}
         )
         
@@ -337,7 +353,7 @@ async def handle_callback(callback: types.CallbackQuery):
         # Показываем информацию о текущем проекте
         chat_data = await storage.get_data(
             bot=main_bot,
-            key=types.Chat(id=callback.message.chat.id, type="private")
+            key=f"user:{callback.from_user.id}"
         )
         
         current_project = chat_data.get("current_project")
@@ -364,13 +380,55 @@ async def handle_callback(callback: types.CallbackQuery):
 # Функция для запуска webhook
 async def set_main_bot_webhook():
     """Устанавливает webhook для основного бота"""
-    from config import SERVER_URL
-    if SERVER_URL:
-        webhook_url = f"{SERVER_URL}/webhook/main"
-        await main_bot.set_webhook(url=webhook_url)
-        logging.info(f"[MAIN_BOT] Webhook set to {webhook_url}")
-    else:
-        logging.warning("[MAIN_BOT] SERVER_URL not set, webhook not configured")
+    try:
+        from config import SERVER_URL
+        if SERVER_URL:
+            webhook_url = f"{SERVER_URL}/webhook/main"
+            logging.info(f"[MAIN_BOT] Attempting to set webhook to {webhook_url}")
+            
+            # Сначала удаляем старый webhook
+            await main_bot.delete_webhook()
+            logging.info("[MAIN_BOT] Old webhook removed")
+            
+            # Устанавливаем новый webhook
+            result = await main_bot.set_webhook(url=webhook_url)
+            logging.info(f"[MAIN_BOT] Webhook set result: {result}")
+            
+            # Проверяем статус webhook
+            webhook_info = await main_bot.get_webhook_info()
+            logging.info(f"[MAIN_BOT] Webhook info: {webhook_info}")
+            
+        else:
+            logging.warning("[MAIN_BOT] SERVER_URL not set, webhook not configured")
+    except Exception as e:
+        logging.error(f"[MAIN_BOT] Error setting webhook: {e}")
+        raise
+
+# Тестовый endpoint для проверки работы основного бота
+@router.get("/test/main_bot")
+async def test_main_bot():
+    """Тестовый endpoint для проверки работы основного бота"""
+    try:
+        bot_info = await main_bot.get_me()
+        webhook_info = await main_bot.get_webhook_info()
+        return {
+            "status": "ok",
+            "bot_info": {
+                "id": bot_info.id,
+                "username": bot_info.username,
+                "first_name": bot_info.first_name
+            },
+            "webhook_info": webhook_info
+        }
+    except Exception as e:
+        logging.error(f"[MAIN_BOT] Test endpoint error: {e}")
+        return {"status": "error", "message": str(e)}
+
+# Простой endpoint для проверки доступности
+@router.get("/webhook/main")
+async def webhook_status():
+    """Проверяет статус webhook endpoint"""
+    return {"status": "webhook endpoint is available", "method": "GET"}
 
 # Webhook endpoint для основного бота
 @router.post("/webhook/main")
@@ -378,18 +436,22 @@ async def main_bot_webhook(request: Request):
     """Webhook endpoint для основного бота"""
     try:
         update_data = await request.json()
-        logging.info(f"[MAIN_BOT] Webhook received: {update_data}")
+        logging.info(f"[MAIN_BOT] Webhook received from {request.client.host if request.client else 'unknown'}")
+        logging.info(f"[MAIN_BOT] Update data: {update_data}")
         
         # Создаем объект Update для aiogram
         from aiogram.types import Update
         update = Update(**update_data)
         
         # Обрабатываем обновление
+        logging.info(f"[MAIN_BOT] Processing update with dispatcher")
         await main_dispatcher.feed_update(main_bot, update)
+        logging.info(f"[MAIN_BOT] Update processed successfully")
         
         return {"status": "ok"}
     except Exception as e:
         logging.error(f"[MAIN_BOT] Webhook error: {e}")
+        logging.error(f"[MAIN_BOT] Request body: {await request.body() if hasattr(request, 'body') else 'N/A'}")
         return {"status": "error", "message": str(e)}
 
 # Функция для удаления webhook
