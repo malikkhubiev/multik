@@ -231,7 +231,7 @@ async def create_project(telegram_id: str, project_name: str, business_info: str
 async def get_project_by_id(project_id: str) -> Optional[dict]:
     """Получает проект по ID"""
     try:
-    query = select(Project).where(Project.id == project_id)
+        query = select(Project).where(Project.id == project_id)
         result = await database.fetch_one(query)
         if result:
             project_dict = dict(result)
