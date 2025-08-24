@@ -1032,15 +1032,15 @@ async def record_project_visit(client_telegram_id: str, project_id: str):
             await database.execute(update_query)
             logging.info(f"[HISTORY] Обновлена запись для клиента {client_telegram_id} и проекта {project_id}")
         else:
-                    # Создаем новую запись
-        query = insert(ClientProjectHistory).values(
-            id=str(uuid.uuid4()),
-            client_telegram_id=client_telegram_id,
-            project_id=project_id,
-            first_visit=datetime.now(timezone.utc),
-            last_visit=datetime.now(timezone.utc),
-            visit_count=1
-        )
+            # Создаем новую запись
+            query = insert(ClientProjectHistory).values(
+                id=str(uuid.uuid4()),
+                client_telegram_id=client_telegram_id,
+                project_id=project_id,
+                first_visit=datetime.now(timezone.utc),
+                last_visit=datetime.now(timezone.utc),
+                visit_count=1
+            )
             await database.execute(query)
             logging.info(f"[HISTORY] Создана новая запись для клиента {client_telegram_id} и проекта {project_id}")
             
