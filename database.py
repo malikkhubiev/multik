@@ -206,7 +206,7 @@ async def create_project(telegram_id: str, project_name: str, business_info: str
         while await get_project_by_short_link(short_link):
             short_link = generate_short_link()
         
-        project_id = str(uuid.uuid4())
+    project_id = str(uuid.uuid4())
         
         # Создаем полную ссылку на бота
         from config import MAIN_BOT_USERNAME
@@ -223,7 +223,7 @@ async def create_project(telegram_id: str, project_name: str, business_info: str
         )
         
         await database.execute(insert(Project), project.__dict__)
-        return project_id
+    return project_id
     except Exception as e:
         logging.error(f"Error creating project: {e}")
         raise
@@ -231,7 +231,7 @@ async def create_project(telegram_id: str, project_name: str, business_info: str
 async def get_project_by_id(project_id: str) -> Optional[dict]:
     """Получает проект по ID"""
     try:
-        query = select(Project).where(Project.id == project_id)
+    query = select(Project).where(Project.id == project_id)
         result = await database.fetch_one(query)
         if result:
             project_dict = dict(result)
@@ -243,7 +243,7 @@ async def get_project_by_id(project_id: str) -> Optional[dict]:
         return None
     except Exception as e:
         logging.error(f"Error getting project by id: {e}")
-        return None
+    return None
 
 async def get_projects_by_user(telegram_id: str) -> list:
     logging.info(f"[DB] get_projects_by_user: ищем проекты для пользователя {telegram_id}")
@@ -282,7 +282,7 @@ async def get_project_by_start_param(start_param: str) -> Optional[dict]:
     
     if not start_param.startswith("proj"):
         logging.warning(f"[DB] get_project_by_start_param: invalid start_param format: {start_param}")
-        return None
+    return None
     
     project_id = start_param[4:]  # Убираем "proj" из начала
     logging.info(f"[DB] get_project_by_start_param: extracted project_id={project_id}")

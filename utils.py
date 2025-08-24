@@ -52,7 +52,7 @@ async def process_long_voice_message(bot, message):
         
         return text_content
         
-    except Exception as e:
+        except Exception as e:
         # Очистка временных файлов в случае ошибки
         if 'temp_ogg_path' in locals() and os.path.exists(temp_ogg_path):
             os.unlink(temp_ogg_path)
@@ -119,7 +119,7 @@ def process_by_silence(wav_path, recognizer):
                     text = recognizer.recognize_google(audio_data, language='ru-RU')
                     full_text.append(text)
                     
-        except Exception as e:
+    except Exception as e:
             logging.error(f"Ошибка в чанке {i}: {e}")
             continue
     
@@ -140,23 +140,23 @@ async def recognize_message_text(message, bot, language='ru-RU'):
                 return await process_long_voice_message(bot, message)
             else:
                 # Для коротких сообщений используем стандартную обработку
-                file_info = await bot.get_file(message.voice.file_id)
-                file_path = file_info.file_path
-                file_content = await bot.download_file(file_path)
-                import speech_recognition as sr
-                import tempfile
-                recognizer = sr.Recognizer()
-                with tempfile.NamedTemporaryFile(suffix='.ogg') as temp_ogg, tempfile.NamedTemporaryFile(suffix='.wav') as temp_wav:
-                    temp_ogg.write(file_content.read())
-                    temp_ogg.flush()
-                    audio = AudioSegment.from_file(temp_ogg.name)
-                    audio.export(temp_wav.name, format='wav')
-                    temp_wav.flush()
-                    with sr.AudioFile(temp_wav.name) as source:
-                        audio_data = recognizer.record(source)
-                    text_content = recognizer.recognize_google(audio_data, language=language)
-                logging.info(f"[VOICE] Распознанный текст из голосового сообщения: {text_content}")
-                return text_content
+            file_info = await bot.get_file(message.voice.file_id)
+            file_path = file_info.file_path
+            file_content = await bot.download_file(file_path)
+            import speech_recognition as sr
+            import tempfile
+            recognizer = sr.Recognizer()
+            with tempfile.NamedTemporaryFile(suffix='.ogg') as temp_ogg, tempfile.NamedTemporaryFile(suffix='.wav') as temp_wav:
+                temp_ogg.write(file_content.read())
+                temp_ogg.flush()
+                audio = AudioSegment.from_file(temp_ogg.name)
+                audio.export(temp_wav.name, format='wav')
+                temp_wav.flush()
+                with sr.AudioFile(temp_wav.name) as source:
+                    audio_data = recognizer.record(source)
+                text_content = recognizer.recognize_google(audio_data, language=language)
+            logging.info(f"[VOICE] Распознанный текст из голосового сообщения: {text_content}")
+            return text_content
         except Exception as e:
             logging.error(f"Failed to recognize voice message: {e}")
             raise RuntimeError(f"Ошибка при распознавании голоса: {e}")
