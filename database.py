@@ -1032,14 +1032,15 @@ async def record_project_visit(client_telegram_id: str, project_id: str):
             await database.execute(update_query)
             logging.info(f"[HISTORY] Обновлена запись для клиента {client_telegram_id} и проекта {project_id}")
         else:
-            # Создаем новую запись
-            query = insert(ClientProjectHistory).values(
-                client_telegram_id=client_telegram_id,
-                project_id=project_id,
-                first_visit=datetime.now(timezone.utc),
-                last_visit=datetime.now(timezone.utc),
-                visit_count=1
-            )
+                    # Создаем новую запись
+        query = insert(ClientProjectHistory).values(
+            id=str(uuid.uuid4()),
+            client_telegram_id=client_telegram_id,
+            project_id=project_id,
+            first_visit=datetime.now(timezone.utc),
+            last_visit=datetime.now(timezone.utc),
+            visit_count=1
+        )
             await database.execute(query)
             logging.info(f"[HISTORY] Создана новая запись для клиента {client_telegram_id} и проекта {project_id}")
             
@@ -1236,3 +1237,35 @@ async def create_client_if_not_exists(client_telegram_id: str) -> bool:
     except Exception as e:
         logging.error(f"[CLIENT] Error checking client existence: {e}")
         return False
+
+async def get_all_projects() -> list:
+    """Получает все проекты из базы данных"""
+    logging.info(f"[DB] get_all_projects: получаем все проекты")
+    try:
+        query = select(Project)
+        rows = await database.fetch_all(query)
+        
+        result = []
+        for r in rows:
+            project_dict = {
+                "id": r["id"],
+                "project_name": r["project_name"],
+                "business_info": r["business_info"],
+                "welcome_message": r["welcome_message"],
+                "telegram_id": r["telegram_id"],
+                "short_link": r["short_link"]
+            }
+            
+            # Генерируем bot_link на основе short_link
+            from config import MAIN_BOT_USERNAME
+            bot_username = MAIN_BOT_USERNAME or "your_main_bot"
+            project_dict["bot_link"] = f"https://t.me/{bot_username}?start={r['short_link']}"
+            
+            result.append(project_dict)
+        
+        logging.info(f"[DB] get_all_projects: найдено {len(result)} проектов")
+        return result
+        
+    except Exception as e:
+        logging.error(f"[DB] Error getting all projects: {e}")
+        return []

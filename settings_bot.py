@@ -739,6 +739,71 @@ async def handle_add_data(callback_query: types.CallbackQuery, state: FSMContext
         await state.set_state(SettingsStates.waiting_for_additional_data_file)
     asyncio.create_task(process())
 
+@settings_router.callback_query(lambda c: c.data == "create_form")
+async def handle_create_form(callback_query: types.CallbackQuery, state: FSMContext):
+    """Обрабатывает создание формы"""
+    await callback_query.answer()
+    async def process():
+        logging.info(f"[BOT] handle_create_form: user={callback_query.from_user.id}")
+        try:
+            data = await state.get_data()
+            project_id = data.get("selected_project_id")
+            
+            if not project_id:
+                await callback_query.message.edit_text("❌ Ошибка: проект не выбран")
+                return
+            
+            # Переходим к созданию формы
+            await callback_query.message.edit_text(
+                "📝 **Создание формы**\n\n"
+                "Введите название для новой формы:",
+                parse_mode="Markdown"
+            )
+            await state.set_state(SettingsStates.waiting_for_form_name)
+            
+        except Exception as e:
+            logging.error(f"[BOT] Error in handle_create_form: {e}")
+            await callback_query.message.edit_text("❌ Произошла ошибка при создании формы")
+    asyncio.create_task(process())
+
+@settings_router.message(SettingsStates.waiting_for_form_name)
+async def handle_form_name(message: types.Message, state: FSMContext):
+    """Обрабатывает название формы"""
+    await log_fsm_state(message, state)
+    logging.info(f"[BOT] waiting_for_form_name: user={message.from_user.id}, text={message.text}")
+    
+    if await handle_command_in_state(message, state):
+        return
+    
+    try:
+        data = await state.get_data()
+        project_id = data.get("selected_project_id")
+        
+        if not project_id:
+            await message.answer("❌ Ошибка: проект не выбран")
+            await state.clear()
+            return
+        
+        # Создаем форму
+        from database import create_form
+        form_id = await create_form(project_id, message.text)
+        
+        if form_id:
+            await message.answer(
+                f"✅ Форма '{message.text}' успешно создана!\n\n"
+                "Теперь добавьте поля в форму, используя команду:\n"
+                f"/add_field {form_id} название_поля тип_поля [обязательное]"
+            )
+        else:
+            await message.answer("❌ Ошибка при создании формы")
+        
+        await state.clear()
+        
+    except Exception as e:
+        logging.error(f"[BOT] Error in handle_form_name: {e}")
+        await message.answer("❌ Произошла ошибка при создании формы")
+        await state.clear()
+
 @settings_router.message(SettingsStates.waiting_for_additional_data_file)
 async def handle_additional_data_file(message: types.Message, state: FSMContext):
     await log_fsm_state(message, state)

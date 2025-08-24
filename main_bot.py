@@ -257,7 +257,6 @@ async def start_command(message: types.Message):
         
         # Сохраняем информацию о проекте в контексте пользователя
         await storage.set_data(
-            bot=main_bot,
             key=f"user:{message.from_user.id}",
             data={"current_project": project}
         )
@@ -310,7 +309,6 @@ async def handle_message(message: types.Message):
     
     # Получаем текущий проект из контекста
     chat_data = await storage.get_data(
-        bot=main_bot,
         key=f"user:{message.from_user.id}"
     )
     
@@ -323,7 +321,6 @@ async def handle_message(message: types.Message):
         if current_project:
             # Сохраняем в контекст
             await storage.set_data(
-                bot=main_bot,
                 key=f"user:{message.from_user.id}",
                 data={"current_project": current_project}
             )
@@ -409,8 +406,7 @@ async def handle_callback(callback: types.CallbackQuery):
     if callback.data == "show_form":
         # Показываем форму
         chat_data = await storage.get_data(
-            bot=main_bot,
-            key=types.Chat(id=callback.message.chat.id, type="private")
+            key=f"user:{callback.from_user.id}"
         )
         
         current_project = chat_data.get("current_project")
@@ -447,7 +443,6 @@ async def handle_callback(callback: types.CallbackQuery):
         
         # Обновляем контекст пользователя
         await storage.set_data(
-            bot=main_bot,
             key=f"user:{callback.from_user.id}",
             data={"current_project": project}
         )

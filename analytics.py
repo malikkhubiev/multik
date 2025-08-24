@@ -114,18 +114,18 @@ async def send_daily_insights_to_project_owners():
         # Группируем темы по проектам
         project_themes = {}
         
-        # Получаем все темы за последние 24 часа
-        from database import database, QueryTheme
-        from sqlalchemy import select, and_
+        # Получаем все проекты
+        from database import get_all_projects
         
-        query = select(QueryTheme).where(QueryTheme.timestamp >= day_ago)
-        themes = await database.fetch_all(query)
+        all_projects = await get_all_projects()
+        project_themes = {}
         
-        for theme in themes:
-            project_id = theme['project_id']
-            if project_id not in project_themes:
-                project_themes[project_id] = []
-            project_themes[project_id].append(theme['theme'])
+        # Получаем темы для каждого проекта
+        for project in all_projects:
+            project_id = project['id']
+            themes = await get_daily_themes(project_id)
+            if themes:
+                project_themes[project_id] = [theme['theme'] for theme in themes]
         
         # Отправляем инсайты каждому владельцу проекта
         for project_id, themes_list in project_themes.items():
