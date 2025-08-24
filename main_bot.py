@@ -67,14 +67,26 @@ def create_projects_keyboard(client_projects: list) -> types.InlineKeyboardMarku
     keyboard = []
     
     for project in client_projects:
-        # Показываем название проекта и количество посещений
-        text = f"🏢 {project['project_name']} ({project['visit_count']} раз)"
-        callback_data = f"switch_to_project_{project['id']}"
+        # Показываем только название проекта
+        text = f"🏢 {project.get('project_name', 'Неизвестный')}"
+        callback_data = f"switch_to_project_{project.get('id', '')}"
         keyboard.append([types.InlineKeyboardButton(text=text, callback_data=callback_data)])
     
-    # Добавляем кнопку для показа текущего проекта
-    if client_projects:
-        keyboard.append([types.InlineKeyboardButton(text="📋 Показать текущий проект", callback_data="show_current_project")])
+    return types.InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def create_project_menu_keyboard(project_id: str, has_form: bool = False) -> types.InlineKeyboardMarkup:
+    """Создает клавиатуру меню проекта с кнопкой инсайтов"""
+    keyboard = []
+    
+    # Кнопка для просмотра инсайтов
+    keyboard.append([types.InlineKeyboardButton(text="📊 Инсайты", callback_data=f"show_insights_{project_id}")])
+    
+    # Кнопка для показа формы, если она есть
+    if has_form:
+        keyboard.append([types.InlineKeyboardButton(text="📝 Заполнить форму", callback_data="show_form")])
+    
+    # Кнопка для выбора другого проекта
+    keyboard.append([types.InlineKeyboardButton(text="🔄 Выбрать проект", callback_data="select_project")])
     
     return types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
@@ -124,7 +136,7 @@ async def send_daily_insights_to_owner(project_id: str):
         sorted_themes = sorted(theme_counts.items(), key=lambda x: x[1], reverse=True)
         
         # Формируем отчет
-        report = f"📊 **Ежедневная статистика проекта {project['project_name']}:**\n\n"
+        report = f"📊 **Ежедневная статистика проекта {project.get('project_name', 'Неизвестный')}:**\n\n"
         for theme, count in sorted_themes[:5]:  # Только топ-5
             theme_display = theme.replace('_', ' ').title()
             report += f"• {theme_display}: {count} запросов\n"
@@ -133,7 +145,7 @@ async def send_daily_insights_to_owner(project_id: str):
         report += f"\n🕐 Период: последние 24 часа"
         
         # Отправляем владельцу проекта
-        owner_telegram_id = project['telegram_id']
+        owner_telegram_id = project.get('telegram_id', '')
         await settings_bot.send_message(
             chat_id=owner_telegram_id,
             text=report,
@@ -215,13 +227,7 @@ async def start_command(message: types.Message):
         
         if client_projects:
             # У клиента есть проекты, показываем их
-            message_text = "👋 Добро пожаловать! Выберите проект для работы:\n\n"
-            for i, project in enumerate(client_projects, 1):
-                message_text += f"🏢 **{i}. {project['project_name']}**\n"
-                message_text += f"   📅 Посещений: {project['visit_count']}\n"
-                message_text += f"   🕐 Последний раз: {project['last_visit'].strftime('%d.%m.%Y %H:%M')}\n\n"
-            
-            message_text += "💡 Используйте кнопки ниже для выбора проекта:"
+            message_text = "👋 Добро пожаловать! Выберите проект для работы:"
             
             # Создаем клавиатуру с проектами
             keyboard = create_projects_keyboard(client_projects)
@@ -241,7 +247,7 @@ async def start_command(message: types.Message):
             await message.answer("❌ Проект не найден. Проверьте ссылку.")
             return
         
-        logging.info(f"[MAIN_BOT] Project found: {project['project_name']} (ID: {project['id']})")
+        logging.info(f"[MAIN_BOT] Project found: {project.get('project_name', 'Неизвестный')} (ID: {project.get('id', '')})")
         
         # Проверяем доступность проекта
         accessibility = await check_project_accessibility(project)
@@ -263,9 +269,15 @@ async def start_command(message: types.Message):
         logging.info(f"[MAIN_BOT] Project data saved to storage for user {message.from_user.id}")
         
         # Отправляем приветственное сообщение
-        welcome_message = project.get("welcome_message") or f"👋 Добро пожаловать в проект **{project['project_name']}**!\n\nЯ готов ответить на ваши вопросы о бизнесе."
+        welcome_message = project.get("welcome_message") or f"👋 Добро пожаловать в проект **{project.get('project_name', 'Неизвестный')}**!\n\nЯ готов ответить на ваши вопросы о бизнесе."
         
-        await message.answer(welcome_message, parse_mode="Markdown")
+        # Проверяем, есть ли форма у проекта
+        form = await get_project_form(project["id"])
+        
+        # Создаем клавиатуру меню проекта
+        keyboard = create_project_menu_keyboard(project["id"], bool(form))
+        
+        await message.answer(welcome_message, reply_markup=keyboard, parse_mode="Markdown")
         logging.info(f"[MAIN_BOT] Welcome message sent to user {message.from_user.id}")
         
     except Exception as e:
@@ -284,23 +296,11 @@ async def projects_command(message: types.Message):
         await message.answer("📋 У вас пока нет посещенных проектов. Перейдите по ссылке на любой проект, чтобы начать работу!")
         return
     
-    # Получаем текущий активный проект
-    current_project = await get_client_current_project(client_telegram_id)
-    
-    message_text = "🏢 **Ваши проекты:**\n\n"
-    
-    for i, project in enumerate(client_projects, 1):
-        # Отмечаем текущий проект
-        current_marker = "📍 " if current_project and current_project["id"] == project["id"] else "🏢 "
-        message_text += f"{current_marker}**{i}. {project['project_name']}**\n"
-        message_text += f"   📅 Посещений: {project['visit_count']}\n"
-        message_text += f"   🕐 Последний раз: {project['last_visit'].strftime('%d.%m.%Y %H:%M')}\n\n"
-    
-    message_text += "💡 Используйте кнопки ниже для переключения между проектами:"
+    message_text = "🏢 **Ваши проекты:**"
     
     # Создаем клавиатуру с проектами
     keyboard = create_projects_keyboard(client_projects)
-    await message.answer(message_text, reply_markup=keyboard)
+    await message.answer(message_text, reply_markup=keyboard, parse_mode="Markdown")
 
 @main_router.message()
 async def handle_message(message: types.Message):
@@ -337,7 +337,7 @@ async def handle_message(message: types.Message):
     
     try:
         # Формируем промпт для AI
-        business_info = current_project["business_info"]
+        business_info = current_project.get("business_info", "Информация о бизнесе не указана")
         prompt = f"{role_base}\n\nИнформация о бизнесе:\n{business_info}\n\nВопрос клиента: {message.text}"
         
         # Получаем ответ от AI
@@ -374,7 +374,10 @@ async def handle_message(message: types.Message):
                     # Добавляем предложение оформить заявку
                     ai_response += "\n\n📝 Хотите оформить заявку? У нас есть удобная форма для сбора информации."
                 
-                await message.answer(ai_response)
+                # Создаем клавиатуру меню проекта
+                keyboard = create_project_menu_keyboard(current_project["id"], bool(form))
+                
+                await message.answer(ai_response, reply_markup=keyboard)
                 
                 # Логируем статистику
                 user = await get_user_by_id(current_project["telegram_id"])
@@ -397,14 +400,14 @@ async def handle_message(message: types.Message):
         await message.answer("❌ Произошла ошибка при обработке сообщения. Попробуйте позже.")
         logging.error(f"[MAIN_BOT] Error processing message: {e}")
 
-# Обработчики для форм
+# Обработчики для форм и проектов
 @main_router.callback_query()
 async def handle_callback(callback: types.CallbackQuery):
     """Обработчик callback запросов"""
     logging.info(f"[MAIN_BOT] Callback from user {callback.from_user.id}: {callback.data}")
     
     if callback.data == "show_form":
-        # Показываем форму
+        # Показываем форму используя функции из settings_forms.py
         chat_data = await storage.get_data(
             key=f"user:{callback.from_user.id}"
         )
@@ -417,9 +420,19 @@ async def handle_callback(callback: types.CallbackQuery):
         form = await get_project_form(current_project["id"])
         if form:
             form_message = create_form_preview_message(form)
-            await callback.message.edit_text(form_message, reply_markup=None)
+            keyboard = create_form_preview_keyboard()
+            await callback.message.edit_text(form_message, reply_markup=keyboard)
         else:
             await callback.answer("❌ Форма не найдена")
+    
+    elif callback.data.startswith("show_insights_"):
+        # Показываем инсайты проекта
+        project_id = callback.data.replace("show_insights_", "")
+        await show_project_insights(callback, project_id)
+    
+    elif callback.data == "select_project":
+        # Показываем список проектов для выбора
+        await show_projects_list(callback)
     
     elif callback.data.startswith("switch_to_project_"):
         # Переключение на другой проект
@@ -448,47 +461,90 @@ async def handle_callback(callback: types.CallbackQuery):
         )
         
         # Отправляем сообщение о переключении
-        switch_msg = f"🔄 Переключились на проект **{project['project_name']}**\n\n"
-        switch_msg += project.get("welcome_message") or f"👋 Добро пожаловать в {project['project_name']}!\n\nЯ готов помочь вам с любыми вопросами о нашем бизнесе."
+        switch_msg = f"🔄 Переключились на проект **{project.get('project_name', 'Неизвестный')}**\n\n"
+        switch_msg += project.get("welcome_message") or f"👋 Добро пожаловать в {project.get('project_name', 'Неизвестный')}!\n\nЯ готов помочь вам с любыми вопросами о нашем бизнесе."
         
         # Проверяем, есть ли форма у проекта
         form = await get_project_form(project["id"])
-        if form:
-            switch_msg += "\n\n📝 Также вы можете оформить заявку через нашу форму."
-            keyboard = create_form_preview_keyboard()
-            await callback.message.edit_text(switch_msg, reply_markup=keyboard)
-        else:
-            await callback.message.edit_text(switch_msg, reply_markup=None)
         
-        await callback.answer(f"✅ Переключились на {project['project_name']}")
-    
-    elif callback.data == "show_current_project":
-        # Показываем информацию о текущем проекте
-        chat_data = await storage.get_data(
-            bot=main_bot,
-            key=f"user:{callback.from_user.id}"
-        )
+        # Создаем клавиатуру меню проекта
+        keyboard = create_project_menu_keyboard(project["id"], bool(form))
         
-        current_project = chat_data.get("current_project")
-        if not current_project:
-            await callback.answer("❌ Текущий проект не найден")
-            return
-        
-        project_info = f"📍 **Текущий проект: {current_project['project_name']}**\n\n"
-        project_info += current_project.get("welcome_message") or f"👋 Добро пожаловать в {current_project['project_name']}!\n\nЯ готов помочь вам с любыми вопросами о нашем бизнесе."
-        
-        # Проверяем, есть ли форма у проекта
-        form = await get_project_form(current_project["id"])
-        if form:
-            project_info += "\n\n📝 Также вы можете оформить заявку через нашу форму."
-            keyboard = create_form_preview_keyboard()
-            await callback.message.edit_text(project_info, reply_markup=keyboard)
-        else:
-            await callback.message.edit_text(project_info, reply_markup=None)
-        
-        await callback.answer("✅ Показан текущий проект")
+        await callback.message.edit_text(switch_msg, reply_markup=keyboard, parse_mode="Markdown")
+        await callback.answer(f"✅ Переключились на {project.get('project_name', 'Неизвестный')}")
     
     await callback.answer()
+
+async def show_project_insights(callback: types.CallbackQuery, project_id: str):
+    """Показывает инсайты проекта"""
+    try:
+        from database import get_project_by_id, get_daily_themes
+        
+        # Получаем информацию о проекте
+        project = await get_project_by_id(project_id)
+        if not project:
+            await callback.answer("❌ Проект не найден")
+            return
+        
+        # Получаем темы за последние 24 часа
+        themes = await get_daily_themes(project_id)
+        
+        if not themes:
+            await callback.message.edit_text(
+                f"📊 **Инсайты проекта {project.get('project_name', 'Неизвестный')}**\n\n"
+                "За последние 24 часа нет данных для анализа.",
+                reply_markup=create_project_menu_keyboard(project_id, False),
+                parse_mode="Markdown"
+            )
+            return
+        
+        # Анализируем темы
+        theme_counts = {}
+        for theme in themes:
+            theme_counts[theme['theme']] = theme_counts.get(theme['theme'], 0) + 1
+        
+        # Сортируем по популярности
+        sorted_themes = sorted(theme_counts.items(), key=lambda x: x[1], reverse=True)
+        
+        # Формируем отчет
+        report = f"📊 **Инсайты проекта {project.get('project_name', 'Неизвестный')}**\n\n"
+        report += "**Топ темы за последние 24 часа:**\n"
+        for theme, count in sorted_themes[:5]:  # Только топ-5
+            theme_display = theme.replace('_', ' ').title()
+            report += f"• {theme_display}: {count} запросов\n"
+        
+        report += f"\n📈 **Всего запросов:** {len(themes)}"
+        report += f"\n🕐 **Период:** последние 24 часа"
+        
+        # Создаем клавиатуру с кнопкой возврата к меню
+        keyboard = create_project_menu_keyboard(project_id, False)
+        
+        await callback.message.edit_text(report, reply_markup=keyboard, parse_mode="Markdown")
+        await callback.answer("📊 Инсайты загружены")
+        
+    except Exception as e:
+        logging.error(f"[MAIN_BOT] Error showing insights: {e}")
+        await callback.answer("❌ Ошибка при загрузке инсайтов")
+
+async def show_projects_list(callback: types.CallbackQuery):
+    """Показывает список проектов для выбора"""
+    try:
+        client_telegram_id = str(callback.from_user.id)
+        client_projects = await get_client_projects(client_telegram_id)
+        
+        if not client_projects:
+            await callback.answer("📋 У вас нет посещенных проектов")
+            return
+        
+        message_text = "🏢 **Выберите проект:**"
+        keyboard = create_projects_keyboard(client_projects)
+        
+        await callback.message.edit_text(message_text, reply_markup=keyboard, parse_mode="Markdown")
+        await callback.answer("📋 Список проектов загружен")
+        
+    except Exception as e:
+        logging.error(f"[MAIN_BOT] Error showing projects list: {e}")
+        await callback.answer("❌ Ошибка при загрузке списка проектов")
 
 # Функция для запуска webhook
 async def set_main_bot_webhook():

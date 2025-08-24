@@ -667,7 +667,7 @@ async def handle_project_selection(callback_query: types.CallbackQuery, state: F
             ]
             keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
             await callback_query.message.edit_text(
-                f"Проект: {project['project_name']}\n\nВыберите действие:",
+                f"Проект: {project.get('project_name', 'Неизвестный')}\n\nВыберите действие:",
                 reply_markup=keyboard
             )
         except Exception as e:
@@ -928,7 +928,7 @@ async def handle_delete_project_request(callback_query: types.CallbackQuery, sta
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
     
     await callback_query.message.edit_text(
-        f"Вы уверены, что хотите удалить проект '{project['project_name']}'?\n"
+        f"Вы уверены, что хотите удалить проект '{project.get('project_name', 'Неизвестный')}'?\n"
         "Это действие нельзя отменить. Бот будет остановлен и webhook отключен.",
         reply_markup=keyboard
     )
@@ -959,7 +959,7 @@ async def handle_confirm_delete(callback_query: types.CallbackQuery, state: FSMC
         
         if delete_result:
             await callback_query.message.edit_text(
-                f"Проект '{project['project_name']}' успешно удален!\n"
+                f"Проект '{project.get('project_name', 'Неизвестный')}' успешно удален!\n"
                 "Бот больше не будет отвечать от имени этого проекта."
             )
         else:
@@ -1582,7 +1582,7 @@ async def settings_command(message: types.Message, state: FSMContext):
         keyboard = []
         for project in projects:
             keyboard.append([InlineKeyboardButton(
-                text=f"⚙️ {project['project_name']}",
+                text=f"⚙️ {project.get('project_name', 'Неизвестный')}",
                 callback_data=f"settings_project_{project['id']}"
             )])
         
@@ -1620,8 +1620,8 @@ async def handle_project_settings(callback_query: types.CallbackQuery, state: FS
         ])
         
         await callback_query.message.edit_text(
-            f"⚙️ **Настройки проекта: {project['project_name']}**\n\n"
-            f"🔗 Ссылка: {project['bot_link']}\n"
+            f"⚙️ **Настройки проекта: {project.get('project_name', 'Неизвестный')}**\n\n"
+                          f"🔗 Ссылка: {project.get('bot_link', 'Неизвестно')}\n"
             f"📝 Приветственное сообщение:\n{current_welcome}\n\n"
             f"Выберите, что хотите настроить:",
             reply_markup=keyboard,

@@ -30,6 +30,7 @@ MAIN_BOT_USERNAME = os.getenv("MAIN_BOT_USERNAME")
 
 # Settings бот для управления проектами
 SETTINGS_BOT_TOKEN = os.getenv("SETTINGS_BOT_TOKEN")
+SETTINGS_BOT_USERNAME = os.getenv("SETTINGS_BOT_USERNAME")
 
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 

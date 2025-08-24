@@ -248,7 +248,7 @@ async def get_project_by_id(project_id: str) -> Optional[dict]:
             # Генерируем полную ссылку на бота
             from config import MAIN_BOT_USERNAME
             bot_username = MAIN_BOT_USERNAME or "your_main_bot"
-            project_dict['bot_link'] = f"https://t.me/{bot_username}?start={project_dict['short_link']}"
+            project_dict['bot_link'] = f"https://t.me/{bot_username}?start={project_dict.get('short_link', '')}"
             return project_dict
         return None
     except Exception as e:
@@ -265,7 +265,7 @@ async def get_project_by_short_link(short_link: str) -> Optional[dict]:
             # Генерируем полную ссылку на бота
             from config import MAIN_BOT_USERNAME
             bot_username = MAIN_BOT_USERNAME or "your_main_bot"
-            project_dict['bot_link'] = f"https://t.me/{bot_username}?start={project_dict['short_link']}"
+            project_dict['bot_link'] = f"https://t.me/{bot_username}?start={project_dict.get('short_link', '')}"
             return project_dict
         return None
     except Exception as e:
@@ -283,21 +283,21 @@ async def get_projects_by_user(telegram_id: str) -> list:
     for r in rows:
         project_dict = {
             "id": r["id"], 
-            "project_name": r["project_name"], 
-            "business_info": r["business_info"], 
-            "welcome_message": r["welcome_message"],
+            "project_name": r.get("project_name", "Неизвестный"), 
+            "business_info": r.get("business_info", ""), 
+            "welcome_message": r.get("welcome_message", ""),
             "telegram_id": r["telegram_id"]
         }
         
         # Генерируем bot_link на основе short_link
         from config import MAIN_BOT_USERNAME
         bot_username = MAIN_BOT_USERNAME or "your_main_bot"
-        project_dict["bot_link"] = f"https://t.me/{bot_username}?start={r['short_link']}"
+        project_dict["bot_link"] = f"https://t.me/{bot_username}?start={r.get('short_link', '')}"
         
         result.append(project_dict)
     
     for i, project in enumerate(result):
-        logging.info(f"[DB] get_projects_by_user: проект {i+1}: id={project['id']}, name={project['project_name']}, bot_link={project['bot_link']}")
+        logging.info(f"[DB] get_projects_by_user: проект {i+1}: id={project.get('id', '')}, name={project.get('project_name', 'Неизвестный')}, bot_link={project.get('bot_link', 'Неизвестно')}")
     
     return result
 
@@ -382,7 +382,7 @@ async def append_project_business_info(project_id: str, additional_info: str) ->
             return False
         
         # Объединяем с новой информацией
-        updated_info = current_project["business_info"] + "\n\n" + additional_info
+        updated_info = current_project.get("business_info", "") + "\n\n" + additional_info
         query = update(Project).where(Project.id == project_id).values(business_info=updated_info)
         await database.execute(query)
         return True
@@ -480,10 +480,10 @@ async def get_user_projects(telegram_id: str) -> list:
     rows = await database.fetch_all(query)
     return [{
         "id": r["id"],
-        "project_name": r["project_name"],
-        "business_info": r["business_info"],
-        "welcome_message": r["welcome_message"],
-        "bot_link": r["bot_link"],
+        "project_name": r.get("project_name", "Неизвестный"),
+        "business_info": r.get("business_info", ""),
+        "welcome_message": r.get("welcome_message", ""),
+        "bot_link": r.get("bot_link", ""),
         "telegram_id": r["telegram_id"]
     } for r in rows]
 
@@ -718,8 +718,8 @@ async def get_referrer_info(telegram_id: str):
 
 async def get_referral_link(telegram_id: str) -> str:
     """Генерирует реферальную ссылку для пользователя"""
-    from config import MAIN_BOT_USERNAME
-    username = MAIN_BOT_USERNAME or "your_bot_username"
+    from config import SETTINGS_BOT_USERNAME
+    username = SETTINGS_BOT_USERNAME or "your_bot_username"
     return f"https://t.me/{username}?start=ref{telegram_id}"
 
 async def process_referral_payment(paid_user_id: str, paid_user_username: str = None):
@@ -1064,13 +1064,13 @@ async def get_client_projects(client_telegram_id: str) -> list:
             # Генерируем полную ссылку на бота
             from config import MAIN_BOT_USERNAME
             bot_username = MAIN_BOT_USERNAME or "your_main_bot"
-            bot_link = f"https://t.me/{bot_username}?start={row['short_link']}"
+            bot_link = f"https://t.me/{bot_username}?start={row.get('short_link', '')}"
             
             project_data = {
                 "id": row["project_id"],
-                "project_name": row["project_name"],
-                "business_info": row["business_info"],
-                "welcome_message": row["welcome_message"],
+                "project_name": row.get("project_name", "Неизвестный"),
+                "business_info": row.get("business_info", ""),
+                "welcome_message": row.get("welcome_message", ""),
                 "bot_link": bot_link,
                 "first_visit": row["first_visit"],
                 "last_visit": row["last_visit"],
@@ -1100,19 +1100,19 @@ async def get_client_current_project(client_telegram_id: str) -> Optional[dict]:
             # Генерируем полную ссылку на бота
             from config import MAIN_BOT_USERNAME
             bot_username = MAIN_BOT_USERNAME or "your_main_bot"
-            bot_link = f"https://t.me/{bot_username}?start={row['short_link']}"
+            bot_link = f"https://t.me/{bot_username}?start={row.get('short_link', '')}"
             
             project_data = {
                 "id": row["project_id"],
-                "project_name": row["project_name"],
-                "business_info": row["business_info"],
-                "welcome_message": row["welcome_message"],
+                "project_name": row.get("project_name", "Неизвестный"),
+                "business_info": row.get("business_info", ""),
+                "welcome_message": row.get("welcome_message", ""),
                 "bot_link": bot_link,
                 "first_visit": row["first_visit"],
                 "last_visit": row["last_visit"],
                 "visit_count": row["visit_count"]
             }
-            logging.info(f"[HISTORY] Текущий проект клиента {client_telegram_id}: {project_data['project_name']}")
+            logging.info(f"[HISTORY] Текущий проект клиента {client_telegram_id}: {project_data.get('project_name', 'Неизвестный')}")
             return project_data
         
         logging.info(f"[HISTORY] У клиента {client_telegram_id} нет истории проектов")
@@ -1249,17 +1249,17 @@ async def get_all_projects() -> list:
         for r in rows:
             project_dict = {
                 "id": r["id"],
-                "project_name": r["project_name"],
-                "business_info": r["business_info"],
-                "welcome_message": r["welcome_message"],
+                "project_name": r.get("project_name", "Неизвестный"),
+                "business_info": r.get("business_info", ""),
+                "welcome_message": r.get("welcome_message", ""),
                 "telegram_id": r["telegram_id"],
-                "short_link": r["short_link"]
+                "short_link": r.get("short_link", "")
             }
             
             # Генерируем bot_link на основе short_link
             from config import MAIN_BOT_USERNAME
             bot_username = MAIN_BOT_USERNAME or "your_main_bot"
-            project_dict["bot_link"] = f"https://t.me/{bot_username}?start={r['short_link']}"
+            project_dict["bot_link"] = f"https://t.me/{bot_username}?start={r.get('short_link', '')}"
             
             result.append(project_dict)
         

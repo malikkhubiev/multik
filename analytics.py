@@ -122,7 +122,7 @@ async def send_daily_insights_to_project_owners():
         
         # Получаем темы для каждого проекта
         for project in all_projects:
-            project_id = project['id']
+            project_id = project.get('id', '')
             themes = await get_daily_themes(project_id)
             if themes:
                 project_themes[project_id] = [theme['theme'] for theme in themes]
@@ -147,7 +147,7 @@ async def send_daily_insights_to_project_owners():
                 sorted_themes = sorted(theme_counts.items(), key=lambda x: x[1], reverse=True)
                 
                 # Формируем отчет
-                report = f"📊 **Ежедневная статистика проекта {project['project_name']}:**\n\n"
+                report = f"📊 **Ежедневная статистика проекта {project.get('project_name', 'Неизвестный')}:**\n\n"
                 for theme, count in sorted_themes[:5]:  # Только топ-5
                     theme_display = theme.replace('_', ' ').title()
                     report += f"• {theme_display}: {count} запросов\n"
@@ -156,7 +156,7 @@ async def send_daily_insights_to_project_owners():
                 report += f"\n🕐 Период: последние 24 часа"
                 
                 # Отправляем владельцу проекта
-                owner_telegram_id = project['telegram_id']
+                owner_telegram_id = project.get('telegram_id', '')
                 await settings_bot.send_message(
                     chat_id=owner_telegram_id,
                     text=report,
