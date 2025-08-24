@@ -6,16 +6,16 @@ from aiogram.filters import Command
 import random
 import os
 from config import SETTINGS_BOT_TOKEN, API_URL, SERVER_URL, DEEPSEEK_API_KEY, TRIAL_DAYS, TRIAL_PROJECTS, PAID_PROJECTS, PAYMENT_AMOUNT, MAIN_TELEGRAM_ID, DISCOUNT_PAYMENT_AMOUNT, PAYMENT_CARD_NUMBER1, PAYMENT_CARD_NUMBER2, PAYMENT_CARD_NUMBER3
-from database import create_project, get_project_by_id, create_user, get_projects_by_user, update_project_name, update_project_business_info, append_project_business_info, delete_project, get_project_by_token, check_project_name_exists, get_user_by_id, get_users_with_expired_trial, delete_all_projects_for_user, set_user_paid, get_user_projects, log_message_stat, add_feedback, update_project_token, get_users_with_expired_paid_month, set_trial_expired_notified, log_payment, has_feedback
+from database import create_project, get_project_by_id, create_user, get_projects_by_user, update_project_name, update_project_business_info, append_project_business_info, delete_project, check_project_name_exists, get_user_by_id, get_users_with_expired_trial, delete_all_projects_for_user, set_user_paid, get_user_projects, log_message_stat, add_feedback, get_users_with_expired_paid_month, set_trial_expired_notified, log_payment, has_feedback
 from analytics import log_project_created, log_form_created
-from utils import set_webhook, delete_webhook
+
 from aiogram.fsm.context import FSMContext
 from settings_states import SettingsStates
 from settings_business import process_business_file_with_deepseek, clean_markdown, clean_business_text, get_text_from_message
 from settings_utils import handle_command_in_state, log_fsm_state, auto_register_handlers
 from settings_feedback import handle_feedback_command, handle_feedback_text, handle_feedback_rating_callback, handle_feedback_change_rating
 from settings_payment import handle_pay_command, handle_pay_callback, handle_payment_check, handle_payment_check_document, handle_payment_check_document_any, handle_payment_check_photo_any
-from settings_middleware import trial_middleware, clear_asking_bot_cache
+from settings_middleware import trial_middleware
 from database import log_message_stat
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 import logging
@@ -69,12 +69,8 @@ async def check_expired_trials():
         try:
             projects = await get_user_projects(telegram_id)
             logging.info(f"[TRIAL] У пользователя {telegram_id} найдено проектов: {len(projects)}")
-            for project in projects:
-                try:
-                    await delete_webhook(project['token'])
-                    logging.info(f"[TRIAL] Вебхук удалён для проекта {project['id']} (token={project['token']})")
-                except Exception as e:
-                    logging.error(f"[TRIAL] Ошибка при удалении вебхука: {e}")
+            
+            # Отправляем уведомление пользователю
             try:
                 pay_kb = InlineKeyboardMarkup(
                     inline_keyboard=[
@@ -519,23 +515,6 @@ async def handle_project_name(message: types.Message, state: FSMContext):
         # Не сбрасываем состояние! Ожидаем новое имя
         return
     await state.update_data(project_name=message.text)
-    await message.answer("Теперь введите API токен для Telegram-бота.")
-    await state.set_state(SettingsStates.waiting_for_token)
-
-@settings_router.message(SettingsStates.waiting_for_token)
-async def handle_token(message: types.Message, state: FSMContext):
-    await log_fsm_state(message, state)
-    logging.info(f"[BOT] waiting_for_token: user={message.from_user.id}, text={message.text}")
-    # Проверяем команды через универсальную функцию
-    if await handle_command_in_state(message, state):
-        return
-    logger.info(f"Token received from user {message.from_user.id}: {message.text}")
-    from database import get_project_by_token
-    if await get_project_by_token(message.text):
-        await message.answer(f"❌ Проект с таким токеном уже существует. Пожалуйста, введите другой токен.")
-        # Не сбрасываем состояние! Ожидаем новый токен
-        return
-    await state.update_data(token=message.text)
     await message.answer(
         "Теперь отправьте информацию о вашем бизнесе одним из способов:\n"
         "1️⃣ Загрузите файл (txt, docx, pdf)\n"
@@ -543,6 +522,8 @@ async def handle_token(message: types.Message, state: FSMContext):
         "3️⃣ Или отправьте голосовое сообщение (мы преобразуем его в текст)"
     )
     await state.set_state(SettingsStates.waiting_for_business_file)
+
+
 
 @settings_router.message(SettingsStates.waiting_for_business_file)
 async def handle_business_file(message: types.Message, state: FSMContext):
@@ -581,12 +562,11 @@ async def handle_business_file(message: types.Message, state: FSMContext):
         processed_business_info = text_content
     data = await state.get_data()
     project_name = data.get("project_name")
-    token = data.get("token")
     telegram_id = str(message.from_user.id)
     try:
         logger.info("[LOAD] Запись проекта в БД...")
         t3 = time.monotonic()
-        project_id = await create_project(telegram_id, project_name, processed_business_info, token)
+        project_id = await create_project(telegram_id, project_name, processed_business_info)
         logger.info(f"[LOAD] Запись в БД завершена за {time.monotonic() - t3:.2f} сек")
         # Логируем создание проекта в аналитику
         await log_project_created(telegram_id, project_id, project_name)
@@ -594,15 +574,24 @@ async def handle_business_file(message: types.Message, state: FSMContext):
         await message.answer(f"❌ Ошибка: {str(e)}\n\nПожалуйста, выберите другое название для проекта.")
         await state.clear()
         return
-    logger.info("[LOAD] Установка вебхука...")
-    t4 = time.monotonic()
-    webhook_result = await set_webhook(token, project_id)
-    logger.info(f"[LOAD] Установка вебхука завершена за {time.monotonic() - t4:.2f} сек")
+    
+    # Получаем созданный проект для отображения ссылки
+    from database import get_project_by_id
+    project = await get_project_by_id(project_id)
+    
     logger.info(f"[LOAD] ВСЕГО времени на загрузку: {time.monotonic() - t0:.2f} сек")
-    if webhook_result.get("ok"):
-        await message.answer(f"Спасибо! Проект создан.\n\nПроект: {project_name}\nТокен: {token}\nВебхук успешно установлен!\n\nБот готов к работе!")
+    
+    if project:
+        await message.answer(
+            f"🎉 Проект успешно создан!\n\n"
+            f"📋 Название: {project_name}\n"
+            f"🔗 Ссылка на бота: {project['bot_link']}\n\n"
+            f"📝 Отправьте эту ссылку вашим клиентам, чтобы они могли общаться с ботом от имени вашего бизнеса.\n\n"
+            f"⚙️ Для настройки приветственного сообщения используйте команду /settings"
+        )
     else:
-        await message.answer(f"Проект создан, но не удалось установить вебхук. Попробуйте предоставить другой токен")
+        await message.answer("❌ Проект создан, но произошла ошибка при получении ссылки.")
+    
     await state.clear()
 
 @settings_router.message(Command("projects"))
@@ -804,9 +793,6 @@ async def handle_additional_data_file(message: types.Message, state: FSMContext)
     logger.info(f"[ADD] Запись в БД завершена за {time.monotonic() - t3:.2f} сек")
     logger.info(f"[ADD] ВСЕГО времени на добавление: {time.monotonic() - t0:.2f} сек")
     if success:
-        project = await get_project_by_id(project_id)
-        if project:
-            await clear_asking_bot_cache(project["token"])
         await message.answer("Дополнительные данные успешно добавлены к проекту!")
     else:
         await message.answer("Ошибка при добавлении дополнительных данных")
@@ -868,9 +854,6 @@ async def handle_new_data_file(message: types.Message, state: FSMContext):
     logger.info(f"[REPLACE] Запись в БД завершена за {time.monotonic() - t3:.2f} сек")
     logger.info(f"[REPLACE] ВСЕГО времени на замену: {time.monotonic() - t0:.2f} сек")
     if success:
-        project = await get_project_by_id(project_id)
-        if project:
-            await clear_asking_bot_cache(project["token"])
         await message.answer("Данные проекта успешно обновлены!")
     else:
         await message.answer("Ошибка при обновлении данных проекта")
@@ -916,17 +899,13 @@ async def handle_confirm_delete(callback_query: types.CallbackQuery, state: FSMC
             await callback_query.answer("Ошибка: проект не найден")
             return
         
-        # Отключаем webhook
-        webhook_result = await delete_webhook(project["token"])
-        logger.info(f"Webhook deletion result: {webhook_result}")
-        
         # Удаляем проект из базы данных
         delete_result = await delete_project(project_id)
         
         if delete_result:
             await callback_query.message.edit_text(
                 f"Проект '{project['project_name']}' успешно удален!\n"
-                "Webhook отключен, бот остановлен."
+                "Бот больше не будет отвечать от имени этого проекта."
             )
         else:
             await callback_query.message.edit_text(
@@ -958,19 +937,29 @@ async def process_settings_webhook(request: Request):
 async def create_project_meta(
     telegram_id: str = Form(...),
     project_name: str = Form(...),
-    business_info: str = Form(...),
-    token: str = Form(...)
+    business_info: str = Form(...)
 ):
     logs = []
     try:
-        project_id = await create_project(telegram_id, project_name, business_info, token)
+        project_id = await create_project(telegram_id, project_name, business_info)
         logs.append(f"[STEP] Проект создан: {project_id}")
-        webhook_result = await set_webhook(token, project_id)
-        if webhook_result.get("ok"):
-            logs.append(f"[STEP] Вебхук успешно установлен для project_id={project_id}")
+        
+        # Получаем созданный проект для возврата ссылки
+        from database import get_project_by_id
+        project = await get_project_by_id(project_id)
+        
+        if project:
+            logs.append(f"[STEP] Проект получен, bot_link: {project['bot_link']}")
+            return {
+                "status": "ok", 
+                "project_id": project_id, 
+                "bot_link": project['bot_link'],
+                "logs": logs
+            }
         else:
-            logs.append(f"[ERROR] Не удалось установить вебхук: {webhook_result}")
-        return {"status": "ok", "project_id": project_id, "logs": logs}
+            logs.append(f"[ERROR] Не удалось получить созданный проект")
+            return {"status": "error", "message": "Проект создан, но не получен", "logs": logs}
+            
     except Exception as e:
         logs.append(f"[ERROR] Ошибка при создании проекта: {str(e)}")
         return {"status": "error", "message": str(e), "logs": logs}
@@ -1146,16 +1135,6 @@ async def _handle_any_message_inner(message: types.Message, state: FSMContext):
             # Используем None для username - функция сама обработает это
             referral_result = await process_referral_payment(paid_telegram_id, None)
             
-            # Восстановить вебхуки на все проекты пользователя
-            projects = await get_user_projects(paid_telegram_id)
-            restored = 0
-            for project in projects:
-                try:
-                    await set_webhook(project['token'], project['id'])
-                    restored += 1
-                except Exception as e:
-                    logger.error(f"[PAYMENT] Ошибка при восстановлении вебхука: {e}")
-            
             # Уведомить пользователя
             try:
                 await settings_bot.send_message(paid_telegram_id, f"Оплата подтверждена! Ваши проекты снова активны. Теперь вы можете создавать до {PAID_PROJECTS} проектов.")
@@ -1170,7 +1149,7 @@ async def _handle_any_message_inner(message: types.Message, state: FSMContext):
                 except Exception as e:
                     logging.error(f"[REFERRAL] Не удалось отправить уведомление рефереру: {e}")
             
-            await message.answer(f"Пользователь {paid_telegram_id} отмечен как оплативший. Вебхуки восстановлены для {restored} проектов.")
+            await message.answer(f"Пользователь {paid_telegram_id} отмечен как оплативший. Проекты снова активны.")
             return
     
     # --- Обработка отклонения оплаты админом ---

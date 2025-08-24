@@ -14,6 +14,11 @@ from settings_bot import (
     SETTINGS_BOT_TOKEN,
     SETTINGS_WEBHOOK_URL
 )
+from main_bot import (
+    set_main_bot_webhook,
+    remove_main_bot_webhook,
+    router as main_bot_router
+)
 import asyncio
 import logging
 from sqlalchemy import select
@@ -25,10 +30,17 @@ async def startup_event():
     try:
         logging.info(f"[ENV] SERVER_URL={SERVER_URL}, API_URL={API_URL}")
         logging.info(f"[ENV] SETTINGS_BOT_TOKEN={SETTINGS_BOT_TOKEN}, SETTINGS_WEBHOOK_URL={SETTINGS_WEBHOOK_URL}")
+        
+        # Устанавливаем webhook для settings бота
         await set_settings_webhook()
         print("[STARTUP] Settings bot webhook set!")
+        
+        # Устанавливаем webhook для основного бота
+        await set_main_bot_webhook()
+        print("[STARTUP] Main bot webhook set!")
+        
     except Exception as e:
-        print(f"[STARTUP] Failed to set settings bot webhook: {e}")
+        print(f"[STARTUP] Failed to set webhooks: {e}")
 
 @app.middleware("http")
 async def db_session_middleware(request: Request, call_next):
@@ -296,6 +308,7 @@ async def get_feedbacks_api():
     return feedbacks
 
 app.include_router(settings_router)
+app.include_router(main_bot_router, prefix="/main")
 
 if __name__ == "__main__":
     port = int(PORT)

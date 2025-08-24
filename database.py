@@ -37,7 +37,8 @@ class Project(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     project_name = Column(String, nullable=False)
     business_info = Column(String, nullable=False)
-    token = Column(String, nullable=False)
+    welcome_message = Column(String, nullable=True)  # Приветственное сообщение бота
+    bot_link = Column(String, nullable=False)  # Уникальная ссылка на бота с projectId
     telegram_id = Column(String, ForeignKey('user.telegram_id'))
     user = relationship("User", back_populates="projects")
     forms = relationship("Form", back_populates="project")
@@ -178,15 +179,28 @@ async def get_user(telegram_id: str) -> Optional[dict]:
     return None
 
 # CRUD для project
-async def create_project(telegram_id: str, project_name: str, business_info: str, token: str) -> str:
-    logging.info(f"[METRIC] create_project: telegram_id={telegram_id}, project_name={project_name}, token={token}")
+async def create_project(telegram_id: str, project_name: str, business_info: str, welcome_message: str = None) -> str:
+    logging.info(f"[METRIC] create_project: telegram_id={telegram_id}, project_name={project_name}")
     if await check_project_name_exists(telegram_id, project_name):
         logging.warning(f"[DB] create_project: project with name '{project_name}' already exists for user {telegram_id}")
         raise ValueError(f"Проект с именем '{project_name}' уже существует у этого пользователя")
+    
     project_id = str(uuid.uuid4())
-    query = insert(Project).values(id=project_id, project_name=project_name, business_info=business_info, token=token, telegram_id=telegram_id)
+    # Генерируем уникальную ссылку на бота с projectId
+    from config import MAIN_BOT_USERNAME
+    bot_username = MAIN_BOT_USERNAME or "your_main_bot"
+    bot_link = f"https://t.me/{bot_username}?start=proj{project_id}"
+    
+    query = insert(Project).values(
+        id=project_id, 
+        project_name=project_name, 
+        business_info=business_info, 
+        welcome_message=welcome_message,
+        bot_link=bot_link,
+        telegram_id=telegram_id
+    )
     await database.execute(query)
-    logging.info(f"[DB] create_project: created project {project_id}")
+    logging.info(f"[DB] create_project: created project {project_id} with bot_link={bot_link}")
     return project_id
 
 async def get_project_by_id(project_id: str) -> Optional[dict]:
@@ -195,7 +209,14 @@ async def get_project_by_id(project_id: str) -> Optional[dict]:
     row = await database.fetch_one(query)
     if row:
         logging.info(f"[DB] get_project_by_id: found {row}")
-        return {"id": row["id"], "project_name": row["project_name"], "business_info": row["business_info"], "token": row["token"], "telegram_id": row["telegram_id"]}
+        return {
+            "id": row["id"], 
+            "project_name": row["project_name"], 
+            "business_info": row["business_info"], 
+            "welcome_message": row["welcome_message"],
+            "bot_link": row["bot_link"],
+            "telegram_id": row["telegram_id"]
+        }
     logging.info(f"[DB] get_project_by_id: not found")
     return None
 
@@ -206,10 +227,17 @@ async def get_projects_by_user(telegram_id: str) -> list:
     rows = await database.fetch_all(query)
     logging.info(f"[DB] get_projects_by_user: найдено {len(rows)} проектов для пользователя {telegram_id}")
     
-    result = [{"id": r["id"], "project_name": r["project_name"], "business_info": r["business_info"], "token": r["token"], "telegram_id": r["telegram_id"]} for r in rows]
+    result = [{
+        "id": r["id"], 
+        "project_name": r["project_name"], 
+        "business_info": r["business_info"], 
+        "welcome_message": r["welcome_message"],
+        "bot_link": r["bot_link"],
+        "telegram_id": r["telegram_id"]
+    } for r in rows]
     
     for i, project in enumerate(result):
-        logging.info(f"[DB] get_projects_by_user: проект {i+1}: id={project['id']}, name={project['project_name']}, token={project['token'][:10]}...")
+        logging.info(f"[DB] get_projects_by_user: проект {i+1}: id={project['id']}, name={project['project_name']}, bot_link={project['bot_link']}")
     
     return result
 
@@ -223,15 +251,18 @@ async def get_user_business_info(telegram_id: str) -> Optional[str]:
     logging.info(f"[DB] get_user_business_info: not found")
     return None
 
-async def get_project_by_token(token: str) -> Optional[dict]:
-    logging.info(f"[DB] get_project_by_token: token={token}")
-    query = select(Project).where(Project.token == token)
-    row = await database.fetch_one(query)
-    if row:
-        logging.info(f"[DB] get_project_by_token: found {row}")
-        return {"id": row["id"], "project_name": row["project_name"], "business_info": row["business_info"], "token": row["token"], "telegram_id": row["telegram_id"]}
-    logging.info(f"[DB] get_project_by_token: not found")
-    return None
+async def get_project_by_start_param(start_param: str) -> Optional[dict]:
+    """Получает проект по параметру start команды (proj{project_id})"""
+    logging.info(f"[DB] get_project_by_start_param: start_param={start_param}")
+    
+    if not start_param.startswith("proj"):
+        logging.warning(f"[DB] get_project_by_start_param: invalid start_param format: {start_param}")
+        return None
+    
+    project_id = start_param[4:]  # Убираем "proj" из начала
+    logging.info(f"[DB] get_project_by_start_param: extracted project_id={project_id}")
+    
+    return await get_project_by_id(project_id)
 
 async def check_project_name_exists(telegram_id: str, project_name: str) -> bool:
     logging.info(f"[DB] check_project_name_exists: telegram_id={telegram_id}, project_name={project_name}")
@@ -391,7 +422,8 @@ async def get_user_projects(telegram_id: str) -> list:
         "id": r["id"],
         "project_name": r["project_name"],
         "business_info": r["business_info"],
-        "token": r["token"],
+        "welcome_message": r["welcome_message"],
+        "bot_link": r["bot_link"],
         "telegram_id": r["telegram_id"]
     } for r in rows]
 
@@ -534,19 +566,15 @@ async def reject_payment(telegram_id: str):
         logging.error(f"[DB] reject_payment: полный traceback: {traceback.format_exc()}")
         return False
 
-async def update_project_token(project_id: str, new_token: str) -> bool:
-    """Обновляет токен проекта, если он уникален"""
+async def update_project_welcome_message(project_id: str, new_welcome_message: str) -> bool:
+    """Обновляет приветственное сообщение проекта"""
     try:
         from sqlalchemy import update
-        # Проверяем, существует ли проект с таким токеном
-        existing = await get_project_by_token(new_token)
-        if existing and existing["id"] != project_id:
-            raise ValueError(f"Проект с таким токеном уже существует")
-        query = update(Project).where(Project.id == project_id).values(token=new_token)
+        query = update(Project).where(Project.id == project_id).values(welcome_message=new_welcome_message)
         await database.execute(query)
         return True
     except Exception as e:
-        logger.error(f"Error updating project token: {e}")
+        logger.error(f"Error updating project welcome message: {e}")
         return False
 
 async def get_users_with_expired_paid_month():

@@ -90,38 +90,33 @@ class FormAutoFiller:
         
         return auto_filled_data
 
-def create_form_preview_keyboard(form_data: Dict[str, str], form_id: str) -> InlineKeyboardMarkup:
-    """Создает клавиатуру с предварительным просмотром формы и кнопкой отправки"""
+def create_form_preview_keyboard() -> InlineKeyboardMarkup:
+    """Создает клавиатуру для показа формы"""
     keyboard = []
     
-    # Кнопка для отправки формы
+    # Кнопка для показа формы
     keyboard.append([InlineKeyboardButton(
-        text="✅ Отправить заявку",
-        callback_data=f"submit_form_{form_id}"
-    )])
-    
-    # Кнопка для редактирования
-    keyboard.append([InlineKeyboardButton(
-        text="✏️ Заполнить вручную",
-        callback_data=f"edit_form_{form_id}"
+        text="📝 Показать форму",
+        callback_data="show_form"
     )])
     
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-def create_form_preview_message(form_data: Dict[str, str], form_fields: List[Dict]) -> str:
-    """Создает сообщение с предварительным просмотром заполненной формы"""
-    message = "📋 **Предварительный просмотр заявки:**\n\n"
+def create_form_preview_message(form: Dict) -> str:
+    """Создает сообщение с описанием формы"""
+    message = f"📋 **Форма: {form['name']}**\n\n"
     
-    for field in form_fields:
-        field_name = field["name"]
-        field_value = form_data.get(field_name, "❌ Не заполнено")
-        
-        if field_value != "❌ Не заполнено":
-            message += f"✅ **{field_name}:** {field_value}\n"
-        else:
-            message += f"❌ **{field_name}:** Не заполнено\n"
+    if form.get('purpose'):
+        message += f"🎯 **Цель:** {form['purpose']}\n\n"
     
-    message += "\n💡 Если данные корректны, нажмите 'Отправить заявку'"
+    message += "📝 **Поля формы:**\n"
+    
+    for field in form.get('fields', []):
+        required = "🔴" if field.get('required') else "🟢"
+        field_type = field.get('field_type', 'text')
+        message += f"{required} {field['name']} ({field_type})\n"
+    
+    message += "\n💡 Для заполнения формы просто напишите мне сообщение с нужной информацией."
     
     return message
 
