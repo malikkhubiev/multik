@@ -206,7 +206,7 @@ async def create_project(telegram_id: str, project_name: str, business_info: str
         while await get_project_by_short_link(short_link):
             short_link = generate_short_link()
         
-    project_id = str(uuid.uuid4())
+        project_id = str(uuid.uuid4())
         
         # Создаем полную ссылку на бота
         from config import MAIN_BOT_USERNAME
@@ -223,7 +223,7 @@ async def create_project(telegram_id: str, project_name: str, business_info: str
         )
         
         await database.execute(insert(Project), project.__dict__)
-    return project_id
+        return project_id
     except Exception as e:
         logging.error(f"Error creating project: {e}")
         raise
@@ -240,18 +240,6 @@ async def get_project_by_id(project_id: str) -> Optional[dict]:
             bot_username = MAIN_BOT_USERNAME or "your_main_bot"
             project_dict['bot_link'] = f"https://t.me/{bot_username}?start={project_dict['short_link']}"
             return project_dict
-        return None
-    except Exception as e:
-        logging.error(f"Error getting project by id: {e}")
-    return None
-
-async def get_project_by_short_link(short_link: str) -> Optional[dict]:
-    """Получает проект по ID"""
-    try:
-    query = select(Project).where(Project.short_link == short_link)
-        result = await database.fetch_one(query)
-        if result:
-            return result
         return None
     except Exception as e:
         logging.error(f"Error getting project by id: {e}")
